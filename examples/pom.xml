@@ -66,6 +66,7 @@
             <version>1.11</version>
             <type>pom</type>
         </dependency>
+
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-math3</artifactId>

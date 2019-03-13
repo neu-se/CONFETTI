@@ -33,19 +33,15 @@ import java.io.IOException;
 import java.io.InputStream;
 
 import com.pholser.junit.quickcheck.From;
+import edu.berkeley.cs.jqf.examples.svg.SVGDocumentGenerator;
 import edu.berkeley.cs.jqf.examples.xml.XMLDocumentUtils;
-import edu.berkeley.cs.jqf.examples.xml.XmlDocumentGenerator;
 import edu.berkeley.cs.jqf.examples.common.Dictionary;
 import edu.berkeley.cs.jqf.fuzz.Fuzz;
 import edu.berkeley.cs.jqf.fuzz.JQF;
-import org.apache.batik.transcoder.Transcoder;
 import org.apache.batik.transcoder.TranscoderException;
 import org.apache.batik.transcoder.TranscoderInput;
 import org.apache.batik.transcoder.TranscoderOutput;
-import org.apache.batik.transcoder.image.ImageTranscoder;
 import org.apache.batik.transcoder.image.JPEGTranscoder;
-import org.apache.batik.transcoder.image.PNGTranscoder;
-import org.junit.Assert;
 import org.junit.Assume;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -58,7 +54,7 @@ public class BatikParserTest {
     @Fuzz
     public void testWithInputStream(InputStream in) {
         try {
-            // Create a JPEGTranscoder and set its quality hint.
+                 // Create a JPEGTranscoder and set its quality hint.t
                 JPEGTranscoder t = new JPEGTranscoder();
                 t.addTranscodingHint(JPEGTranscoder.KEY_QUALITY, new Float(.8));
 
@@ -71,21 +67,21 @@ public class BatikParserTest {
                 t.transcode(input, output);
                 ostream.flush();
                 ostream.close();
-        } catch (IOException e) {
+        } catch(IOException e) {
             Assume.assumeNoException(e);
-        } catch (TranscoderException e) {
+        } catch(TranscoderException e) {
             Assume.assumeNoException(e);
         }
     }
 
     @Fuzz
-    public void testWithGenerator(@From(XmlDocumentGenerator.class)
+    public void testWithGenerator(@From(SVGDocumentGenerator.class)
                                       @Dictionary("dictionaries/batik-svg.dict") Document dom) {
         testWithInputStream(XMLDocumentUtils.documentToInputStream(dom));
     }
 
     @Fuzz
-    public void debugWithGenerator(@From(XmlDocumentGenerator.class)
+    public void debugWithGenerator(@From(SVGDocumentGenerator.class)
                                        @Dictionary("dictionaries/batik-svg.dict") Document dom) {
         System.out.println(XMLDocumentUtils.documentToString(dom));
         testWithGenerator(dom);
