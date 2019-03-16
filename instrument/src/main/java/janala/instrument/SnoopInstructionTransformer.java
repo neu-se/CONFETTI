@@ -12,6 +12,9 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.TreeMap;
 
+import edu.columbia.cs.psl.vmvm.runtime.PreMain;
+import edu.columbia.cs.psl.vmvm.runtime.VMVMClassFileTransformer;
+import edu.columbia.cs.psl.vmvm.runtime.inst.Utils;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
@@ -24,7 +27,12 @@ public class SnoopInstructionTransformer implements ClassFileTransformer {
   private static String[] banned = {"[", "java/lang", "janala", "org/objectweb/asm", "sun", "jdk", "java/util/function"};
   private static String[] excludes = Config.instance.excludeInst;;
   private static String[] includes = Config.instance.includeInst;
-  
+  public static boolean IS_VMVM = System.getenv("VMVM") != null;
+
+  static{
+    if(IS_VMVM)
+      Utils.consumerUtils = new VMVMBridge();
+  }
   public static void premain(String agentArgs, Instrumentation inst) throws ClassNotFoundException {
 
     preloadClasses();

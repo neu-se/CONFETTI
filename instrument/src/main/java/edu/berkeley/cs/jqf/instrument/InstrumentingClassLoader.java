@@ -39,6 +39,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 
+import edu.columbia.cs.psl.vmvm.runtime.VMVMClassFileTransformer;
 import janala.instrument.SnoopInstructionTransformer;
 
 /**
@@ -47,6 +48,8 @@ import janala.instrument.SnoopInstructionTransformer;
 public class InstrumentingClassLoader extends URLClassLoader {
 
     private ClassFileTransformer transformer = new SnoopInstructionTransformer();
+
+    private ClassFileTransformer vmvmTransformer = new VMVMClassFileTransformer();
 
     public InstrumentingClassLoader(URL[] urls, ClassLoader parent) {
         super(urls, parent);
@@ -92,7 +95,13 @@ public class InstrumentingClassLoader extends URLClassLoader {
 
         byte[] transformedBytes;
         try {
+
             transformedBytes = transformer.transform(this, internalName, null, null, bytes);
+            if(SnoopInstructionTransformer.IS_VMVM) {
+                byte[] vmvmBytes = vmvmTransformer.transform(this, internalName, null, null, (transformedBytes == null ? bytes : transformedBytes));
+                if(vmvmBytes != null)
+                    transformedBytes = vmvmBytes;
+            }
         } catch (IllegalClassFormatException e) {
             // Just use original bytes
             transformedBytes = null;
