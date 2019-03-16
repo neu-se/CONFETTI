@@ -175,6 +175,10 @@ public class ReproGuidance implements Guidance {
 
         // Show errors for invalid tests
         if (result == Result.INVALID && error != null) {
+
+            if(error != null ) {
+                error.printStackTrace();
+            }
             File inputFile = getCurrentInputFile();
             System.err.println(inputFile.getName() + ": Test run was invalid");
             // error.printStackTrace();
