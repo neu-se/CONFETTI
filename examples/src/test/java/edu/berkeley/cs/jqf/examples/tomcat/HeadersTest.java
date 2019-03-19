@@ -43,7 +43,7 @@ import org.junit.runner.RunWith;
 public class HeadersTest {
 
     @Fuzz
-    public void parseHeaders(byte[] input) {
+    public void parseCoyoteHeaders(byte[] input) {
         Assume.assumeTrue(input.length < 200);
         HeaderParser parser = new HeaderParser(input);
         try {
