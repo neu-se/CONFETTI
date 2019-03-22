@@ -124,14 +124,6 @@ public class FuzzStatement extends Statement {
         ObjectInputStream ois = null;
         ObjectOutputStream oos = null;
         boolean useServer = false;
-        try {
-            Socket s = new Socket(InetAddress.getLocalHost(), 54321);
-            ois = new ObjectInputStream(s.getInputStream());
-            oos = new ObjectOutputStream(s.getOutputStream());
-            useServer = true;
-        } catch (IOException e) {
-            useServer = false;
-        }
 
         // Keep fuzzing until no more input or I/O error with guidance
         try {

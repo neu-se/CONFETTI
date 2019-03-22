@@ -1,13 +1,14 @@
 package edu.berkeley.cs.jqf.fuzz.ei;
 
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
+import edu.berkeley.cs.jqf.fuzz.guidance.Result;
 
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.Serializable;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.ByteBuffer;
 import java.util.LinkedList;
 import java.util.Random;
 
@@ -21,95 +22,74 @@ public class Central {
         ObjectOutputStream oos = new ObjectOutputStream(s.getOutputStream());
         ObjectInputStream  ois = new ObjectInputStream(s.getInputStream());
 
+        // Get initial valid value
+        LinkedList<byte[]> values = new LinkedList<>();
+        Result res = Result.INVALID;
+        while (res == Result.INVALID) {
+            oos.writeObject(new LinkedList<byte[]>());
+            values = (LinkedList<byte[]>) ois.readObject();
+            res = (Result) ois.readObject();
+        }
+
+        for (byte[] a : values) {
+            ByteBuffer bf = ByteBuffer.wrap(a);
+            switch (a.length) {
+                case 4:
+                    System.out.println("\t" + bf.getInt());
+                    break;
+                case 2:
+                    System.out.println("\t" + bf.getShort());
+                    break;
+                default:
+                    System.out.println("\t" + new String(a));
+            }
+        }
+        System.out.println(res);
+
         Random rnd = new Random();
-        oos.writeObject(new TrackingRandomness(rnd));
-
-        TrackingRandomness r = (TrackingRandomness) ois.readObject();
-
-        LinkedList values = r.requests;
-
-        System.out.println(values);
 
         while (true) {
             int toMutate = rnd.nextInt(values.size());
             System.out.println(toMutate);
 
             LinkedList mutating = new LinkedList(values);
-            mutating.set(toMutate, new Object());
+            mutating.set(toMutate, new byte[0]);
 
-            for (int i = 0 ; i < 1000 ; i++) {
-                oos.writeObject(new PartiallyFixedRandom(rnd, mutating));
-                ois.readObject();
+            out: for (int i = 0 ; i < 1000 ; i++) {
+                oos.writeObject(new LinkedList(mutating));
+                LinkedList<byte[]> read = (LinkedList<byte[]>) ois.readObject();
+                res = (Result) ois.readObject();
+                switch (res) {
+                    case INVALID:
+                        break;
+                    case SUCCESS:
+                        break;
+                    case FAILURE:
+                        System.out.println(res);
+                        System.out.println(i);
+                        for (byte[] a : read) {
+                            ByteBuffer bf = ByteBuffer.wrap(a);
+                            switch (a.length) {
+                                case 4:
+                                    System.out.println("\t" + bf.getInt());
+                                    break;
+                                case 2:
+                                    System.out.println("\t" + bf.getShort());
+                                    break;
+                                case 1:
+                                    System.out.println("\t" + Boolean.toString(a[0] == 0));
+                                    break;
+                                default:
+                                    System.out.println("\t" + new String(a));
+                            }
+                        }
+                        break;
+                    default:
+                        System.out.println(res);
+                        break;
+                }
+//                System.out.println("\t" + read.get(toMutate));
             }
-        }
-
-    }
-
-    public static class TrackingRandomness extends SourceOfRandomness implements Serializable {
-        private LinkedList requests = new LinkedList();
-
-        public TrackingRandomness(Random delegate) {
-            super(delegate);
-        }
-
-        @Override
-        public boolean nextBoolean() {
-            boolean ret = super.nextBoolean();
-            requests.addLast(ret);
-            return ret;
-        }
-
-        @Override
-        public int nextInt(int n) {
-            int ret = super.nextInt(n);
-            requests.addLast(ret);
-            return ret;
-        }
-
-        @Override
-        public <T> T choose(T[] items) {
-            int ret = super.nextInt(items.length);
-            requests.addLast(ret);
-            return items[ret];
-        }
-    }
-
-    public static class PartiallyFixedRandom extends SourceOfRandomness implements Serializable {
-        private LinkedList outputs;
-
-        public PartiallyFixedRandom(Random delegate, LinkedList outputs) {
-            super(delegate);
-            this.outputs = outputs;
-        }
-
-        @Override
-        public boolean nextBoolean() {
-            Object next = outputs.removeFirst();
-
-            if (next instanceof Boolean)
-                return (Boolean)next;
-
-            return super.nextBoolean();
-        }
-
-        @Override
-        public int nextInt(int n) {
-            Object next = outputs.removeFirst();
-
-            if (next instanceof Integer)
-                return (Integer)next;
-
-            return super.nextInt(n);
-        }
-
-        @Override
-        public <T> T choose(T[] items) {
-            Object next = outputs.removeFirst();
-
-            if (next instanceof Integer)
-                return items[(Integer)next];
-
-            return super.choose(items);
         }
     }
 }
