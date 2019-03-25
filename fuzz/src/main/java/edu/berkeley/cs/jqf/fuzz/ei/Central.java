@@ -27,6 +27,8 @@ public class Central {
         Result res = Result.INVALID;
         while (res == Result.INVALID) {
             oos.writeObject(new LinkedList<byte[]>());
+            oos.writeInt(100);
+            oos.flush();
             values = (LinkedList<byte[]>) ois.readObject();
             res = (Result) ois.readObject();
         }
@@ -55,8 +57,10 @@ public class Central {
             LinkedList mutating = new LinkedList(values);
             mutating.set(toMutate, new byte[0]);
 
-            out: for (int i = 0 ; i < 1000 ; i++) {
+            out: for (int i = 0 ; i < 1 ; i++) {
                 oos.writeObject(new LinkedList(mutating));
+                oos.writeInt(1000);
+                oos.flush();
                 LinkedList<byte[]> read = (LinkedList<byte[]>) ois.readObject();
                 res = (Result) ois.readObject();
                 switch (res) {

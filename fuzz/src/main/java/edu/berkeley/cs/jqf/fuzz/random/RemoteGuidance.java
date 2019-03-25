@@ -11,8 +11,6 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
-import java.nio.ByteBuffer;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Random;
 import java.util.function.Consumer;
@@ -21,10 +19,13 @@ public class RemoteGuidance implements Guidance {
 
     private ObjectInputStream ois;
     private ObjectOutputStream oos;
+    private LinkedList<byte[]> originalInput;
+    private int n;
     private LinkedList<byte[]> input;
     private LinkedList<byte[]> output = new LinkedList<>();
     private Random rnd = new Random();
     private boolean inputReady = false;
+    private boolean firstSuccessResult = false;
 
     public RemoteGuidance() throws IOException {
         Socket s = new Socket(InetAddress.getLocalHost(), 54321);
@@ -36,12 +37,14 @@ public class RemoteGuidance implements Guidance {
     public boolean hasInput() {
         try {
             if (!inputReady) {
-                input = (LinkedList) ois.readObject();
+                originalInput = (LinkedList) ois.readObject();
+                n = ois.readInt();
                 inputReady = true;
             }
             output.clear();
+            input = new LinkedList<>(originalInput);
 
-            return input != null;
+            return true;
         } catch (ClassNotFoundException e) {
             throw new Error(e);
         } catch (IOException e) {
@@ -70,8 +73,10 @@ public class RemoteGuidance implements Guidance {
                 if (next.length == 0)
                     return random(b, off, len);
 
-                if (next.length != len)
-                     throw new Error("Not implemented");
+                if (next.length != len) {
+                    input.clear();
+                    return random(b, off, len);
+                }
 
                 System.arraycopy(next, 0, b, off, len);
                 output.addLast(next);
@@ -91,8 +96,6 @@ public class RemoteGuidance implements Guidance {
         };
     }
 
-    private boolean firstValidResult = false;
-
     /**
      * Handles the result of a fuzz run.
      *
@@ -102,11 +105,38 @@ public class RemoteGuidance implements Guidance {
     @Override
     public void handleResult(Result result, Throwable error) {
         try {
-            if (result == Result.INVALID && !firstValidResult)
-                return;
 
-            if (result == Result.FAILURE)
-                error.printStackTrace();
+            if (n-- == 0) {
+                // Reached end of try window, send result regardless
+                oos.writeObject(new LinkedList<>(output));
+                oos.writeObject(result);
+                inputReady = false;
+                return;
+            }
+
+            if (result == Result.SUCCESS && !firstSuccessResult) {
+                // Found first successful result
+                firstSuccessResult = true;
+                oos.writeObject(new LinkedList<>(output));
+                oos.writeObject(result);
+                inputReady = false;
+                return;
+            }
+
+            if (result == Result.INVALID || result == Result.SUCCESS) {
+                // Keep trying until we get a valid result
+                return;
+            }
+
+            if (result == Result.FAILURE || result == Result.TIMEOUT) {
+                if (error != null)
+                    error.printStackTrace();
+
+                oos.writeObject(new LinkedList<>(output));
+                oos.writeObject(result);
+                inputReady = false;
+                return;
+            }
 
 //            System.out.println();
 //            for (byte[] a : output) {
@@ -125,10 +155,8 @@ public class RemoteGuidance implements Guidance {
 //                        System.out.println("\t" + new String(a));
 //                }
 //            }
-            oos.writeObject(new LinkedList<>(output));
-            oos.writeObject(result);
-            inputReady = false;
-            firstValidResult = true;
+
+            throw new Error("Dead code");
         } catch (IOException e) {
             throw new Error(e);
         }
