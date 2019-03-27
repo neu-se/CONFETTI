@@ -26,6 +26,7 @@ public class HTTPRequestGenerator extends Generator<HttpUriRequest> {
     public HttpUriRequest generate(SourceOfRandomness random, GenerationStatus status) {
             RequestBuilder builder = getReqType(random, status);
             getHeaders(builder,random,status);
+
             getParameters(builder,random,status);
             return builder.build();
     }
@@ -54,24 +55,28 @@ public class HTTPRequestGenerator extends Generator<HttpUriRequest> {
         return randomStringGenerator.generate(random,status);
     }
 
+    private String makeMultiLineString(SourceOfRandomness random, GenerationStatus status) {
+        String final_string = randomStringGenerator.generate(random,status);
+        while(random.nextBoolean()) {
+            final_string += "\n";
+            final_string += randomStringGenerator.generate(random, status);
+        }
+        return final_string;
+    }
+
     private RequestBuilder getReqType(SourceOfRandomness random, GenerationStatus status) {
-        int index = random.nextInt(7);
+        int index = random.nextInt(5);
         switch(index) {
             case 0:
-                return RequestBuilder.get(makeString(random, status));
+                return RequestBuilder.get(makeAlphaString(random, status));
             case 1:
-                return RequestBuilder.post(makeString(random, status));
+                return RequestBuilder.post(makeAlphaString(random, status));
             case 2:
-                return RequestBuilder.patch(makeString(random, status));
+                return RequestBuilder.head(makeAlphaString(random, status));
             case 3:
-                return RequestBuilder.head(makeString(random, status));
+                return RequestBuilder.delete(makeAlphaString(random, status));
             case 4:
-                return RequestBuilder.delete(makeString(random, status));
-            case 5:
-                return RequestBuilder.trace(makeString(random, status));
-            case 6:
-                return RequestBuilder.delete(makeString(random, status));
-
+                return RequestBuilder.trace(makeAlphaString(random, status));
              // shouldn't get here
             default:
                 return null;
@@ -81,8 +86,13 @@ public class HTTPRequestGenerator extends Generator<HttpUriRequest> {
 
     private void getHeaders(RequestBuilder builder, SourceOfRandomness random, GenerationStatus status) {
         int index = random.nextInt(max_elements);
+        boolean useDict  = random.nextBoolean();
+
         for(int i = 0; i< index; i++) {
-            builder.addHeader(makeAlphaString(random, status), makeAlphaString(random,status));
+            if (useDict)
+                builder.addHeader(makeString(random, status), makeMultiLineString(random,status));
+            else
+                builder.addHeader(makeAlphaString(random, status), makeAlphaString(random,status));
         }
     }
     private void getParameters(RequestBuilder builder, SourceOfRandomness random, GenerationStatus status) {

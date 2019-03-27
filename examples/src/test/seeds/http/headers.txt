@@ -1,0 +1,6 @@
+User-Agent: Mozilla/4.0 (compatible; MSIE5.01; Windows NT)
+Host: www.tutorialspoint.com
+Accept-Language: en-us
+Connection: Keep-Alive
+Content-type: text/html
+Content-Length: 182

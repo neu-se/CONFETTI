@@ -50,7 +50,7 @@ public class HeaderParser {
 
     private final Http11InputBuffer parser;
 
-    public static final int MAX_HEADER_SIZE = 1024;
+    public static final int MAX_HEADER_SIZE = 4096;
     public static final int MAX_BUFFER_SIZE = MAX_HEADER_SIZE + 256;
 
     public HeaderParser(@Size(max=MAX_HEADER_SIZE) byte[] input) {
