@@ -29,10 +29,10 @@ public class SnoopInstructionTransformer implements ClassFileTransformer {
   private static String[] includes = Config.instance.includeInst;
   public static boolean IS_VMVM = System.getenv("VMVM") != null;
 
-  static{
-    if(IS_VMVM)
-      Utils.consumerUtils = new VMVMBridge();
-  }
+//  static{
+//    if(IS_VMVM)
+//      Utils.consumerUtils = new VMVMBridge();
+//  }
   public static void premain(String agentArgs, Instrumentation inst) throws ClassNotFoundException {
 
     preloadClasses();

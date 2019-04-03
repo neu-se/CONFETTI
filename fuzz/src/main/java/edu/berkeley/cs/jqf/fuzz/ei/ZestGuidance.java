@@ -196,6 +196,13 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     /** The file where saved plot data is written. */
     private File statsFile;
 
+
+    private Consumer<TraceEvent> emptyEvent = new Consumer<TraceEvent>() {
+        @Override
+        public void accept(TraceEvent traceEvent) {
+
+        }
+    };
     /** The currently executing input (for debugging purposes). */
     private File currentInputFile;
 
@@ -871,13 +878,23 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     @Override
     public Consumer<TraceEvent> generateCallBack(Thread thread) {
-        if (appThread != null) {
-            throw new IllegalStateException(ZestGuidance.class +
-                " only supports single-threaded apps at the moment");
-        }
-        appThread = thread;
+//        if (appThread != null) {
+          //  System.out.println("Switching thread! New thread is " + thread.getName());
+           //while(true);
+//            throw new IllegalStateException(ZestGuidance.class +
+//                " only supports single-threaded apps at the moment");
+//            return this.emptyEvent;
+//        }
 
-        return this::handleEvent;
+
+
+        if( thread.getName().endsWith("exec-1")) {
+            appThread = thread;
+            return this::handleEvent;
+        }
+
+        else return this.emptyEvent;
+
     }
 
     private void handleEvent(TraceEvent e) {

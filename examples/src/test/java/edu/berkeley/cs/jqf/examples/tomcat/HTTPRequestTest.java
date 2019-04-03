@@ -15,7 +15,6 @@ import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.valves.AccessLogValve;
 import org.apache.catalina.webresources.StandardRoot;
 import org.apache.coyote.ProtocolHandler;
-import org.apache.coyote.Request;
 import org.apache.coyote.http11.*;
 import org.apache.http.Header;
 import org.apache.http.client.methods.HttpUriRequest;
@@ -25,9 +24,11 @@ import org.apache.tomcat.util.scan.StandardJarScanner;
 import org.junit.*;
 import org.junit.runner.RunWith;
 
+
 import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -96,6 +97,7 @@ public class HTTPRequestTest {
         connector.setPort(0);
         // Mainly set to reduce timeouts during async tests
         connector.setAttribute("connectionTimeout", "3000");
+        connector.setAttribute("maxThreads", "1");
         tomcat.getService().addConnector(connector);
         tomcat.setConnector(connector);
 
@@ -189,6 +191,7 @@ public class HTTPRequestTest {
         File appDir = new File("test/webapp");
         Context ctx = tomcat.addWebapp(null, "/test", appDir.getAbsolutePath());
 
+        //System.out.println("WEBAPP PATH IS " + appDir.getAbsolutePath());
         StandardJarScanner scanner = (StandardJarScanner) ctx.getJarScanner();
         StandardJarScanFilter filter = (StandardJarScanFilter) scanner.getJarScanFilter();
         filter.setTldSkip(filter.getTldSkip() + ",testclasses");
@@ -208,47 +211,135 @@ public class HTTPRequestTest {
         return tomcat;
     }
 
-    private Tomcat getTomcat() {
+    public Tomcat getTomcatInstanceSimpleBuggyWebapp(boolean addJstl, boolean start)
+            throws LifecycleException {
+
+        Context ctx = tomcat.addContext("", null);
+
+        Tomcat.addServlet(ctx, "simplebuggy", new SimpleBuggyServlet());
+
+        ctx.addServletMappingDecoded("/", "simplebuggy");
+
+
+
+        if (start) {
+            tomcat.start();
+        }
         return tomcat;
     }
 
+    private Tomcat getTomcat() {
+        try {
+            tomcat.start();
+        } catch (LifecycleException e) {
+            e.printStackTrace();
+        }
+        return tomcat;
+    }
+
+
+    private static final class Client extends SimpleHttpClient {
+
+        public Client(int port) {
+            setPort(port);
+        }
+
+        @Override
+        public boolean isResponseBodyOK() {
+            return getResponseBody().contains("test - data");
+        }
+    }
+
+
+
     @Fuzz
-    public void processHTTPRequest(byte[] input) {
+    public void processHTTPRequest(String input) {
 
         try {
-            Tomcat tomcat = getTomcat();
-//            String request =
-//                    "POST /echo-params.jsp HTTP/1.1" + "\r\n" +
-//                            "Host: any" + "\r\n" +
-//                            "Expect: unknown" +  "\r\n" +
-//                            "\r\n";
+            Tomcat tomcat = getTomcatInstanceSimpleBuggyWebapp(false, true);
 
 
-            ProtocolHandler protocol = tomcat.getConnector().getProtocolHandler();
-            AbstractHttp11Protocol<?> http11Protocol = (AbstractHttp11Protocol<?>) protocol;
-            Http11Processor processor = new Http11Processor(http11Protocol, tomcat.getConnector().getProtocolHandler().getAdapter());
-            ByteBuffer buf = ByteBuffer.wrap(input);
-            processor.service(new SocketWrapper(buf));
-        } catch(Exception e) {
+            //while(true);
+//            String request = "GET / HTTP/1.1" + "\r\n" +
+//                    "Host: any" + "\r\n" + "\r\n";
+
+
+            Client client = new Client(tomcat.getConnector().getLocalPort());
+            client.setRequest(new String[] {input});
+
+            client.connect();
+            client.processRequest();
+
+
+           if (client.isResponse50x()) {
+               System.out.println(client.getResponseLine());
+               throw new IllegalStateException("SERVER EXCEPTION!");
+           }
+
+//            ProtocolHandler protocol = tomcat.getConnector().getProtocolHandler();
+//            AbstractHttp11Protocol<?> http11Protocol = (AbstractHttp11Protocol<?>) protocol;
+//            Http11Processor processor = new Http11Processor(http11Protocol, tomcat.getConnector().getProtocolHandler().getAdapter());
+//            ByteBuffer buf = ByteBuffer.wrap(request.getBytes());
+//            processor.service(new SocketWrapper(buf));
+        }  catch (InterruptedException e) {
             e.printStackTrace();
+        } catch (LifecycleException e) {
+            e.printStackTrace();
+        } catch (UnknownHostException e) {
+            Assume.assumeNoException(e);
+        } catch (IOException e) {
+            Assume.assumeNoException(e);
         }
 
     }
 
     @Fuzz
     public void parseHTTPRequestHeadersWithGenerator(@From(HTTPRequestGenerator.class)  @Dictionary("dictionaries/tomcat-http-request.dict")HttpUriRequest req) {
-        try {
             String request = req.toString() + "\r\n";
 
             Header[] headerFields = req.getAllHeaders();
             for(int i = 0; i < headerFields.length; i++){
-                request += (headerFields[i].getName() + ": " + headerFields[i].getValue() + "\r\n");
+                request += (headerFields[i].getName() + ": " + headerFields[i].getValue() +  "\r\n");
             }
-            //System.out.print(request + "\r\n\r\n");
-            processHTTPRequest(request.getBytes());
-        } catch(Exception e) {
+            request += "\r\n";
+
+
+        try {
+            Tomcat tomcat = getTomcatInstanceSimpleBuggyWebapp(false, true);
+
+
+            Client client = new Client(tomcat.getConnector().getLocalPort());
+            client.setRequest(new String[] {request});
+
+            client.connect();
+            client.processRequest();
+
+
+            if (client.isResponse50x()) {
+               // System.out.println(client.getResponseLine());
+                throw new IllegalStateException("SERVER EXCEPTION!");
+            }
+
+
+            // TODO: TRY THIS OUT
+//            ProtocolHandler protocol = tomcat.getConnector().getProtocolHandler();
+//            AbstractHttp11Protocol<?> http11Protocol = (AbstractHttp11Protocol<?>) protocol;
+//            Http11Processor processor = new Http11Processor(http11Protocol, tomcat.getConnector().getProtocolHandler().getAdapter());
+//            ByteBuffer buf = ByteBuffer.wrap(request.getBytes());
+//            processor.service(new SocketWrapper(buf));
+
+
+        }  catch (InterruptedException e) {
+            e.printStackTrace();
+        } catch (LifecycleException e) {
+            e.printStackTrace();
+        } catch (UnknownHostException e) {
+            Assume.assumeNoException(e);
+        } catch (IOException e) {
             Assume.assumeNoException(e);
         }
+
+
     }
 
 

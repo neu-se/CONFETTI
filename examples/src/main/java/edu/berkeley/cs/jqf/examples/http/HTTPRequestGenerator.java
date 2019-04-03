@@ -65,10 +65,10 @@ public class HTTPRequestGenerator extends Generator<HttpUriRequest> {
     }
 
     private RequestBuilder getReqType(SourceOfRandomness random, GenerationStatus status) {
-        int index = random.nextInt(5);
+        int index = random.nextInt(1);
         switch(index) {
             case 0:
-                return RequestBuilder.get(makeAlphaString(random, status));
+                return RequestBuilder.get("/");
             case 1:
                 return RequestBuilder.post(makeAlphaString(random, status));
             case 2:
@@ -89,10 +89,10 @@ public class HTTPRequestGenerator extends Generator<HttpUriRequest> {
         boolean useDict  = random.nextBoolean();
 
         for(int i = 0; i< index; i++) {
-            if (useDict)
+//            if (useDict)
                 builder.addHeader(makeString(random, status), makeMultiLineString(random,status));
-            else
-                builder.addHeader(makeAlphaString(random, status), makeAlphaString(random,status));
+//            else
+//                builder.addHeader(makeAlphaString(random, status), makeAlphaString(random,status));
         }
     }
     private void getParameters(RequestBuilder builder, SourceOfRandomness random, GenerationStatus status) {
