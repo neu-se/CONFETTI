@@ -1,98 +1,126 @@
 package edu.berkeley.cs.jqf.fuzz.ei;
 
-import com.pholser.junit.quickcheck.random.SourceOfRandomness;
 import edu.berkeley.cs.jqf.fuzz.guidance.Result;
+import edu.berkeley.cs.jqf.fuzz.util.Coverage;
 
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.LinkedList;
-import java.util.Random;
 
 public class Central {
+    private Socket s;
+    private ObjectInputStream ois;
+    private ObjectOutputStream oos;
 
-    public static void main(String[] args) throws IOException, ClassNotFoundException {
+    public static Central connect() {
+        try {
+            Socket s = new Socket(InetAddress.getLocalHost(), 54321);
+            Central c = new Central();
+            c.ois = new ObjectInputStream(s.getInputStream());
+            c.oos = new ObjectOutputStream(s.getOutputStream());
+
+            return c;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /* Client:
+     * 1. Send input
+     * 2. Send coverage
+     * 3. Select input
+     * 3. Receive instructions
+     */
+
+    public void sendInput(LinkedList<byte[]> inputRequests, Result result, int id) throws IOException {
+        oos.writeObject(inputRequests);
+        oos.writeObject(result);
+        oos.writeInt(id);
+    }
+
+    public void sendCoverage(Coverage cov) throws IOException {
+        // TODO
+    }
+
+    public void selectInput(int id) throws IOException {
+        oos.writeObject(new Integer(id));
+    }
+
+    private void receiveResult() {
+        throw new Error("Not implemented");
+    }
+
+    public Integer[] receiveInstructions() throws IOException {
+        try {
+
+            return (Integer[]) ois.readObject();
+        } catch (ClassNotFoundException e) {
+            throw new Error(e);
+        }
+    }
+
+    /* Server:
+     * 1. Receive input
+     * 2. Receive coverage
+     * 3. Receive selected input
+     * 3. Send instructions
+     */
+    public static void main(String[] args) throws Throwable {
         ServerSocket ss = new ServerSocket(54321);
 
         Socket s = ss.accept();
 
         ObjectOutputStream oos = new ObjectOutputStream(s.getOutputStream());
-        ObjectInputStream  ois = new ObjectInputStream(s.getInputStream());
+        ObjectInputStream ois = new ObjectInputStream(s.getInputStream());
 
-        // Get initial valid value
-        LinkedList<byte[]> values = new LinkedList<>();
-        Result res = Result.INVALID;
-        while (res == Result.INVALID) {
-            oos.writeObject(new LinkedList<byte[]>());
-            oos.writeInt(100);
-            oos.flush();
-            values = (LinkedList<byte[]>) ois.readObject();
-            res = (Result) ois.readObject();
-        }
-
-        for (byte[] a : values) {
-            ByteBuffer bf = ByteBuffer.wrap(a);
-            switch (a.length) {
-                case 4:
-                    System.out.println("\t" + bf.getInt());
-                    break;
-                case 2:
-                    System.out.println("\t" + bf.getShort());
-                    break;
-                default:
-                    System.out.println("\t" + new String(a));
-            }
-        }
-        System.out.println(res);
-
-        Random rnd = new Random();
+        ArrayList<LinkedList<byte[]>> inputs = new ArrayList<>();
+        ArrayList<Integer> fuzzing = new ArrayList<>();
 
         while (true) {
-            int toMutate = rnd.nextInt(values.size());
-            System.out.println(toMutate);
+            // Receive input or select new input
+            Object o = ois.readObject();
 
-            LinkedList mutating = new LinkedList(values);
-            mutating.set(toMutate, new byte[0]);
+            if (o instanceof LinkedList) {
+                // Receive input
+                LinkedList<byte[]> inputRequests = (LinkedList<byte[]>) o;
+                Result res = (Result) ois.readObject();
+                int id = ois.readInt();
 
-            out: for (int i = 0 ; i < 1 ; i++) {
-                oos.writeObject(new LinkedList(mutating));
-                oos.writeInt(1000);
-                oos.flush();
-                LinkedList<byte[]> read = (LinkedList<byte[]>) ois.readObject();
-                res = (Result) ois.readObject();
-                switch (res) {
-                    case INVALID:
+                // Receive coverage
+//                Coverage cov = (Coverage) ois.readObject();
+
+                // Save input
+                inputs.add(id, inputRequests);
+                fuzzing.add(id, 0);
+            } else if (o instanceof Integer) {
+                // Select input
+                int selected = (Integer)o;
+
+                // Select part of the input to fuzz
+                int i = 0;
+                int offset = 0;
+                int size = 0;
+                int toFuzz = fuzzing.get(selected);
+                for (byte[] b : inputs.get(selected)) {
+                    if (toFuzz == i) {
+                        size = b.length;
                         break;
-                    case SUCCESS:
-                        break;
-                    case FAILURE:
-                        System.out.println(res);
-                        System.out.println(i);
-                        for (byte[] a : read) {
-                            ByteBuffer bf = ByteBuffer.wrap(a);
-                            switch (a.length) {
-                                case 4:
-                                    System.out.println("\t" + bf.getInt());
-                                    break;
-                                case 2:
-                                    System.out.println("\t" + bf.getShort());
-                                    break;
-                                case 1:
-                                    System.out.println("\t" + Boolean.toString(a[0] == 0));
-                                    break;
-                                default:
-                                    System.out.println("\t" + new String(a));
-                            }
-                        }
-                        break;
-                    default:
-                        System.out.println(res);
-                        break;
+                    } else {
+                        offset += b.length;
+                        i += 1;
+                    }
                 }
-//                System.out.println("\t" + read.get(toMutate));
+
+                // Send instructions
+                oos.writeObject(new int[]{offset, size});
+
+                // Update state
+                fuzzing.set(selected, (toFuzz + 1) % inputs.get(selected).size());
             }
         }
     }

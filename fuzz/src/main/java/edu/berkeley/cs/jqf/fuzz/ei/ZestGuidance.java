@@ -58,10 +58,7 @@ import java.util.function.Consumer;
 
 import edu.berkeley.cs.jqf.fuzz.ei.ExecutionIndex.Prefix;
 import edu.berkeley.cs.jqf.fuzz.ei.ExecutionIndex.Suffix;
-import edu.berkeley.cs.jqf.fuzz.guidance.Guidance;
-import edu.berkeley.cs.jqf.fuzz.guidance.GuidanceException;
-import edu.berkeley.cs.jqf.fuzz.guidance.Result;
-import edu.berkeley.cs.jqf.fuzz.guidance.TimeoutException;
+import edu.berkeley.cs.jqf.fuzz.guidance.*;
 import edu.berkeley.cs.jqf.fuzz.util.Coverage;
 import edu.berkeley.cs.jqf.fuzz.util.ProducerHashMap;
 import edu.berkeley.cs.jqf.instrument.tracing.events.CallEvent;
@@ -257,6 +254,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     /** Probability of splicing in getOrGenerateFresh() */
     static final double DEMAND_DRIVEN_SPLICING_PROBABILITY = 0;
 
+    private Central central;
+    private RecordingInputStream ris;
+    private Integer[] instructions;
+
     /**
      * @param testName the name of test to display on the status screen
      * Creates a new execution-index-parametric guidance.
@@ -282,6 +283,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 throw new IllegalArgumentException("Invalid timeout duration: " + timeout);
             }
         }
+
+        this.central = Central.connect();
     }
 
     /**
@@ -546,6 +549,15 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             }
             Input parent = savedInputs.get(currentParentInputIdx);
 
+            if (central != null) {
+                try {
+                    central.selectInput(parent.id);
+                    instructions = central.receiveInstructions();
+                } catch (IOException e) {
+                    throw new Error(e);
+                }
+            }
+
             // Fuzz it to get a new input
             infoLog("Mutating input: %s", parent.desc);
             currentInput = parent.fuzz(random);
@@ -561,9 +573,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             this.branchCount = 0;
         }
 
-
         // Return an input stream that uses the EI map
-        return new InputStream() {
+        InputStream is = new InputStream() {
             int bytesRead = 0;
 
             @Override
@@ -601,6 +612,13 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 }
             }
         };
+
+        if (central != null) {
+            ris = new RecordingInputStream(is);
+            is = ris;
+        }
+
+        return is;
     }
 
     @Override
@@ -698,6 +716,18 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     saveCurrentInput(responsibilities, why);
                 } catch (IOException e) {
                     throw new GuidanceException(e);
+                }
+
+                if (central != null) {
+                    try {
+                        // Send new input / random requests used
+                        central.sendInput(ris.getRequests(), result, currentInput.id);
+
+                        // Send updated coverage
+                        central.sendCoverage(totalCoverage);
+                    } catch (IOException e) {
+                        throw new Error(e);
+                    }
                 }
 
             }
@@ -1128,9 +1158,19 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
             for (int mutation = 1; mutation <= numMutations; mutation++) {
 
-                // Select a random offset and size
-                int offset = random.nextInt(newInput.values.size());
-                int mutationSize = sampleGeometric(random, MEAN_MUTATION_SIZE);
+                int offset;
+                int mutationSize;
+
+                if (central != null) {
+                    // Follow the central's instructions
+                    offset = instructions[0];
+                    mutationSize = instructions[1];
+                } else {
+                    // Select a random offset and size
+                    offset = random.nextInt(newInput.values.size());
+                    mutationSize = sampleGeometric(random, MEAN_MUTATION_SIZE);
+                }
+
 
                 // desc += String.format(":%d@%d", mutationSize, idx);
 
