@@ -41,6 +41,7 @@ public class Central {
         oos.writeObject(inputRequests);
         oos.writeObject(result);
         oos.writeInt(id);
+        oos.flush();
     }
 
     public void sendCoverage(Coverage cov) throws IOException {
@@ -55,10 +56,10 @@ public class Central {
         throw new Error("Not implemented");
     }
 
-    public Integer[] receiveInstructions() throws IOException {
+    public int[] receiveInstructions() throws IOException {
         try {
 
-            return (Integer[]) ois.readObject();
+            return (int[]) ois.readObject();
         } catch (ClassNotFoundException e) {
             throw new Error(e);
         }

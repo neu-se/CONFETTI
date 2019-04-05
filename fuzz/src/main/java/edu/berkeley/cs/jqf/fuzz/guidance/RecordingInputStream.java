@@ -37,7 +37,7 @@ public class RecordingInputStream extends InputStream {
     @Override
     public int read(byte[] b, int off, int len) throws IOException {
         int r = is.read(b, off, len);
-        if (r != -1) {
+        if (len > 0 && r != -1) {
             byte[] bb = new byte[r];
             System.arraycopy(b, 0, bb, 0, r);
             reqs.addLast(bb);

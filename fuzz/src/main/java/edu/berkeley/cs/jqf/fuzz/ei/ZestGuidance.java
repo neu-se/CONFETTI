@@ -256,7 +256,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     private Central central;
     private RecordingInputStream ris;
-    private Integer[] instructions;
+    private int[] instructions;
 
     /**
      * @param testName the name of test to display on the status screen
