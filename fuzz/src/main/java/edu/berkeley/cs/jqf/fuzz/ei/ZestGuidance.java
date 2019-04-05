@@ -49,6 +49,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -256,7 +257,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     private Central central;
     private RecordingInputStream ris;
-    private int[] instructions;
+    private LinkedList<int[]> instructions;
 
     /**
      * @param testName the name of test to display on the status screen
@@ -536,6 +537,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             // pool this parent input hits
             Input currentParentInput = savedInputs.get(currentParentInputIdx);
             int targetNumChildren = getTargetChildrenForParent(currentParentInput);
+            boolean newParent = false;
             if (numChildrenGeneratedForCurrentParentInput >= targetNumChildren) {
                 // Select the next saved input to fuzz
                 currentParentInputIdx = (currentParentInputIdx + 1) % savedInputs.size();
@@ -546,10 +548,11 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 }
 
                 numChildrenGeneratedForCurrentParentInput = 0;
+                newParent = true;
             }
             Input parent = savedInputs.get(currentParentInputIdx);
 
-            if (central != null) {
+            if (newParent && central != null) {
                 try {
                     central.selectInput(parent.id);
                     instructions = central.receiveInstructions();
@@ -1161,10 +1164,11 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 int offset;
                 int mutationSize;
 
-                if (central != null) {
+                if (central != null && instructions != null) {
                     // Follow the central's instructions
-                    offset = instructions[0];
-                    mutationSize = instructions[1];
+                    int[] inst = instructions.get(random.nextInt(instructions.size()));
+                    offset = inst[0];
+                    mutationSize = inst[1];
                 } else {
                     // Select a random offset and size
                     offset = random.nextInt(newInput.values.size());

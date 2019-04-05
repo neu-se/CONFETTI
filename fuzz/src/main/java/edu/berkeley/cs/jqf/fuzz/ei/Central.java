@@ -56,10 +56,10 @@ public class Central {
         throw new Error("Not implemented");
     }
 
-    public int[] receiveInstructions() throws IOException {
+    public LinkedList<int[]> receiveInstructions() throws IOException {
         try {
 
-            return (int[]) ois.readObject();
+            return (LinkedList<int[]>) ois.readObject();
         } catch (ClassNotFoundException e) {
             throw new Error(e);
         }
@@ -98,6 +98,7 @@ public class Central {
                 // Save input
                 inputs.add(id, inputRequests);
                 fuzzing.add(id, 0);
+
             } else if (o instanceof Integer) {
                 // Select input
                 int selected = (Integer)o;
@@ -107,18 +108,14 @@ public class Central {
                 int offset = 0;
                 int size = 0;
                 int toFuzz = fuzzing.get(selected);
+                LinkedList<int[]> instructionsToSend = new LinkedList<>();
                 for (byte[] b : inputs.get(selected)) {
-                    if (toFuzz == i) {
-                        size = b.length;
-                        break;
-                    } else {
-                        offset += b.length;
-                        i += 1;
-                    }
+                    instructionsToSend.addLast(new int[]{offset, b.length});
+                    offset += b.length;
                 }
 
                 // Send instructions
-                oos.writeObject(new int[]{offset, size});
+                oos.writeObject(instructionsToSend);
 
                 // Update state
                 fuzzing.set(selected, (toFuzz + 1) % inputs.get(selected).size());
