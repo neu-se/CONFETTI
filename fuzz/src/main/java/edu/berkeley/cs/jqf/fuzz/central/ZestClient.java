@@ -6,9 +6,9 @@ import edu.berkeley.cs.jqf.fuzz.util.Coverage;
 import java.io.IOException;
 import java.util.LinkedList;
 
-public class ZestCentral extends Central {
+public class ZestClient extends Central {
 
-    public ZestCentral() throws IOException {
+    public ZestClient() throws IOException {
         super();
         oos.writeObject(Type.Zest);
         oos.flush();

@@ -20,7 +20,7 @@ public class Central {
         oos = new ObjectOutputStream(s.getOutputStream());
     }
 
-    protected enum Type { Zest };
+    protected enum Type { Zest, Knarr };
 
     /* Server:
      * 1. Receive input
@@ -32,6 +32,7 @@ public class Central {
         ServerSocket ss = new ServerSocket(PORT);
 
         ZestWorker zest = null;
+        KnarrWorker knarr = null;
 
         Coordinator c = new Coordinator();
 
@@ -52,6 +53,14 @@ public class Central {
                     } else {
                         zest = new ZestWorker(ois, oos, c);
                         new Thread(zest).start();
+                    }
+                    break;
+                case Knarr:
+                    if (knarr != null) {
+                        s.close();
+                    } else {
+                        knarr = new KnarrWorker(ois, oos, c);
+                        c.setKnarrWorker(knarr);
                     }
                     break;
                 default:

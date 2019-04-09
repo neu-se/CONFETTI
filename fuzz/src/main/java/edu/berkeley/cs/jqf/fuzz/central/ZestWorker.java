@@ -38,7 +38,7 @@ class ZestWorker extends Worker {
                 inputs.add(id, inputRequests);
                 fuzzing.add(id, 0);
 
-                // Let central thread know
+                // Let coordinator thread know
                 int size = 0;
                 for (byte[] b : inputRequests)
                     size += b.length;
