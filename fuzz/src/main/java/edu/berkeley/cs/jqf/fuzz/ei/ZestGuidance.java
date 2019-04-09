@@ -57,6 +57,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
+import edu.berkeley.cs.jqf.fuzz.central.ZestCentral;
 import edu.berkeley.cs.jqf.fuzz.ei.ExecutionIndex.Prefix;
 import edu.berkeley.cs.jqf.fuzz.ei.ExecutionIndex.Suffix;
 import edu.berkeley.cs.jqf.fuzz.guidance.*;
@@ -255,7 +256,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     /** Probability of splicing in getOrGenerateFresh() */
     static final double DEMAND_DRIVEN_SPLICING_PROBABILITY = 0;
 
-    private Central central;
+    private ZestCentral central;
     private RecordingInputStream ris;
     private LinkedList<int[]> instructions;
 
@@ -285,7 +286,11 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             }
         }
 
-        this.central = Central.connect();
+        try {
+            this.central = new ZestCentral();
+        } catch (IOException e) {
+            this.central = null;
+        }
     }
 
     /**
