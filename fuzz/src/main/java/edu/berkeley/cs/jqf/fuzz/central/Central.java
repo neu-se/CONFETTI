@@ -20,7 +20,7 @@ public class Central {
         oos = new ObjectOutputStream(s.getOutputStream());
     }
 
-    protected enum Type {Zest};
+    protected enum Type { Zest };
 
     /* Server:
      * 1. Receive input
@@ -32,6 +32,10 @@ public class Central {
         ServerSocket ss = new ServerSocket(PORT);
 
         ZestWorker zest = null;
+
+        Coordinator c = new Coordinator();
+
+        new Thread(c).start();
 
         while (true) {
             Socket s = ss.accept();
@@ -46,7 +50,7 @@ public class Central {
                     if (zest != null) {
                         s.close();
                     } else {
-                        zest = new ZestWorker(ois, oos);
+                        zest = new ZestWorker(ois, oos, c);
                         new Thread(zest).start();
                     }
                     break;

@@ -11,9 +11,11 @@ import java.util.LinkedList;
 class ZestWorker extends Worker {
     private ArrayList<LinkedList<byte[]>> inputs = new ArrayList<>();
     private ArrayList<Integer> fuzzing = new ArrayList<>();
+    private Coordinator c;
 
-    public ZestWorker(ObjectInputStream ois, ObjectOutputStream oos) {
+    public ZestWorker(ObjectInputStream ois, ObjectOutputStream oos, Coordinator c) {
         super(ois, oos);
+        this.c = c;
     }
 
     @Override
@@ -36,6 +38,18 @@ class ZestWorker extends Worker {
                 inputs.add(id, inputRequests);
                 fuzzing.add(id, 0);
 
+                // Let central thread know
+                int size = 0;
+                for (byte[] b : inputRequests)
+                    size += b.length;
+                byte[] bs = new byte[size];
+                int i = 0;
+                for (byte[] b : inputRequests) {
+                    System.arraycopy(b, 0, bs, i, bs.length);
+                    i += bs.length;
+                }
+
+                c.foundInput(id, bs);
             } else if (o instanceof Integer) {
                 // Select input
                 int selected = (Integer)o;
