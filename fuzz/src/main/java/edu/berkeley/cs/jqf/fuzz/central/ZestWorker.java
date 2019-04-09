@@ -45,8 +45,8 @@ class ZestWorker extends Worker {
                 byte[] bs = new byte[size];
                 int i = 0;
                 for (byte[] b : inputRequests) {
-                    System.arraycopy(b, 0, bs, i, bs.length);
-                    i += bs.length;
+                    System.arraycopy(b, 0, bs, i, b.length);
+                    i += b.length;
                 }
 
                 c.foundInput(id, bs);
