@@ -27,7 +27,7 @@ public class HTTPRequestGenerator extends Generator<HttpUriRequest> {
             RequestBuilder builder = getReqType(random, status);
             getHeaders(builder,random,status);
 
-            getParameters(builder,random,status);
+           // getParameters(builder,random,status);
             return builder.build();
     }
 

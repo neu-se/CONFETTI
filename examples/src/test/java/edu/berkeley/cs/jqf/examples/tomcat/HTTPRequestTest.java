@@ -25,8 +25,8 @@ import org.junit.*;
 import org.junit.runner.RunWith;
 
 
-import java.io.File;
-import java.io.IOException;
+import javax.servlet.ServletException;
+import java.io.*;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
@@ -40,20 +40,21 @@ import java.util.List;
 @RunWith(JQF.class)
 public class HTTPRequestTest {
 
-    private Tomcat tomcat;
+    private static Tomcat tomcat;
 
     private boolean accessLogEnabled = false;
 
     private static File tempDir;
 
+    private static boolean tomcatTeardown = false;
+
     private List<File> deleteOnTearDown = new ArrayList<>();
 
-
+    public static final String FAIL_50X = "HTTP/1.1 50";
 
     public File getTemporaryDirectory() {
         return tempDir;
     }
-
 
     @BeforeClass
     public static void setUpPerTestClass() throws Exception {
@@ -74,65 +75,78 @@ public class HTTPRequestTest {
                 new File(System.getProperty("tomcat.test.basedir"),
                         "conf/logging.properties").toString());
 
+
+        if (System.getenv("TOMCAT_TEARDOWN") != null) {
+            tomcatTeardown = true;
+        }
+
     }
 
 
     @Before
     public void setUp() throws Exception {
 
-
         File appBase = new File(getTemporaryDirectory(), "webapps");
         if (!appBase.exists() && !appBase.mkdir()) {
             Assert.fail("Unable to create appBase for test");
         }
 
-        tomcat = new TomcatWithFastSessionIDs();
+        if (tomcat == null) {
+            System.out.println("TOMCAT WAS NULL!");
+            tomcat = new TomcatWithFastSessionIDs();
 
-        String protocol = getProtocol();
-        Connector connector = new Connector(protocol);
-        // Listen only on localhost
-        connector.setAttribute("address",
-                InetAddress.getByName("localhost").getHostAddress());
-        // Use random free port
-        connector.setPort(0);
-        // Mainly set to reduce timeouts during async tests
-        connector.setAttribute("connectionTimeout", "3000");
-        connector.setAttribute("maxThreads", "1");
-        tomcat.getService().addConnector(connector);
-        tomcat.setConnector(connector);
+            String protocol = getProtocol();
+            Connector connector = new Connector(protocol);
+            // Listen only on localhost
+            connector.setAttribute("address",
+                    InetAddress.getByName("localhost").getHostAddress());
+            // Use random free port
+            connector.setPort(0);
+            // Mainly set to reduce timeouts during async tests
+            connector.setAttribute("connectionTimeout", "3000");
+            connector.setAttribute("maxThreads", "1");
+            tomcat.getService().addConnector(connector);
+            tomcat.setConnector(connector);
 
-        // Add AprLifecycleListener if we are using the Apr connector
-        if (protocol.contains("Apr")) {
-            StandardServer server = (StandardServer) tomcat.getServer();
-            AprLifecycleListener listener = new AprLifecycleListener();
-            listener.setSSLRandomSeed("/dev/urandom");
-            server.addLifecycleListener(listener);
-            connector.setAttribute("pollerThreadCount", Integer.valueOf(1));
-        }
-
-        File catalinaBase = getTemporaryDirectory();
-        tomcat.setBaseDir(catalinaBase.getAbsolutePath());
-        tomcat.getHost().setAppBase(appBase.getAbsolutePath());
-
-        accessLogEnabled = Boolean.parseBoolean(
-                System.getProperty("tomcat.test.accesslog", "false"));
-        if (accessLogEnabled) {
-            String accessLogDirectory = System
-                    .getProperty("tomcat.test.reports");
-            if (accessLogDirectory == null) {
-                accessLogDirectory = new File(getBuildDirectory(), "logs")
-                        .toString();
+            // Add AprLifecycleListener if we are using the Apr connector
+            if (protocol.contains("Apr")) {
+                StandardServer server = (StandardServer) tomcat.getServer();
+                AprLifecycleListener listener = new AprLifecycleListener();
+                listener.setSSLRandomSeed("/dev/urandom");
+                server.addLifecycleListener(listener);
+                connector.setAttribute("pollerThreadCount", Integer.valueOf(1));
             }
-            AccessLogValve alv = new AccessLogValve();
-            alv.setDirectory(accessLogDirectory);
-            alv.setPattern("%h %l %u %t \"%r\" %s %b %I %D");
-            tomcat.getHost().getPipeline().addValve(alv);
+
+            File catalinaBase = getTemporaryDirectory();
+            tomcat.setBaseDir(catalinaBase.getAbsolutePath());
+            tomcat.getHost().setAppBase(appBase.getAbsolutePath());
+
+            accessLogEnabled = Boolean.parseBoolean(
+                    System.getProperty("tomcat.test.accesslog", "false"));
+            if (accessLogEnabled) {
+                String accessLogDirectory = System
+                        .getProperty("tomcat.test.reports");
+                if (accessLogDirectory == null) {
+                    accessLogDirectory = new File(getBuildDirectory(), "logs")
+                            .toString();
+                }
+                AccessLogValve alv = new AccessLogValve();
+                alv.setDirectory(accessLogDirectory);
+                alv.setPattern("%h %l %u %t \"%r\" %s %b %I %D");
+                tomcat.getHost().getPipeline().addValve(alv);
+            }
+
+            // Cannot delete the whole tempDir, because logs are there,
+            // but delete known subdirectories of it.
+            addDeleteOnTearDown(new File(catalinaBase, "webapps"));
+            addDeleteOnTearDown(new File(catalinaBase, "work"));
+
+//            String docBase = "/home/jamesk/Downloads/apache-tomcat-9.0.16-src/output/build/webapps/examples";
+//            tomcat.addWebapp("/", new File(docBase).getAbsolutePath());
+//            tomcat.start();
+            addSimpleBuggyWebappToTomcat(false, true);
         }
 
-        // Cannot delete the whole tempDir, because logs are there,
-        // but delete known subdirectories of it.
-        addDeleteOnTearDown(new File(catalinaBase, "webapps"));
-        addDeleteOnTearDown(new File(catalinaBase, "work"));
     }
 
     protected String getProtocol() {
@@ -160,9 +174,11 @@ public class HTTPRequestTest {
 
     @After
     public void tearDown() throws Exception {
-            // Some tests may call tomcat.destroy(), some tests may just call
-            // tomcat.stop(), some not call either method. Make sure that stop()
-            // & destroy() are called as necessary.
+        // Some tests may call tomcat.destroy(), some tests may just call
+        // tomcat.stop(), some not call either method. Make sure that stop()
+        // & destroy() are called as necessary.
+
+        if (HTTPRequestTest.tomcatTeardown) {
             if (tomcat.getServer() != null
                     && tomcat.getServer().getState() != LifecycleState.DESTROYED) {
                 if (tomcat.getServer().getState() != LifecycleState.STOPPED) {
@@ -170,6 +186,9 @@ public class HTTPRequestTest {
                 }
                 tomcat.destroy();
             }
+
+            tomcat = null;
+        }
     }
 
     @Fuzz
@@ -186,55 +205,17 @@ public class HTTPRequestTest {
     }
 
 
-    public Tomcat getTomcatInstanceTestWebapp(boolean addJstl, boolean start)
-            throws LifecycleException {
-        File appDir = new File("test/webapp");
-        Context ctx = tomcat.addWebapp(null, "/test", appDir.getAbsolutePath());
-
-        //System.out.println("WEBAPP PATH IS " + appDir.getAbsolutePath());
-        StandardJarScanner scanner = (StandardJarScanner) ctx.getJarScanner();
-        StandardJarScanFilter filter = (StandardJarScanFilter) scanner.getJarScanFilter();
-        filter.setTldSkip(filter.getTldSkip() + ",testclasses");
-        filter.setPluggabilitySkip(filter.getPluggabilitySkip() + ",testclasses");
-
-        if (addJstl) {
-            File lib = new File("webapps/examples/WEB-INF/lib");
-            ctx.setResources(new StandardRoot(ctx));
-            ctx.getResources().createWebResourceSet(
-                    WebResourceRoot.ResourceSetType.POST, "/WEB-INF/lib",
-                    lib.getAbsolutePath(), null, "/");
-        }
-
-        if (start) {
-            tomcat.start();
-        }
-        return tomcat;
-    }
-
-    public Tomcat getTomcatInstanceSimpleBuggyWebapp(boolean addJstl, boolean start)
-            throws LifecycleException {
+    protected void addSimpleBuggyWebappToTomcat(boolean addJstl, boolean start)
+            throws ServletException, LifecycleException {
 
         Context ctx = tomcat.addContext("", null);
-
         Tomcat.addServlet(ctx, "simplebuggy", new SimpleBuggyServlet());
-
         ctx.addServletMappingDecoded("/", "simplebuggy");
 
 
-
         if (start) {
             tomcat.start();
         }
-        return tomcat;
-    }
-
-    private Tomcat getTomcat() {
-        try {
-            tomcat.start();
-        } catch (LifecycleException e) {
-            e.printStackTrace();
-        }
-        return tomcat;
     }
 
 
@@ -250,41 +231,32 @@ public class HTTPRequestTest {
         }
     }
 
+    private Boolean isResponse50x(String resp) {
+        return resp.startsWith(FAIL_50X);
+    }
 
 
     @Fuzz
     public void processHTTPRequest(String input) {
 
         try {
-            Tomcat tomcat = getTomcatInstanceSimpleBuggyWebapp(false, true);
+            String request = input;
 
+            ProtocolHandler protocol = tomcat.getConnector().getProtocolHandler();
+            AbstractHttp11Protocol<?> http11Protocol = (AbstractHttp11Protocol<?>) protocol;
+            Http11Processor processor = new Http11Processor(http11Protocol, tomcat.getConnector().getProtocolHandler().getAdapter());
+            ByteBuffer buf = ByteBuffer.wrap(request.getBytes());
 
-            //while(true);
-//            String request = "GET / HTTP/1.1" + "\r\n" +
-//                    "Host: any" + "\r\n" + "\r\n";
+            SocketWrapper wrapper = new SocketWrapper(buf);
+            processor.service(wrapper);
 
+            BufferedReader reader = new BufferedReader(new InputStreamReader(new ByteArrayInputStream(wrapper.getOut().array())));
 
-            Client client = new Client(tomcat.getConnector().getLocalPort());
-            client.setRequest(new String[] {input});
+            String line = reader.readLine();
 
-            client.connect();
-            client.processRequest();
-
-
-           if (client.isResponse50x()) {
-               System.out.println(client.getResponseLine());
-               throw new IllegalStateException("SERVER EXCEPTION!");
-           }
-
-//            ProtocolHandler protocol = tomcat.getConnector().getProtocolHandler();
-//            AbstractHttp11Protocol<?> http11Protocol = (AbstractHttp11Protocol<?>) protocol;
-//            Http11Processor processor = new Http11Processor(http11Protocol, tomcat.getConnector().getProtocolHandler().getAdapter());
-//            ByteBuffer buf = ByteBuffer.wrap(request.getBytes());
-//            processor.service(new SocketWrapper(buf));
-        }  catch (InterruptedException e) {
-            e.printStackTrace();
-        } catch (LifecycleException e) {
-            e.printStackTrace();
+            if (line.startsWith("\0")) {
+                throw new IllegalStateException("SERVER EXCEPTION!");
+            }
         } catch (UnknownHostException e) {
             Assume.assumeNoException(e);
         } catch (IOException e) {
@@ -294,45 +266,41 @@ public class HTTPRequestTest {
     }
 
     @Fuzz
-    public void parseHTTPRequestHeadersWithGenerator(@From(HTTPRequestGenerator.class)  @Dictionary("dictionaries/tomcat-http-request.dict")HttpUriRequest req) {
-            String request = req.toString() + "\r\n";
+    public void parseHTTPRequestHeadersWithGenerator(@From(HTTPRequestGenerator.class) @Dictionary("dictionaries/tomcat-http-request.dict") HttpUriRequest req) {
+        String request = req.toString() + "\r\n";
 
-            Header[] headerFields = req.getAllHeaders();
-            for(int i = 0; i < headerFields.length; i++){
-                request += (headerFields[i].getName() + ": " + headerFields[i].getValue() +  "\r\n");
-            }
-            request += "\r\n";
+        Header[] headerFields = req.getAllHeaders();
+        for (int i = 0; i < headerFields.length; i++) {
+            request += (headerFields[i].getName() + ": " + headerFields[i].getValue() + "\r\n");
+        }
+        request += "\r\n";
 
 
         try {
-            Tomcat tomcat = getTomcatInstanceSimpleBuggyWebapp(false, true);
 
 
-            Client client = new Client(tomcat.getConnector().getLocalPort());
-            client.setRequest(new String[] {request});
+            ProtocolHandler protocol = tomcat.getConnector().getProtocolHandler();
+            AbstractHttp11Protocol<?> http11Protocol = (AbstractHttp11Protocol<?>) protocol;
+            Http11Processor processor = new Http11Processor(http11Protocol, tomcat.getConnector().getProtocolHandler().getAdapter());
 
-            client.connect();
-            client.processRequest();
+           // System.out.println(request);
+            ByteBuffer buf = ByteBuffer.wrap(request.getBytes());
 
+            SocketWrapper wrapper = new SocketWrapper(buf);
+            processor.service(wrapper);
 
-            if (client.isResponse50x()) {
-               // System.out.println(client.getResponseLine());
+            BufferedReader reader = new BufferedReader(new InputStreamReader(new ByteArrayInputStream(wrapper.getOut().array())));
+
+            String line = reader.readLine();
+            //System.out.println(line);
+
+            // For whatever reason, calling the HTTP11Processor yields an empty response in the case of an Exception
+            // on the server end.
+            if (line.startsWith("\0")) {
                 throw new IllegalStateException("SERVER EXCEPTION!");
             }
 
 
-            // TODO: TRY THIS OUT
-//            ProtocolHandler protocol = tomcat.getConnector().getProtocolHandler();
-//            AbstractHttp11Protocol<?> http11Protocol = (AbstractHttp11Protocol<?>) protocol;
-//            Http11Processor processor = new Http11Processor(http11Protocol, tomcat.getConnector().getProtocolHandler().getAdapter());
-//            ByteBuffer buf = ByteBuffer.wrap(request.getBytes());
-//            processor.service(new SocketWrapper(buf));
-
-
-        }  catch (InterruptedException e) {
-            e.printStackTrace();
-        } catch (LifecycleException e) {
-            e.printStackTrace();
         } catch (UnknownHostException e) {
             Assume.assumeNoException(e);
         } catch (IOException e) {
@@ -341,8 +309,6 @@ public class HTTPRequestTest {
 
 
     }
-
-
 
 
     private static class TomcatWithFastSessionIDs extends Tomcat {
@@ -371,114 +337,130 @@ public class HTTPRequestTest {
         }
     }
 
-        private static class SocketWrapper extends SocketWrapperBase<Void> {
+    private static class SocketWrapper extends SocketWrapperBase<Void> {
 
-            final ByteBuffer in;
+        final ByteBuffer in;
+        ByteBuffer out;
 
-            SocketWrapper(ByteBuffer in) {
-                super(null, null);
-                this.in = in;
-                this.socketBufferHandler = new SocketBufferHandler(4096, 4096, true);
-            }
-
-            @Override
-            protected void populateRemoteHost() {
-
-            }
-
-            @Override
-            protected void populateRemoteAddr() {
-
-            }
-
-            @Override
-            protected void populateRemotePort() {
-
-            }
-
-            @Override
-            protected void populateLocalName() {
-
-            }
-
-            @Override
-            protected void populateLocalAddr() {
-
-            }
-
-            @Override
-            protected void populateLocalPort() {
-
-            }
-
-            @Override
-            public int read(boolean block, byte[] b, int off, int len) throws IOException {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public int read(boolean block, ByteBuffer to) throws IOException {
-                int start = in.position();
-                to.put(in);
-                int end = in.position();
-                return end - start;
-            }
-
-            @Override
-            public boolean isReadyForRead() throws IOException {
-                return in.position() < in.limit();
-            }
-
-            @Override
-            public void setAppReadBufHandler(ApplicationBufferHandler handler) {
-
-            }
-
-            @Override
-            public void close() throws IOException {
-
-            }
-
-            @Override
-            public boolean isClosed() {
-                return false;
-            }
-
-            @Override
-            protected void doWrite(boolean block, ByteBuffer from) throws IOException {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public void registerReadInterest() {
-
-            }
-
-            @Override
-            public void registerWriteInterest() {
-
-            }
-
-            @Override
-            public SendfileDataBase createSendfileData(String filename, long pos, long length) {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public SendfileState processSendfile(SendfileDataBase sendfileData) {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public void doClientAuth(SSLSupport sslSupport) throws IOException {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public SSLSupport getSslSupport(String clientCertProvider) {
-                throw new UnsupportedOperationException();
-            }
+        SocketWrapper(ByteBuffer in) {
+            super(null, null);
+            this.in = in;
+            this.out = ByteBuffer.wrap(new byte[1024]);
+            this.socketBufferHandler = new SocketBufferHandler(4096, 4096, true);
         }
+
+        public ByteBuffer getOut() {
+            return this.out;
+        }
+
+        @Override
+        protected void populateRemoteHost() {
+
+        }
+
+        @Override
+        protected void populateRemoteAddr() {
+
+        }
+
+        @Override
+        protected void populateRemotePort() {
+
+        }
+
+        @Override
+        protected void populateLocalName() {
+
+        }
+
+        @Override
+        protected void populateLocalAddr() {
+
+        }
+
+        @Override
+        protected void populateLocalPort() {
+
+        }
+
+        @Override
+        public int read(boolean block, byte[] b, int off, int len) throws IOException {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public int read(boolean block, ByteBuffer to) throws IOException {
+            int start = in.position();
+            to.put(in);
+            int end = in.position();
+            return end - start;
+        }
+
+        @Override
+        public boolean isReadyForRead() throws IOException {
+            return in.position() < in.limit();
+        }
+
+        @Override
+        public void setAppReadBufHandler(ApplicationBufferHandler handler) {
+
+        }
+
+        @Override
+        public void close() throws IOException {
+
+        }
+
+        @Override
+        public boolean isClosed() {
+            return false;
+        }
+
+        @Override
+        protected void doWrite(boolean block, ByteBuffer from) throws IOException {
+            this.out.put(from);
+            return;
+        }
+
+        @Override
+        public void registerReadInterest() {
+
+        }
+
+        @Override
+        public void registerWriteInterest() {
+
+        }
+
+        @Override
+        public SendfileDataBase createSendfileData(String filename, long pos, long length) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public SendfileState processSendfile(SendfileDataBase sendfileData) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void doClientAuth(SSLSupport sslSupport) throws IOException {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public SSLSupport getSslSupport(String clientCertProvider) {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+
+    public static void main(String[] args) throws Throwable {
+        HTTPRequestTest test = new HTTPRequestTest();
+        HTTPRequestTest.setUpPerTestClass();
+        test.setUp();
+
+        HTTPRequestTest.tomcat.getServer().await();
 
 
     }
+}

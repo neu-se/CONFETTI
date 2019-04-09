@@ -68,10 +68,11 @@ public class HeaderParser {
     private static class SocketWrapper extends SocketWrapperBase<Void> {
 
         final ByteBuffer in;
-
+        ByteBuffer out;
         SocketWrapper(ByteBuffer in) {
             super(null, null);
             this.in = in;
+            this.out = ByteBuffer.wrap(new byte[1024]);
             this.socketBufferHandler = new SocketBufferHandler(MAX_BUFFER_SIZE, MAX_BUFFER_SIZE, true);
         }
 
@@ -140,7 +141,7 @@ public class HeaderParser {
 
         @Override
         protected void doWrite(boolean block, ByteBuffer from) throws IOException {
-            throw new UnsupportedOperationException();
+         throw new UnsupportedOperationException();
         }
 
         @Override

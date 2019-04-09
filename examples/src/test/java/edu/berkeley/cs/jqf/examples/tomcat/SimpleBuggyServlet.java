@@ -10,12 +10,13 @@ import javax.servlet.http.*;
 public class SimpleBuggyServlet extends HttpServlet {
 
     public void doGet(HttpServletRequest request, HttpServletResponse response)
-            throws ServletException, IOException {
+            throws IOException {
 
-        System.out.println("IN DO GET!!");
+        // System.out.println("IN SERVLET!");
+
         for (Enumeration<String> headerNames = request.getHeaderNames(); headerNames.hasMoreElements(); ) {
             String name = headerNames.nextElement();
-            System.out.println(name);
+        //    System.out.println(name);
             for(int i = 0; i < name.length(); i++) {
 
                 char x = name.charAt(i);
@@ -24,7 +25,6 @@ public class SimpleBuggyServlet extends HttpServlet {
                 doLookupSwitch((x-'0') % 10);
                 doTableSwitch((x-'0') % 10);
             }
-            
         }
 
         String message = "TESTING!!";
@@ -45,8 +45,10 @@ public class SimpleBuggyServlet extends HttpServlet {
 
     // 2 paths
     public void doIf(int n) {
+      //  System.out.println("IN DO IF");
         if (n == 2) {
-            throw new RuntimeException("Crash!");
+       //     System.out.println("CRASHING!");
+            throw new IllegalStateException("Crash!");
         }
     }
 
@@ -85,43 +87,5 @@ public class SimpleBuggyServlet extends HttpServlet {
 
         return z;
     }
-
-//    /**
-//     * Parses 4 characters from a file as integers and calls the above methods.
-//     **/
-//    public static void main(String args[]) {
-//        byte[] password = new byte[8];
-//        int bytes_read = 0;
-//
-//        // if(!SimpleBuggy.gatekeeper){
-//
-//        SimpleBuggy x = new SimpleBuggy();
-//        try (FileInputStream stream = new FileInputStream(args[0])) {
-//
-//            bytes_read = stream.read(password);
-//            String p_string = new String(password);
-//            // if(!p_string.equals("password")) {
-//            // 	SimpleBuggy.gatekeeper = true;
-//            // 	throw new RuntimeException("INCORRECT MAGIC!");
-//            // }
-//
-//            x.doIf((stream.read()-'0') % 10);
-//            x.doFor((stream.read()-'0') % 10);
-//            x.doLookupSwitch((stream.read()-'0') % 10);
-//            x.doTableSwitch((stream.read()-'0') % 10);
-//
-//        } catch (FileNotFoundException e) {
-//            // TODO Auto-generated catch block
-//            e.printStackTrace();
-//        } catch (IOException e) {
-//            // TODO Auto-generated catch block
-//            e.printStackTrace();
-//        }
-//        // }
-//        // else {
-//        // // 	throw new RuntimeException("You cannot proceed without the right magic!!");
-//        // }
-//        System.out.println("Main done.");
-//    }
 }
 

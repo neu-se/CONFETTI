@@ -175,6 +175,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     /** Whether to print log statements to stderr (debug option; manually edit). */
     private final boolean verbose = true;
 
+
     /** A system console, which is non-null only if STDOUT is a console. */
     private final Console console = System.console();
 
@@ -622,6 +623,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         // Stop timeout handling
         this.runStart = null;
 
+
+        // stop collecting coverage for the run
+        runCoverage.lock();
+
         // Increment run count
         this.numTrials++;
 
@@ -740,6 +745,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         if (console != null) {
             displayStats();
         }
+
+        runCoverage.unlock();
 
     }
 
@@ -878,17 +885,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     @Override
     public Consumer<TraceEvent> generateCallBack(Thread thread) {
-//        if (appThread != null) {
-          //  System.out.println("Switching thread! New thread is " + thread.getName());
-           //while(true);
-//            throw new IllegalStateException(ZestGuidance.class +
-//                " only supports single-threaded apps at the moment");
-//            return this.emptyEvent;
-//        }
 
-
-
-        if( thread.getName().endsWith("exec-1")) {
+        if( thread.getName().endsWith("main")) {
             appThread = thread;
             return this::handleEvent;
         }
