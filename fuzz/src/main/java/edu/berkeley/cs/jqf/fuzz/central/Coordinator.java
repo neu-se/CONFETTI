@@ -1,14 +1,15 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
-import java.util.Collections;
+import java.io.IOException;
+import java.io.Serializable;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
-import java.util.List;
+import java.util.Objects;
 
-class Coordinator implements Runnable {
+public class Coordinator implements Runnable {
     private LinkedList<Input> inputs = new LinkedList<>();
-    private HashMap<Long, Branch> branches = new HashMap<>();
+    private HashMap<Branch, Branch> branches = new HashMap<>();
     private KnarrWorker knarr;
 
     protected final synchronized void foundInput(int id, byte[] bytes) {
@@ -26,43 +27,60 @@ class Coordinator implements Runnable {
     public void run() {
 
         while (true) {
-            List<Input> m;
+            LinkedList<Input> m;
 
             synchronized (this) {
-                try {
-                    this.wait();
-                } catch (InterruptedException e) {
-                    // Nothing
+                boolean newInputs = false;
+
+                if (this.knarr != null)
+                    for (Input i : inputs) {
+                        if (i.isNew) {
+                            newInputs = true;
+                            break;
+                        }
+                    }
+
+                if (!newInputs) {
+                    try {
+                        this.wait();
+                        continue;
+                    } catch (InterruptedException e) {
+                        continue;
+                    }
                 }
 
-                if (this.knarr == null)
-                    continue;
-
-                m = Collections.unmodifiableList(inputs);
+                m = new LinkedList<>(inputs);
             }
 
             for (Input input : m) {
                 if (input.isNew) {
                     // Compute coverage and branches with Knarr
-                    input.branches = knarr.getBranchCoverage(input.bytes);
+                    LinkedList<Branch> bs;
+                    try {
+                        bs = knarr.getBranchCoverage(input.bytes);
+                    } catch (IOException e) {
+                        throw new Error(e);
+                    }
 
                     // Check if any previous branches were explored
-                    for (Branch b : input.branches) {
+                    for (Branch b : bs) {
                         Branch existing;
-                        if (!branches.containsKey(b.id)) {
-                            branches.put(b.id, b);
+                        if (!branches.containsKey(b)) {
+                            branches.put(b, b);
                             existing = b;
+                            b.trueExplored = new HashSet<>();
+                            b.falseExplored = new HashSet<>();
                         } else {
-                            existing = branches.get(b.id);
+                            existing = branches.get(b);
                         }
 
                         if (b.result) {
                             if (existing.trueExplored.isEmpty())
-                                System.out.println("\tInput " + input.id + " explores T on " + existing.id);
+                                System.out.println("\tInput " + input.id + " explores T on " + existing.takenID);
                             existing.trueExplored.add(input);
                         } else {
                             if (existing.falseExplored.isEmpty())
-                                System.out.println("\tInput " + input.id + " explores F on " + existing.id);
+                                System.out.println("\tInput " + input.id + " explores F on " + existing.takenID);
                             existing.falseExplored.add(input);
                         }
                     }
@@ -81,16 +99,28 @@ class Coordinator implements Runnable {
     private static class Input {
         int id;
         byte[] bytes;
-        HashSet<Branch> branches;
         boolean isNew;
     }
 
-    public static class Branch {
-        long id;
-        LinkedList<Integer> bytesControlling;
-        boolean result;
+    public static class Branch implements Serializable {
+        public int takenID, notTakenID;
+        public boolean result;
 
-        HashSet<Input> trueExplored = new HashSet<>();
-        HashSet<Input> falseExplored = new HashSet<>();
+        transient HashSet<Input> trueExplored;
+        transient HashSet<Input> falseExplored;
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            Branch branch = (Branch) o;
+            return takenID == branch.takenID &&
+                    notTakenID == branch.notTakenID;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(takenID, notTakenID);
+        }
     }
 }

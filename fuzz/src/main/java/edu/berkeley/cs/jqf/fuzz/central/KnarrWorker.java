@@ -17,15 +17,22 @@ class KnarrWorker extends Worker {
         this.c = c;
     }
 
-    public HashSet<Coordinator.Branch> getBranchCoverage(byte[] bytes) throws IOException {
+    public LinkedList<Coordinator.Branch> getBranchCoverage(byte[] bytes) throws IOException {
 
         // Send input to Knarr process
         oos.writeObject(bytes);
         oos.flush();
 
         // Get results from Knarr process
+        LinkedList<Coordinator.Branch> lst;
 
-        throw new Error("Not implemented");
+        try {
+            lst = ((LinkedList<Coordinator.Branch>)ois.readObject());
+        } catch (ClassNotFoundException e) {
+            throw new Error(e);
+        }
+
+        return lst;
     }
 
     @Override
