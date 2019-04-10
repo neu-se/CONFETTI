@@ -17,9 +17,11 @@ class KnarrWorker extends Worker {
         this.c = c;
     }
 
-    public HashSet<Coordinator.Branch> getBranchCoverage(byte[] bytes) {
+    public HashSet<Coordinator.Branch> getBranchCoverage(byte[] bytes) throws IOException {
 
         // Send input to Knarr process
+        oos.writeObject(bytes);
+        oos.flush();
 
         // Get results from Knarr process
 
