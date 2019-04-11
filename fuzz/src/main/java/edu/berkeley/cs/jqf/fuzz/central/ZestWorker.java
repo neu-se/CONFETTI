@@ -7,10 +7,12 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.TreeSet;
 
 class ZestWorker extends Worker {
     private ArrayList<LinkedList<byte[]>> inputs = new ArrayList<>();
     private ArrayList<Integer> fuzzing = new ArrayList<>();
+    private ArrayList<TreeSet<Integer>> recommendations = new ArrayList<>();
     private Coordinator c;
 
     public ZestWorker(ObjectInputStream ois, ObjectOutputStream oos, Coordinator c) {
@@ -50,6 +52,11 @@ class ZestWorker extends Worker {
                 }
 
                 c.foundInput(id, bs);
+
+                synchronized (recommendations) {
+                    recommendations.add(new TreeSet<>());
+                }
+
             } else if (o instanceof Integer) {
                 // Select input
                 int selected = (Integer)o;
@@ -60,7 +67,26 @@ class ZestWorker extends Worker {
                 int size = 0;
                 int toFuzz = fuzzing.get(selected);
                 LinkedList<int[]> instructionsToSend = new LinkedList<>();
+                TreeSet<Integer> recs;
+                synchronized (recommendations) {
+                    recs = recommendations.get(selected);
+                }
+
                 for (byte[] b : inputs.get(selected)) {
+                    if (!recs.isEmpty()) {
+                        boolean addThis = false;
+
+                        for (int j = offset ; j < offset+b.length ; j++) {
+                            if (recs.contains(j)) {
+                                addThis = true;
+                                break;
+                            }
+                        }
+
+                        if (!addThis)
+                            continue;
+                    }
+
                     instructionsToSend.addLast(new int[]{offset, b.length});
                     offset += b.length;
                 }
@@ -71,6 +97,12 @@ class ZestWorker extends Worker {
                 // Update state
                 fuzzing.set(selected, (toFuzz + 1) % inputs.get(selected).size());
             }
+        }
+    }
+
+    public void recommend(int inputID, TreeSet<Integer> recommendation) {
+        synchronized (recommendations) {
+            recommendations.set(inputID, recommendation);
         }
     }
 }

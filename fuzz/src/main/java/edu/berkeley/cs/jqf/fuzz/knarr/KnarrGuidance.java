@@ -11,10 +11,12 @@ import edu.gmu.swe.knarr.runtime.PathUtils;
 import edu.gmu.swe.knarr.runtime.Symbolicator;
 import za.ac.sun.cs.green.expr.Expression;
 import za.ac.sun.cs.green.expr.Operation;
+import za.ac.sun.cs.green.expr.Variable;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.function.Consumer;
 
@@ -59,10 +61,10 @@ public class KnarrGuidance implements Guidance {
                 e = op.getOperand(0);
                 Expression ee = op.getOperand(1);
 
-                process(branches, (Coverage.BranchData) ee.metadata);
+                process(branches, ee);
             }
 
-            process(branches, (Coverage.BranchData) e.metadata);
+            process(branches, e);
         }
 
         // Send branches
@@ -76,7 +78,9 @@ public class KnarrGuidance implements Guidance {
         this.input = null;
     }
 
-    private void process(LinkedList<Coordinator.Branch> bs, Coverage.BranchData b) {
+    private void process(LinkedList<Coordinator.Branch> bs, Expression e) {
+        Coverage.BranchData b = (Coverage.BranchData) e.metadata;
+
         if (b == null)
             return;
 
@@ -85,12 +89,24 @@ public class KnarrGuidance implements Guidance {
         bb.takenID = b.takenCode;
         bb.notTakenID = b.notTakenCode;
         bb.result = b.taken;
+        bb.controllingBytes = new HashSet<>();
+
+        findControllingBytes(e, bb.controllingBytes);
 
         bs.add(bb);
     }
 
-    private void info(Object ... o) {
-        return;
+    private void findControllingBytes(Expression e, HashSet<Integer> bytes) {
+        if (e instanceof Variable) {
+            Variable v = (Variable) e;
+            if (v.getName().startsWith("autoVar_")) {
+                bytes.add(Integer.parseInt(v.getName().substring("autoVar_".length())));
+            }
+        } else if (e instanceof Operation) {
+            Operation op = (Operation) e;
+            for (int i = 0 ; i < op.getArity() ; i++)
+                findControllingBytes(op.getOperand(i), bytes);
+        }
     }
 
     @Override

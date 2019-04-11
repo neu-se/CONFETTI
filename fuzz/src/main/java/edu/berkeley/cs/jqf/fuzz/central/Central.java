@@ -60,7 +60,7 @@ public class Central {
                         s.close();
                     } else {
                         knarr = new KnarrWorker(ois, oos, c);
-                        c.setKnarrWorker(knarr);
+                        c.setKnarrWorker(knarr, zest);
                     }
                     break;
                 default:

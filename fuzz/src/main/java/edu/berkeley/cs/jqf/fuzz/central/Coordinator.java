@@ -2,15 +2,18 @@ package edu.berkeley.cs.jqf.fuzz.central;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Objects;
+import java.util.TreeSet;
 
 public class Coordinator implements Runnable {
     private LinkedList<Input> inputs = new LinkedList<>();
     private HashMap<Branch, Branch> branches = new HashMap<>();
     private KnarrWorker knarr;
+    private ZestWorker zest;
 
     protected final synchronized void foundInput(int id, byte[] bytes) {
         Input in = new Input();
@@ -66,10 +69,11 @@ public class Coordinator implements Runnable {
                     for (Branch b : bs) {
                         Branch existing;
                         if (!branches.containsKey(b)) {
-                            branches.put(b, b);
                             existing = b;
-                            b.trueExplored = new HashSet<>();
-                            b.falseExplored = new HashSet<>();
+                            existing.trueExplored = new HashSet<>();
+                            existing.falseExplored = new HashSet<>();
+                            existing.control = new HashMap<>();
+                            branches.put(b, b);
                         } else {
                             existing = branches.get(b);
                         }
@@ -83,16 +87,37 @@ public class Coordinator implements Runnable {
                                 System.out.println("\tInput " + input.id + " explores F on " + existing.takenID);
                             existing.falseExplored.add(input);
                         }
+
+                        LinkedList<Integer> bytes = new LinkedList<>(b.controllingBytes);
+                        Collections.sort(bytes);
+
+                        existing.control.put(input, bytes.toArray(new Integer[0]));
                     }
 
                     input.isNew = false;
                 }
             }
+
+            // Make recommendations
+            for (Input input : inputs) {
+                TreeSet<Integer> recommendation = new TreeSet<>();
+                for (Branch branch : branches.values()) {
+                    if (branch.falseExplored.isEmpty() || branch.trueExplored.isEmpty()) {
+                        if (branch.control.containsKey(input)) {
+                            for (int i : branch.control.get(input))
+                                recommendation.add(i);
+                        }
+                    }
+                }
+
+                zest.recommend(input.id, recommendation);
+            }
         }
     }
 
-    public final synchronized  void setKnarrWorker(KnarrWorker knarr) {
+    public final synchronized  void setKnarrWorker(KnarrWorker knarr, ZestWorker zest) {
         this.knarr = knarr;
+        this.zest = zest;
         this.notifyAll();
     }
 
@@ -100,12 +125,27 @@ public class Coordinator implements Runnable {
         int id;
         byte[] bytes;
         boolean isNew;
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            Input input = (Input) o;
+            return id == input.id;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(id);
+        }
     }
 
     public static class Branch implements Serializable {
         public int takenID, notTakenID;
         public boolean result;
+        public HashSet<Integer> controllingBytes;
 
+        transient HashMap<Input, Integer[]> control;
         transient HashSet<Input> trueExplored;
         transient HashSet<Input> falseExplored;
 
