@@ -101,6 +101,8 @@ class ZestWorker extends Worker {
     }
 
     public void recommend(int inputID, TreeSet<Integer> recommendation) {
+        System.out.println(recommendation);
+
         synchronized (recommendations) {
             recommendations.set(inputID, recommendation);
         }
