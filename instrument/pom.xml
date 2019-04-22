@@ -63,6 +63,37 @@
                         </execution> 
                 </executions> 
             </plugin> 
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.1.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <relocations>
+                                <relocation>
+                                    <pattern>org.objectweb.asm</pattern>
+                                    <shadedPattern>edu.berkeley.cs.jqf.org.objectweb.asm</shadedPattern>
+                                </relocation>
+                            </relocations>
+                            <filters>
+                                <filter>
+                                    <artifact>org.ow2.asm:asm</artifact>
+                                    <artifact>org.ow2.asm:asm-commons</artifact>
+                                    <artifact>org.ow2.asm:asm-util</artifact>
+                                    <artifact>org.ow2.asm:asm-tree</artifact>
+                                    <artifact>org.ow2.asm:asm-analysis</artifact>
+                                </filter>
+                            </filters>
+                            <minimizeJar>true</minimizeJar>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 
