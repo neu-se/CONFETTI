@@ -28,17 +28,12 @@
  */
 package org.apache.coyote.http11;
 
-import java.io.IOException;
-import java.nio.ByteBuffer;
-
 import com.pholser.junit.quickcheck.generator.Size;
 import org.apache.coyote.Request;
-import org.apache.tomcat.util.net.ApplicationBufferHandler;
-import org.apache.tomcat.util.net.SSLSupport;
-import org.apache.tomcat.util.net.SendfileDataBase;
-import org.apache.tomcat.util.net.SendfileState;
-import org.apache.tomcat.util.net.SocketBufferHandler;
-import org.apache.tomcat.util.net.SocketWrapperBase;
+import org.apache.tomcat.util.net.*;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
 
 /**
  * Static class for parsing HTTP headers using Coyote.
@@ -46,132 +41,132 @@ import org.apache.tomcat.util.net.SocketWrapperBase;
  * The sole purpose of this class is to be able to access
  * a package-private method Http11InputBuffer#parseHeaders()
  */
-public class HeaderParser {
+public class HeaderParser {}
 
-    private final Http11InputBuffer parser;
-
-    public static final int MAX_HEADER_SIZE = 4096;
-    public static final int MAX_BUFFER_SIZE = MAX_HEADER_SIZE + 256;
-
-    public HeaderParser(@Size(max=MAX_HEADER_SIZE) byte[] input) {
-        ByteBuffer buf = ByteBuffer.wrap(input);
-        Request request = new Request();
-        this.parser = new Http11InputBuffer(request, MAX_BUFFER_SIZE,true);
-        this.parser.init(new SocketWrapper(buf));
-    }
-
-    public void parseHeaders() throws IOException {
-        this.parser.parseHeaders();
-    }
-
-
-    private static class SocketWrapper extends SocketWrapperBase<Void> {
-
-        final ByteBuffer in;
-        ByteBuffer out;
-        SocketWrapper(ByteBuffer in) {
-            super(null, null);
-            this.in = in;
-            this.out = ByteBuffer.wrap(new byte[1024]);
-            this.socketBufferHandler = new SocketBufferHandler(MAX_BUFFER_SIZE, MAX_BUFFER_SIZE, true);
-        }
-
-        @Override
-        protected void populateRemoteHost() {
-
-        }
-
-        @Override
-        protected void populateRemoteAddr() {
-
-        }
-
-        @Override
-        protected void populateRemotePort() {
-
-        }
-
-        @Override
-        protected void populateLocalName() {
-
-        }
-
-        @Override
-        protected void populateLocalAddr() {
-
-        }
-
-        @Override
-        protected void populateLocalPort() {
-
-        }
-
-        @Override
-        public int read(boolean block, byte[] b, int off, int len) throws IOException {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public int read(boolean block, ByteBuffer to) throws IOException {
-            int start = in.position();
-            to.put(in);
-            int end = in.position();
-            return end - start;
-        }
-
-        @Override
-        public boolean isReadyForRead() throws IOException {
-            return in.position() < in.limit();
-        }
-
-        @Override
-        public void setAppReadBufHandler(ApplicationBufferHandler handler) {
-
-        }
-
-        @Override
-        public void close() throws IOException {
-
-        }
-
-        @Override
-        public boolean isClosed() {
-            return false;
-        }
-
-        @Override
-        protected void doWrite(boolean block, ByteBuffer from) throws IOException {
-         throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public void registerReadInterest() {
-
-        }
-
-        @Override
-        public void registerWriteInterest() {
-
-        }
-
-        @Override
-        public SendfileDataBase createSendfileData(String filename, long pos, long length) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public SendfileState processSendfile(SendfileDataBase sendfileData) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public void doClientAuth(SSLSupport sslSupport) throws IOException {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public SSLSupport getSslSupport(String clientCertProvider) {
-            throw new UnsupportedOperationException();
-        }
-    }
-}
+//    private final Http11InputBuffer parser;
+//
+//    public static final int MAX_HEADER_SIZE = 4096;
+//    public static final int MAX_BUFFER_SIZE = MAX_HEADER_SIZE + 256;
+//
+//    public HeaderParser(@Size(max=MAX_HEADER_SIZE) byte[] input) {
+//        ByteBuffer buf = ByteBuffer.wrap(input);
+//        Request request = new Request();
+//        this.parser = new Http11InputBuffer(request, MAX_BUFFER_SIZE,true);
+//        this.parser.init(new SocketWrapper(buf));
+//    }
+//
+//    public void parseHeaders() throws IOException {
+//        this.parser.parseHeaders();
+//    }
+//
+//
+//    private static class SocketWrapper extends SocketWrapperBase<Void> {
+//
+//        final ByteBuffer in;
+//        ByteBuffer out;
+//        SocketWrapper(ByteBuffer in) {
+//            super(null, null);
+//            this.in = in;
+//            this.out = ByteBuffer.wrap(new byte[1024]);
+//            this.socketBufferHandler = new SocketBufferHandler(MAX_BUFFER_SIZE, MAX_BUFFER_SIZE, true);
+//        }
+//
+//        @Override
+//        protected void populateRemoteHost() {
+//
+//        }
+//
+//        @Override
+//        protected void populateRemoteAddr() {
+//
+//        }
+//
+//        @Override
+//        protected void populateRemotePort() {
+//
+//        }
+//
+//        @Override
+//        protected void populateLocalName() {
+//
+//        }
+//
+//        @Override
+//        protected void populateLocalAddr() {
+//
+//        }
+//
+//        @Override
+//        protected void populateLocalPort() {
+//
+//        }
+//
+//        @Override
+//        public int read(boolean block, byte[] b, int off, int len) throws IOException {
+//            throw new UnsupportedOperationException();
+//        }
+//
+//        @Override
+//        public int read(boolean block, ByteBuffer to) throws IOException {
+//            int start = in.position();
+//            to.put(in);
+//            int end = in.position();
+//            return end - start;
+//        }
+//
+//        @Override
+//        public boolean isReadyForRead() throws IOException {
+//            return in.position() < in.limit();
+//        }
+//
+//        @Override
+//        public void setAppReadBufHandler(ApplicationBufferHandler handler) {
+//
+//        }
+//
+//        @Override
+//        public void close() throws IOException {
+//
+//        }
+//
+//        @Override
+//        public boolean isClosed() {
+//            return false;
+//        }
+//
+//        @Override
+//        protected void doWrite(boolean block, ByteBuffer from) throws IOException {
+//         throw new UnsupportedOperationException();
+//        }
+//
+//        @Override
+//        public void registerReadInterest() {
+//
+//        }
+//
+//        @Override
+//        public void registerWriteInterest() {
+//
+//        }
+//
+//        @Override
+//        public SendfileDataBase createSendfileData(String filename, long pos, long length) {
+//            throw new UnsupportedOperationException();
+//        }
+//
+//        @Override
+//        public SendfileState processSendfile(SendfileDataBase sendfileData) {
+//            throw new UnsupportedOperationException();
+//        }
+//
+//        @Override
+//        public void doClientAuth(SSLSupport sslSupport) throws IOException {
+//            throw new UnsupportedOperationException();
+//        }
+//
+//        @Override
+//        public SSLSupport getSslSupport(String clientCertProvider) {
+//            throw new UnsupportedOperationException();
+//        }
+//    }
+//}
