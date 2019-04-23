@@ -1169,9 +1169,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 int offset;
                 int mutationSize;
 
-                if (central != null && instructions != null) {
+                if (central != null && instructions != null && instructions.size() > 0) {
                     // Follow the central's instructions
-                    int[] inst = instructions.get(random.nextInt(instructions.size()));
+                    int[] inst  = instructions.get(random.nextInt(instructions.size()));
                     offset = inst[0];
                     mutationSize = inst[1];
                 } else {

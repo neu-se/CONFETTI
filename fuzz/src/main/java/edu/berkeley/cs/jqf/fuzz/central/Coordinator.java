@@ -29,6 +29,8 @@ public class Coordinator implements Runnable {
     @Override
     public void run() {
 
+        HashMap<Integer, TreeSet<Integer>> lastRecommendation = new HashMap<>();
+
         while (true) {
             LinkedList<Input> m;
 
@@ -99,18 +101,25 @@ public class Coordinator implements Runnable {
             }
 
             // Make recommendations
-            for (Input input : inputs) {
-                TreeSet<Integer> recommendation = new TreeSet<>();
-                for (Branch branch : branches.values()) {
-                    if (branch.falseExplored.isEmpty() || branch.trueExplored.isEmpty()) {
-                        if (branch.control.containsKey(input)) {
-                            for (int i : branch.control.get(input))
-                                recommendation.add(i);
+            synchronized (this) {
+                for (Input input : inputs) {
+                    TreeSet<Integer> recommendation = new TreeSet<>();
+                    for (Branch branch : branches.values()) {
+                        if (branch.falseExplored.isEmpty() || branch.trueExplored.isEmpty()) {
+                            if (branch.control.containsKey(input)) {
+                                for (int i : branch.control.get(input))
+                                    recommendation.add(i);
+                            }
                         }
                     }
-                }
 
-                zest.recommend(input.id, recommendation);
+                    if (!lastRecommendation.containsKey(input.id) || !recommendation.equals(lastRecommendation.get(input.id))) {
+                        System.out.println(input.id + " -> " + recommendation);
+                        lastRecommendation.put(input.id, recommendation);
+                    }
+
+                    zest.recommend(input.id, recommendation);
+                }
             }
         }
     }
