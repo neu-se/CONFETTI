@@ -49,6 +49,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -56,12 +57,10 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
+import edu.berkeley.cs.jqf.fuzz.central.ZestClient;
 import edu.berkeley.cs.jqf.fuzz.ei.ExecutionIndex.Prefix;
 import edu.berkeley.cs.jqf.fuzz.ei.ExecutionIndex.Suffix;
-import edu.berkeley.cs.jqf.fuzz.guidance.Guidance;
-import edu.berkeley.cs.jqf.fuzz.guidance.GuidanceException;
-import edu.berkeley.cs.jqf.fuzz.guidance.Result;
-import edu.berkeley.cs.jqf.fuzz.guidance.TimeoutException;
+import edu.berkeley.cs.jqf.fuzz.guidance.*;
 import edu.berkeley.cs.jqf.fuzz.util.Coverage;
 import edu.berkeley.cs.jqf.fuzz.util.ProducerHashMap;
 import edu.berkeley.cs.jqf.instrument.tracing.events.CallEvent;
@@ -225,7 +224,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     static final boolean SAVE_ONLY_VALID = Boolean.getBoolean("jqf.ei.SAVE_ONLY_VALID");
 
     /** Max input size to generate. */
-    static final int MAX_INPUT_SIZE = Integer.getInteger("jqf.ei.MAX_INPUT_SIZE", 10240);
+    public static int MAX_INPUT_SIZE = Integer.getInteger("jqf.ei.MAX_INPUT_SIZE", 10240);
 
     /** Whether to generate EOFs when we run out of bytes in the input, instead of randomly generating new bytes. **/
     static final boolean GENERATE_EOF_WHEN_OUT = Boolean.getBoolean("jqf.ei.GENERATE_EOF_WHEN_OUT");
@@ -257,6 +256,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     /** Probability of splicing in getOrGenerateFresh() */
     static final double DEMAND_DRIVEN_SPLICING_PROBABILITY = 0;
 
+    private ZestClient central;
+    private RecordingInputStream ris;
+    private LinkedList<int[]> instructions;
+
     /**
      * @param testName the name of test to display on the status screen
      * Creates a new execution-index-parametric guidance.
@@ -281,6 +284,12 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             } catch (NumberFormatException e1) {
                 throw new IllegalArgumentException("Invalid timeout duration: " + timeout);
             }
+        }
+
+        try {
+            this.central = new ZestClient();
+        } catch (IOException e) {
+            this.central = null;
         }
     }
 
@@ -533,6 +542,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             // pool this parent input hits
             Input currentParentInput = savedInputs.get(currentParentInputIdx);
             int targetNumChildren = getTargetChildrenForParent(currentParentInput);
+            boolean newParent = false;
             if (numChildrenGeneratedForCurrentParentInput >= targetNumChildren) {
                 // Select the next saved input to fuzz
                 currentParentInputIdx = (currentParentInputIdx + 1) % savedInputs.size();
@@ -543,8 +553,18 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 }
 
                 numChildrenGeneratedForCurrentParentInput = 0;
+                newParent = true;
             }
             Input parent = savedInputs.get(currentParentInputIdx);
+
+            if (newParent && central != null) {
+                try {
+                    central.selectInput(parent.id);
+                    instructions = central.receiveInstructions();
+                } catch (IOException e) {
+                    throw new Error(e);
+                }
+            }
 
             // Fuzz it to get a new input
             infoLog("Mutating input: %s", parent.desc);
@@ -561,9 +581,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             this.branchCount = 0;
         }
 
-
         // Return an input stream that uses the EI map
-        return new InputStream() {
+        InputStream is = new InputStream() {
             int bytesRead = 0;
 
             @Override
@@ -601,6 +620,13 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 }
             }
         };
+
+        if (central != null) {
+            ris = new RecordingInputStream(is);
+            is = ris;
+        }
+
+        return is;
     }
 
     @Override
@@ -698,6 +724,18 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     saveCurrentInput(responsibilities, why);
                 } catch (IOException e) {
                     throw new GuidanceException(e);
+                }
+
+                if (central != null) {
+                    try {
+                        // Send new input / random requests used
+                        central.sendInput(ris.getRequests(), result, currentInput.id);
+
+                        // Send updated coverage
+                        central.sendCoverage(totalCoverage);
+                    } catch (IOException e) {
+                        throw new Error(e);
+                    }
                 }
 
             }
@@ -1128,9 +1166,20 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
             for (int mutation = 1; mutation <= numMutations; mutation++) {
 
-                // Select a random offset and size
-                int offset = random.nextInt(newInput.values.size());
-                int mutationSize = sampleGeometric(random, MEAN_MUTATION_SIZE);
+                int offset;
+                int mutationSize;
+
+                if (central != null && instructions != null && instructions.size() > 0) {
+                    // Follow the central's instructions
+                    int[] inst  = instructions.get(random.nextInt(instructions.size()));
+                    offset = inst[0];
+                    mutationSize = inst[1];
+                } else {
+                    // Select a random offset and size
+                    offset = random.nextInt(newInput.values.size());
+                    mutationSize = sampleGeometric(random, MEAN_MUTATION_SIZE);
+                }
+
 
                 // desc += String.format(":%d@%d", mutationSize, idx);
 

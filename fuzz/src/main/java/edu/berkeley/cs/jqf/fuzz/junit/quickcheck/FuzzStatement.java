@@ -28,11 +28,12 @@
  */
 package edu.berkeley.cs.jqf.fuzz.junit.quickcheck;
 
-import java.io.EOFException;
-import java.io.File;
+import java.io.*;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
+import java.net.InetAddress;
+import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -121,6 +122,11 @@ public class FuzzStatement extends Statement {
             }
         }
 
+        // Try to connect to central server to get source of randomness
+        ObjectInputStream ois = null;
+        ObjectOutputStream oos = null;
+        boolean useServer = false;
+
         // Keep fuzzing until no more input or I/O error with guidance
         try {
 
@@ -135,8 +141,14 @@ public class FuzzStatement extends Statement {
                     try {
 
                         // Generate input values
-                        StreamBackedRandom randomFile = new StreamBackedRandom(guidance.getInput(), Long.BYTES);
-                        SourceOfRandomness random = new FastSourceOfRandomness(randomFile);
+                        SourceOfRandomness random;
+                        if (useServer) {
+                            guidance.getInput();
+                            random = (SourceOfRandomness) ois.readObject();
+                        } else {
+                            StreamBackedRandom randomFile = new StreamBackedRandom(guidance.getInput(), Long.BYTES);
+                            random = new FastSourceOfRandomness(randomFile);
+                        }
                         GenerationStatus genStatus = new NonTrackingGenerationStatus(random);
                         args = generators.stream()
                                 .map(g -> g.generate(random, genStatus))
@@ -146,6 +158,10 @@ public class FuzzStatement extends Statement {
                         {
                             Reinitializer.markAllClassesForReinit();
                         }
+
+                        if (useServer)
+                            oos.writeObject(random);
+
                     } catch (IllegalStateException e) {
                         if (e.getCause() instanceof EOFException) {
                             // This happens when we reach EOF before reading all the random values.
@@ -194,7 +210,8 @@ public class FuzzStatement extends Statement {
                     }
                 } finally {
                     // Inform guidance about the outcome of this trial
-                    guidance.handleResult(result, error);
+                    if (!useServer)
+                        guidance.handleResult(result, error);
                 }
 
 
