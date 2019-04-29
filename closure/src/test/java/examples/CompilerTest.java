@@ -53,4 +53,10 @@ public class CompilerTest {
         SourceFile input = SourceFile.fromCode("input", code);
         compile(input); // No assertions; we are looking for unexpected exceptions
     }
+
+    @Fuzz
+    public void testWithString2(String code) {
+        SourceFile input = SourceFile.fromCode("input", code);
+        compile(input); // No assertions; we are looking for unexpected exceptions
+    }
 }

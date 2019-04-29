@@ -6,6 +6,8 @@ import java.util.function.*;
 import com.pholser.junit.quickcheck.generator.GenerationStatus;
 import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
+import edu.columbia.cs.psl.phosphor.struct.TaintedObjectWithObjTag;
+import edu.gmu.swe.knarr.runtime.Symbolicator;
 
 /* Generates random strings that are syntactically valid JavaScript */
 public class JavaScriptCodeGenerator extends Generator<String> {
@@ -18,6 +20,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     private static final int MAX_EXPRESSION_DEPTH = 10;
     private static final int MAX_STATEMENT_DEPTH = 6;
     private static Set<String> identifiers; // Stores generated IDs, to promote re-use
+    private static List<String> identifiersList;
     private int statementDepth; // Keeps track of how deep the AST is at any point
     private int expressionDepth; // Keeps track of how nested an expression is at any point
 
@@ -38,6 +41,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     public String generate(SourceOfRandomness random, GenerationStatus status) {
         this.status = status; // we save this so that we can pass it on to other generators
         this.identifiers = new HashSet<>();
+        this.identifiersList = new ArrayList<>();
         this.statementDepth = 0;
         this.expressionDepth = 0;
         return generateStatement(random).toString();
@@ -60,31 +64,71 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         String result;
         // If depth is too high, then generate only simple statements to prevent infinite recursion
         // If not, generate simple statements after the flip of a coin
-        if (statementDepth >= MAX_STATEMENT_DEPTH || random.nextBoolean()) {
+        boolean coinFlip = false;
+        int choice;
+        if (statementDepth >= MAX_STATEMENT_DEPTH || (coinFlip = random.nextBoolean())) {
             // Choose a random private method from this class, and then call it with `random`
-            result = random.choose(Arrays.<Function<SourceOfRandomness, String>>asList(
-                    this::generateExpressionStatement,
-                    this::generateBreakNode,
-                    this::generateContinueNode,
-                    this::generateReturnNode,
-                    this::generateThrowNode,
-                    this::generateVarNode,
-                    this::generateEmptyNode
-            )).apply(random);
+            switch (choice = random.nextInt(7)) {
+                case 0:
+                    result = this.generateExpressionStatement(random);
+                    break;
+                case 1:
+                    result = this.generateBreakNode(random);
+                    break;
+                case 2:
+                    result = this.generateContinueNode(random);
+                    break;
+                case 3:
+                    result = this.generateReturnNode(random);
+                    break;
+                case 4:
+                    result = this.generateThrowNode(random);
+                    break;
+                case 5:
+                    result = this.generateVarNode(random);
+                    break;
+                default:
+                    result = this.generateEmptyNode(random);
+                    break;
+            }
         } else {
             // If depth is low and we won the flip, then generate compound statements
             // (that is, statements that contain other statements)
-            result = random.choose(Arrays.<Function<SourceOfRandomness, String>>asList(
-                    this::generateIfNode,
-                    this::generateForNode,
-                    this::generateWhileNode,
-                    this::generateNamedFunctionNode,
-                    this::generateSwitchNode,
-                    this::generateTryNode,
-                    this::generateBlock
-            )).apply(random);
+            switch (choice = random.nextInt(7)) {
+                case 0:
+                    result = this.generateIfNode(random);
+                    break;
+                case 1:
+                    result = this.generateForNode(random);
+                    break;
+                case 2:
+                    result = this.generateWhileNode(random);
+                    break;
+                case 3:
+                    result = this.generateNamedFunctionNode(random);
+                    break;
+                case 4:
+                    result = this.generateSwitchNode(random);
+                    break;
+                case 5:
+                    result = this.generateTryNode(random);
+                    break;
+                default:
+                    result = this.generateBlock(random);
+                    break;
+            }
         }
         statementDepth--; // Reset statement depth when going up the recursive tree
+
+        // Apply taints
+        Object taint = choice; //Symbolicator.symbolic((byte)0);
+        if (taint instanceof TaintedObjectWithObjTag) {
+            for (Object b : result.getBytes()) {
+                if (b instanceof TaintedObjectWithObjTag && ((TaintedObjectWithObjTag)b).getPHOSPHOR_TAG() != null)
+                    ((TaintedObjectWithObjTag)b).setPHOSPHOR_TAG(((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG());
+            }
+        }
+
         return result;
     }
 
@@ -92,34 +136,73 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     private String generateExpression(SourceOfRandomness random) {
         expressionDepth++;
         String result;
+        int choice;
         // Choose terminal if nesting depth is too high or based on a random flip of a coin
         if (expressionDepth >= MAX_EXPRESSION_DEPTH || random.nextBoolean()) {
-            result = random.choose(Arrays.<Function<SourceOfRandomness, String>>asList(
-                    this::generateLiteralNode,
-                    this::generateIdentNode
-            )).apply(random);
+            switch (choice = random.nextInt(2)) {
+                case 0:
+                    result = generateLiteralNode(random);
+                    break;
+                default:
+                    result = generateIdentNode(random);
+                    break;
+            }
         } else {
             // Otherwise, choose a non-terminal generating function
-            result = random.choose(Arrays.<Function<SourceOfRandomness, String>>asList(
-                    this::generateBinaryNode,
-                    this::generateUnaryNode,
-                    this::generateTernaryNode,
-                    this::generateCallNode,
-                    this::generateFunctionNode,
-                    this::generatePropertyNode,
-                    this::generateIndexNode,
-                    this::generateArrowFunctionNode
-            )).apply(random);
+            switch (choice = random.nextInt(8)) {
+                case 0:
+                    result = generateBinaryNode(random);
+                    break;
+                case 1:
+                    result = generateUnaryNode(random);
+                    break;
+                case 2:
+                    result = generateTernaryNode(random);
+                    break;
+                case 3:
+                    result = generateCallNode(random);
+                    break;
+                case 4:
+                    result = generateFunctionNode(random);
+                    break;
+                case 5:
+                    result = generatePropertyNode(random);
+                    break;
+                case 6:
+                    result = generateIndexNode(random);
+                    break;
+                default:
+                    result = generateArrowFunctionNode(random);
+                    break;
+            }
         }
         expressionDepth--;
+
+        // Apply taints
+        Object taint = choice; //Symbolicator.symbolic((byte)0);
+        if (taint instanceof TaintedObjectWithObjTag) {
+            for (Object b : result.getBytes()) {
+                if (b instanceof TaintedObjectWithObjTag && ((TaintedObjectWithObjTag)b).getPHOSPHOR_TAG() != null)
+                    ((TaintedObjectWithObjTag)b).setPHOSPHOR_TAG(((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG());
+            }
+        }
+
         return "(" + result + ")";
     }
 
     /** Generates a random binary expression (e.g. A op B) */
     private String generateBinaryNode(SourceOfRandomness random) {
-        String token = random.choose(BINARY_TOKENS); // Choose a binary operator at random
+        int choice = random.nextInt(0, BINARY_TOKENS.length);
+        String token = new String(BINARY_TOKENS[choice]);
         String lhs = generateExpression(random);
         String rhs = generateExpression(random);
+
+        // Apply taints
+        Object taint = choice; //Symbolicator.symbolic((byte)0);
+        if (taint instanceof TaintedObjectWithObjTag) {
+            if (((Object)token) instanceof TaintedObjectWithObjTag)
+                ((TaintedObjectWithObjTag)(Object)token).setPHOSPHOR_TAG(((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG());
+        }
 
         return lhs + " " + token + " " + rhs;
     }
@@ -194,11 +277,24 @@ public class JavaScriptCodeGenerator extends Generator<String> {
 
     private String generateArrowFunctionNode(SourceOfRandomness random) {
         String params = "(" + String.join(", ", generateItems(this::generateIdentNode, random, 3)) + ")";
-        if (random.nextBoolean()) {
-            return params + " => " + generateBlock(random);
+        boolean choice = random.nextBoolean();
+        String result;
+        if (choice) {
+            result = params + " => " + generateBlock(random);
         } else {
-            return params + " => " + generateExpression(random);
+            result = params + " => " + generateExpression(random);
         }
+
+        // Apply taints
+        Object taint = choice; //Symbolicator.symbolic((byte)0);
+        if (taint instanceof TaintedObjectWithObjTag) {
+            for (Object b : result.getBytes()) {
+                if (b instanceof TaintedObjectWithObjTag && ((TaintedObjectWithObjTag)b).getPHOSPHOR_TAG() != null)
+                    ((TaintedObjectWithObjTag)b).setPHOSPHOR_TAG(((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG());
+            }
+        }
+
+        return result;
 
     }
 
@@ -208,8 +304,19 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         if (identifiers.isEmpty() || (identifiers.size() < MAX_IDENTIFIERS && random.nextBoolean())) {
             identifier = random.nextChar('a', 'z') + "_" + identifiers.size();
             identifiers.add(identifier);
-        } else {
-            identifier = random.choose(identifiers);
+            identifiersList.add(identifier);
+        }
+
+        int choice = random.nextInt(identifiers.size());
+        identifier = new String(identifiersList.get(choice));
+
+        // Apply taints
+        Object taint = choice; //Symbolicator.symbolic((byte)0);
+        if (taint instanceof TaintedObjectWithObjTag) {
+            for (Object b : identifier.getBytes()) {
+                if (b instanceof TaintedObjectWithObjTag && ((TaintedObjectWithObjTag)b).getPHOSPHOR_TAG() != null)
+                    ((TaintedObjectWithObjTag)b).setPHOSPHOR_TAG(((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG());
+            }
         }
 
         return identifier;
@@ -233,24 +340,61 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     private String generateLiteralNode(SourceOfRandomness random) {
         // If we are not too deeply nested, then it is okay to generate array/object literals
         if (expressionDepth < MAX_EXPRESSION_DEPTH && random.nextBoolean()) {
-            if (random.nextBoolean()) {
+            boolean choice = random.nextBoolean();
+            String result;
+            if (choice) {
                 // Array literal
-                return "[" + String.join(", ", generateItems(this::generateExpression, random, 3)) + "]";
+                result = "[" + String.join(", ", generateItems(this::generateExpression, random, 3)) + "]";
             } else {
                 // Object literal
-                return "{" + String.join(", ", generateItems(this::generateObjectProperty, random, 3)) + "}";
-
+                result = "{" + String.join(", ", generateItems(this::generateObjectProperty, random, 3)) + "}";
             }
+
+            // Apply taints
+            Object taint = choice; //Symbolicator.symbolic((byte)0);
+            if (taint instanceof TaintedObjectWithObjTag) {
+                for (Object b : result.getBytes()) {
+                    if (b instanceof TaintedObjectWithObjTag && ((TaintedObjectWithObjTag)b).getPHOSPHOR_TAG() != null)
+                        ((TaintedObjectWithObjTag)b).setPHOSPHOR_TAG(((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG());
+                }
+            }
+
+            return result;
         } else {
             // Otherwise, generate primitive literals
-            return random.choose(Arrays.<Supplier<String>>asList(
-                    () -> String.valueOf(random.nextInt(-10, 1000)), // int literal
-                    () -> String.valueOf(random.nextBoolean()),      // bool literal
-                    () -> generateStringLiteral(random),
-                    () -> "undefined",
-                    () -> "null",
-                    () -> "this"
-            )).get();
+            int choice = random.nextInt(6);
+            String result;
+            switch (choice) {
+                case 0:
+                    result = String.valueOf(random.nextInt(-10, 1000)); // int literal
+                    break;
+                case 1:
+                    result = String.valueOf(random.nextBoolean());      // bool literal
+                    break;
+                case 2:
+                    result = generateStringLiteral(random);
+                    break;
+                case 3:
+                    result = new String("undefined");
+                    break;
+                case 4:
+                    result = new String("null");
+                    break;
+                default:
+                    result = new String("this");
+                    break;
+            }
+
+            // Apply taints
+            Object taint = choice; //Symbolicator.symbolic((byte)0);
+            if (taint instanceof TaintedObjectWithObjTag) {
+                for (Object b : result.getBytes()) {
+                    if (b instanceof TaintedObjectWithObjTag && ((TaintedObjectWithObjTag)b).getPHOSPHOR_TAG() != null)
+                        ((TaintedObjectWithObjTag)b).setPHOSPHOR_TAG(((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG());
+                }
+            }
+
+            return result;
         }
     }
 
@@ -286,7 +430,16 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     }
 
     private String generateUnaryNode(SourceOfRandomness random) {
-        String token = random.choose(UNARY_TOKENS);
+        int choice = random.nextInt(UNARY_TOKENS.length);
+        String token = new String(UNARY_TOKENS[choice]);
+
+        // Apply taints
+        Object taint = choice; //Symbolicator.symbolic((byte)0);
+        if (taint instanceof TaintedObjectWithObjTag) {
+            if (((Object)token) instanceof TaintedObjectWithObjTag)
+                ((TaintedObjectWithObjTag)(Object)token).setPHOSPHOR_TAG(((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG());
+        }
+
         return token + " " + generateExpression(random);
     }
 
