@@ -749,7 +749,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             }
 
             // Attempt to add this to the set of unique failures
-            if (uniqueFailures.add(Arrays.asList(rootCause.getStackTrace()))) {
+            StackTraceElement[] trace = new StackTraceElement[5];
+            System.arraycopy(rootCause.getStackTrace(), 0, trace, 0, trace.length);
+//            if (uniqueFailures.add(Arrays.asList(rootCause.getStackTrace()))) {
+            if (uniqueFailures.add(Arrays.asList(trace))) {
 
                 // Save crash to disk
                 try {
@@ -757,6 +760,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     String saveFileName = String.format("id_%06d", crashIdx);
                     File saveFile = new File(savedFailuresDirectory, saveFileName);
                     writeCurrentInputToFile(saveFile);
+                    File traceFile = new File(savedFailuresDirectory, saveFileName + ".trace");
+                    try (PrintWriter pw = new PrintWriter(new FileWriter(traceFile))) {
+                        error.printStackTrace(pw);
+                    }
                     infoLog("%s","Found crash: " + error.getClass() + " - " + (msg != null ? msg : ""));
                     String how = currentInput.desc;
                     String why = result == Result.FAILURE ? "+crash" : "+hang";
