@@ -19,8 +19,8 @@ INST_JAR="${INST_DIR}/$project-instrument-$version.jar"
 
 # Compute classpaths (the /classes are only for development; 
 #   if empty the JARs will have whatever is needed)
-INST_CLASSPATH="${INST_DIR}/classes:${INST_JAR}"
-FUZZ_CLASSPATH="${FUZZ_DIR}/classes:${FUZZ_JAR}"
+INST_CLASSPATH="${INST_JAR}:${INST_DIR}/classes"
+FUZZ_CLASSPATH="${FUZZ_JAR}:${FUZZ_DIR}/classes"
 
 # If user-defined classpath is not set, default to '.'
 if [ -z "${CLASSPATH}" ]; then
