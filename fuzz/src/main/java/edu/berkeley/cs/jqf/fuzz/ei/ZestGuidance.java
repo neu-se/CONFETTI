@@ -348,7 +348,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         }
 
         appendLineToFile(statsFile,"# unix_time, cycles_done, cur_path, paths_total, pending_total, " +
-                "pending_favs, map_size, unique_crashes, unique_hangs, max_depth, execs_per_sec, valid_inputs, invalid_inputs, valid_cov");
+                "pending_favs, map_size, unique_crashes, unique_hangs, max_depth, execs_per_sec, total_inputs, mutated_bytes, valid_inputs, invalid_inputs, valid_cov");
 
 
     }
@@ -452,10 +452,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         console.printf("Total coverage:       %,d (%.2f%% of map)\n", nonZeroCount, nonZeroFraction);
         console.printf("Valid coverage:       %,d (%.2f%% of map)\n", nonZeroValidCount, nonZeroValidFraction);
 
-        String plotData = String.format("%d, %d, %d, %d, %d, %d, %.2f%%, %d, %d, %d, %.2f, %d, %d, %.2f%%",
+        String plotData = String.format("%d, %d, %d, %d, %d, %d, %.2f%%, %d, %d, %d, %.2f, %d, %d, %d, %d, %.2f%%",
                 TimeUnit.MILLISECONDS.toSeconds(now.getTime()), cyclesCompleted, currentParentInputIdx,
                 savedInputs.size(), 0, 0, nonZeroFraction, uniqueFailures.size(), 0, 0, intervalExecsPerSecDouble,
-                numValid, numTrials-numValid, nonZeroValidFraction);
+                numTrials, mutatedBytes/numTrials, numValid, numTrials-numValid, nonZeroValidFraction);
         appendLineToFile(statsFile, plotData);
 
     }
@@ -1081,6 +1081,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         }
     }
 
+    private long mutatedBytes = 0L;
+
     public class LinearInput extends Input<Integer> {
 
         /** A list of byte values (0-255) ordered by their index. */
@@ -1192,6 +1194,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
                     // Otherwise, apply a random mutation
                     int mutatedValue = setToZero ? 0 : random.nextInt(256);
+                    mutatedBytes += Integer.BYTES;
                     newInput.values.set(i, mutatedValue);
                 }
             }

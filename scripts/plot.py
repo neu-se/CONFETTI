@@ -28,6 +28,12 @@ conf = [
         'format': '%d',
     },
     {
+        'title': 'Total Inputs',
+        'col': ' total_inputs',
+        'type': int,
+        'format': '%d',
+    },
+    {
         'title': 'Valid Inputs',
         'col': ' valid_inputs',
         'type': int,
@@ -40,6 +46,12 @@ conf = [
         'format': '%d',
     },
     {
+        'title': 'Avg Mutated Bytes per Input',
+        'col': ' mutated_bytes',
+        'type': int,
+        'format': '%d',
+    },
+    {
         'title': 'Coverage (%)',
         'col': ' map_size',
         'type': float,
@@ -48,6 +60,22 @@ conf = [
     {
         'title': 'Valid Coverage (%)',
         'col': ' valid_cov',
+        'type': float,
+        'format': '%0.1f',
+    },
+    {
+        'title': 'Coverage vs total paths (%)',
+        'x': ' paths_total',
+        'xlabel': 'Total Paths',
+        'col': ' map_size',
+        'type': float,
+        'format': '%0.1f',
+    },
+    {
+        'title': 'Coverage vs inputs (%)',
+        'x': ' total_inputs',
+        'xlabel': 'Total Inputs',
+        'col': ' map_size',
         'type': float,
         'format': '%0.1f',
     },
@@ -75,10 +103,13 @@ with PdfPages('fig.pdf') as pdf:
                 reader = csv.DictReader(csvfile, delimiter=',')
                 for line in reader:
                     y_number_values.append(float(line[c['col']].replace('%','')))
-                    if t0 is None:
-                        t0 = int(line['# unix_time'])
-                    t = int(line['# unix_time'])
-                    x_number_values.append(t - t0)
+                    if 'x' not in c:
+                        if t0 is None:
+                            t0 = int(line['# unix_time'])
+                        t = int(line['# unix_time']) - t0
+                    else:
+                        t = int(line[c['x']])
+                    x_number_values.append(t)
 
             ymax = max(ymax, y_number_values[-1])
             # Plot the number in the list and set the line thickness.
@@ -88,7 +119,10 @@ with PdfPages('fig.pdf') as pdf:
         plt.title(c['title'], fontsize=19)
 
         # Set x axes label.
-        plt.xlabel("Time (s)", fontsize=10)
+        if 'xlabel' in c:
+            plt.xlabel(c['xlabel'], fontsize=10)
+        else:
+            plt.xlabel("Time (s)", fontsize=10)
 
         # Set y axes label.
         # plt.ylabel("Size of input list", fontsize=10)
@@ -106,6 +140,9 @@ with PdfPages('fig.pdf') as pdf:
         plt.grid()
 
         # Display the plot in the matplotlib's viewer.
-        fig.savefig(c['col'].replace(' ','')+'.png')
+        if 'x' in c:
+            fig.savefig(c['x'].replace(' ','') + '-' + c['col'].replace(' ','')+'.png')
+        else:
+            fig.savefig(c['col'].replace(' ','')+'.png')
         pdf.savefig()
         plt.close()
