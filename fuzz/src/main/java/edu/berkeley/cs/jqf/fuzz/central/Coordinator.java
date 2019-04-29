@@ -15,11 +15,11 @@ public class Coordinator implements Runnable {
     private KnarrWorker knarr;
     private ZestWorker zest;
 
-    protected final synchronized void foundInput(int id, byte[] bytes) {
+    protected final synchronized void foundInput(int id, byte[] bytes, boolean valid) {
         Input in = new Input();
         in.bytes = bytes;
         in.id = id;
-        in.isNew = true;
+        in.isNew = valid;
         this.inputs.addLast(in);
         this.notifyAll();
 

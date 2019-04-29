@@ -51,7 +51,7 @@ class ZestWorker extends Worker {
                     i += b.length;
                 }
 
-                c.foundInput(id, bs);
+                c.foundInput(id, bs, res != Result.INVALID);
 
                 synchronized (recommendations) {
                     recommendations.add(new TreeSet<>());
