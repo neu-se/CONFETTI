@@ -75,6 +75,7 @@ public class Coordinator implements Runnable {
                             existing.trueExplored = new HashSet<>();
                             existing.falseExplored = new HashSet<>();
                             existing.control = new HashMap<>();
+                            existing.keep = b.keep;
                             branches.put(b, b);
                         } else {
                             existing = branches.get(b);
@@ -105,7 +106,7 @@ public class Coordinator implements Runnable {
                 for (Input input : inputs) {
                     TreeSet<Integer> recommendation = new TreeSet<>();
                     for (Branch branch : branches.values()) {
-                        if (branch.falseExplored.isEmpty() || branch.trueExplored.isEmpty()) {
+                        if (branch.falseExplored.isEmpty() || branch.trueExplored.isEmpty() || branch.keep) {
                             if (branch.control.containsKey(input)) {
                                 for (int i : branch.control.get(input))
                                     recommendation.add(i);
@@ -151,7 +152,7 @@ public class Coordinator implements Runnable {
 
     public static class Branch implements Serializable {
         public int takenID, notTakenID;
-        public boolean result;
+        public boolean result, keep;
         public HashSet<Integer> controllingBytes;
 
         transient HashMap<Input, Integer[]> control;

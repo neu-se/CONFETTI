@@ -88,6 +88,7 @@ public class KnarrGuidance implements Guidance {
 
         bb.takenID = b.takenCode;
         bb.notTakenID = b.notTakenCode;
+        bb.keep = b.breaksLoop;
         bb.result = b.taken;
         bb.controllingBytes = new HashSet<>();
 
