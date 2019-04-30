@@ -194,4 +194,7 @@ public class RemoteGuidance implements Guidance {
         }
 
     }
+
+    public void setArgs(Object[] args) {
+    }
 }

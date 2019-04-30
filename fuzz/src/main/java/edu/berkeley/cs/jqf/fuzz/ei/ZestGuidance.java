@@ -636,6 +636,13 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         return elapsedMilliseconds < maxDurationMillis;
     }
 
+    private Object[] args;
+
+    @Override
+    public void setArgs(Object[] args) {
+        this.args = args;
+    }
+
     @Override
     public void handleResult(Result result, Throwable error) throws GuidanceException {
         // Stop timeout handling
@@ -764,6 +771,11 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     try (PrintWriter pw = new PrintWriter(new FileWriter(traceFile))) {
                         error.printStackTrace(pw);
                     }
+                    File argsFile = new File(savedFailuresDirectory, saveFileName + ".input");
+                    try (PrintWriter pw = new PrintWriter(new FileWriter(argsFile))) {
+                        for (Object o : args)
+                            pw.println(o.toString());
+                    }
                     infoLog("%s","Found crash: " + error.getClass() + " - " + (msg != null ? msg : ""));
                     String how = currentInput.desc;
                     String why = result == Result.FAILURE ? "+crash" : "+hang";
@@ -862,6 +874,12 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         if (SAVE_ONLY_VALID == false || currentInput.valid) {
             writeCurrentInputToFile(saveFile);
             infoLog("Saved - %s %s %s", saveFile.getPath(), how, why);
+        }
+
+        File argsFile = new File(savedInputsDirectory, saveFileName + ".input");
+        try (PrintWriter pw = new PrintWriter(new FileWriter(argsFile))) {
+            for (Object o : args)
+                pw.println(o.toString());
         }
 
         // If not using guidance, do nothing else

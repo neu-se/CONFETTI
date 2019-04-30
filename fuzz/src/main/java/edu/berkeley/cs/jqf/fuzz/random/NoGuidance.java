@@ -151,4 +151,7 @@ public class NoGuidance implements Guidance {
         }
         return coverage;
     }
+
+    public void setArgs(Object[] args) {
+    }
 }

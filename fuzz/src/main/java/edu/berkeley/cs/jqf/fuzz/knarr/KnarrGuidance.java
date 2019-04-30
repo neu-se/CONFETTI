@@ -46,6 +46,10 @@ public class KnarrGuidance implements Guidance {
     }
 
     @Override
+    public void setArgs(Object[] args) {
+    }
+
+    @Override
     public void handleResult(Result result, Throwable error) throws GuidanceException {
         Expression constraints = PathUtils.getCurPC().constraints;
 

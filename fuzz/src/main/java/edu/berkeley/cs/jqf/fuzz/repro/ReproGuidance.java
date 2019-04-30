@@ -352,4 +352,8 @@ public class ReproGuidance implements Guidance {
         }
     }
 
+    @Override
+    public void setArgs(Object[] args) {
+    }
+
 }

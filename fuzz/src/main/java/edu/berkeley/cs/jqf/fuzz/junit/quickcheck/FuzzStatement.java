@@ -154,6 +154,8 @@ public class FuzzStatement extends Statement {
                                 .map(g -> g.generate(random, genStatus))
                                 .toArray();
 
+                        guidance.setArgs(args);
+
                         if(SnoopInstructionTransformer.IS_VMVM)
                         {
                             Reinitializer.markAllClassesForReinit();

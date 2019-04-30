@@ -403,5 +403,8 @@ public class AFLGuidance implements Guidance {
         ((Buffer) feedback).rewind();
     }
 
+    @Override
+    public void setArgs(Object[] args) {
+    }
 
 }
