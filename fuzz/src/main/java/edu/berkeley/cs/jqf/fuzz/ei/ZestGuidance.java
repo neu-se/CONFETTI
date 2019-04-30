@@ -1191,14 +1191,25 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
             boolean setToZero = random.nextDouble() < 0.1; // one out of 10 times
 
+            HashSet<Integer> instructionsTaken = new HashSet<>();
+
+
             for (int mutation = 1; mutation <= numMutations; mutation++) {
 
                 int offset;
                 int mutationSize;
 
-                if (central != null && instructions != null && instructions.size() > 0) {
+                if (central != null && instructions != null && instructionsTaken.size() < instructions.size()) {
                     // Follow the central's instructions
-                    int[] inst  = instructions.get(random.nextInt(instructions.size()));
+                    int idx;
+
+                    do {
+                        idx = random.nextInt(instructions.size());
+                    } while (instructionsTaken.contains(idx));
+
+                    instructionsTaken.add(idx);
+
+                    int[] inst  = instructions.get(idx);
                     offset = inst[0];
                     mutationSize = inst[1];
                 } else {
