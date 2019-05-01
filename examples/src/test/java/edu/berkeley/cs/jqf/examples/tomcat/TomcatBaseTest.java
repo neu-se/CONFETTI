@@ -177,6 +177,7 @@ public abstract class TomcatBaseTest  {
 
                 connector.setPort(8080);
 
+
                 tomcat.getService().addConnector(connector);
 
                 tomcat.setConnector(connector);
