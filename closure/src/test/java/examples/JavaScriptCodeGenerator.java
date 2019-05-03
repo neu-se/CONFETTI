@@ -6,6 +6,8 @@ import java.util.function.*;
 import com.pholser.junit.quickcheck.generator.GenerationStatus;
 import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
+import edu.columbia.cs.psl.phosphor.runtime.Taint;
+import edu.columbia.cs.psl.phosphor.struct.LazyCharArrayObjTags;
 import edu.columbia.cs.psl.phosphor.struct.TaintedObjectWithObjTag;
 import edu.gmu.swe.knarr.runtime.Symbolicator;
 
@@ -120,16 +122,27 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         }
         statementDepth--; // Reset statement depth when going up the recursive tree
 
-        // Apply taints
-        Object taint = choice; //Symbolicator.symbolic((byte)0);
-        if (taint instanceof TaintedObjectWithObjTag) {
-            for (Object b : result.getBytes()) {
-                if (b instanceof TaintedObjectWithObjTag && ((TaintedObjectWithObjTag)b).getPHOSPHOR_TAG() != null)
-                    ((TaintedObjectWithObjTag)b).setPHOSPHOR_TAG(((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG());
-            }
-        }
+        result = applyTaints(result, choice);
 
         return result;
+    }
+
+    private static String applyTaints(String result, Object taint) {
+        if (!(taint instanceof TaintedObjectWithObjTag))
+            return result;
+
+        String ret = new String(result);
+
+        if (Symbolicator.getTaints(result) instanceof LazyCharArrayObjTags) {
+            LazyCharArrayObjTags taints = (LazyCharArrayObjTags) Symbolicator.getTaints(result);
+            if (taints.taints != null)
+                for (int i = 0 ; i < taints.taints.length ; i++)
+                    taints.taints[i] = (taints.taints[i] == null ? ((Taint)((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG()) : taints.taints[i]);
+            else
+                taints.setTaints(((Taint)((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG()));
+        }
+
+        return ret;
     }
 
     /** Generates a random JavaScript expression using recursive calls */
@@ -178,14 +191,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         }
         expressionDepth--;
 
-        // Apply taints
-        Object taint = choice; //Symbolicator.symbolic((byte)0);
-        if (taint instanceof TaintedObjectWithObjTag) {
-            for (Object b : result.getBytes()) {
-                if (b instanceof TaintedObjectWithObjTag && ((TaintedObjectWithObjTag)b).getPHOSPHOR_TAG() != null)
-                    ((TaintedObjectWithObjTag)b).setPHOSPHOR_TAG(((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG());
-            }
-        }
+        result = applyTaints(result, choice);
 
         return "(" + result + ")";
     }
@@ -197,12 +203,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         String lhs = generateExpression(random);
         String rhs = generateExpression(random);
 
-        // Apply taints
-        Object taint = choice; //Symbolicator.symbolic((byte)0);
-        if (taint instanceof TaintedObjectWithObjTag) {
-            if (((Object)token) instanceof TaintedObjectWithObjTag)
-                ((TaintedObjectWithObjTag)(Object)token).setPHOSPHOR_TAG(((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG());
-        }
+        token = applyTaints(token, choice);
 
         return lhs + " " + token + " " + rhs;
     }
@@ -285,14 +286,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
             result = params + " => " + generateExpression(random);
         }
 
-        // Apply taints
-        Object taint = choice; //Symbolicator.symbolic((byte)0);
-        if (taint instanceof TaintedObjectWithObjTag) {
-            for (Object b : result.getBytes()) {
-                if (b instanceof TaintedObjectWithObjTag && ((TaintedObjectWithObjTag)b).getPHOSPHOR_TAG() != null)
-                    ((TaintedObjectWithObjTag)b).setPHOSPHOR_TAG(((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG());
-            }
-        }
+        result = applyTaints(result, choice);
 
         return result;
 
@@ -310,14 +304,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         int choice = random.nextInt(identifiers.size());
         identifier = new String(identifiersList.get(choice));
 
-        // Apply taints
-        Object taint = choice; //Symbolicator.symbolic((byte)0);
-        if (taint instanceof TaintedObjectWithObjTag) {
-            for (Object b : identifier.getBytes()) {
-                if (b instanceof TaintedObjectWithObjTag && ((TaintedObjectWithObjTag)b).getPHOSPHOR_TAG() != null)
-                    ((TaintedObjectWithObjTag)b).setPHOSPHOR_TAG(((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG());
-            }
-        }
+        identifier = applyTaints(identifier, choice);
 
         return identifier;
     }
@@ -350,14 +337,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
                 result = "{" + String.join(", ", generateItems(this::generateObjectProperty, random, 3)) + "}";
             }
 
-            // Apply taints
-            Object taint = choice; //Symbolicator.symbolic((byte)0);
-            if (taint instanceof TaintedObjectWithObjTag) {
-                for (Object b : result.getBytes()) {
-                    if (b instanceof TaintedObjectWithObjTag && ((TaintedObjectWithObjTag)b).getPHOSPHOR_TAG() != null)
-                        ((TaintedObjectWithObjTag)b).setPHOSPHOR_TAG(((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG());
-                }
-            }
+            result = applyTaints(result, choice);
 
             return result;
         } else {
@@ -385,14 +365,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
                     break;
             }
 
-            // Apply taints
-            Object taint = choice; //Symbolicator.symbolic((byte)0);
-            if (taint instanceof TaintedObjectWithObjTag) {
-                for (Object b : result.getBytes()) {
-                    if (b instanceof TaintedObjectWithObjTag && ((TaintedObjectWithObjTag)b).getPHOSPHOR_TAG() != null)
-                        ((TaintedObjectWithObjTag)b).setPHOSPHOR_TAG(((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG());
-                }
-            }
+            result = applyTaints(result, choice);
 
             return result;
         }
@@ -433,12 +406,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         int choice = random.nextInt(UNARY_TOKENS.length);
         String token = new String(UNARY_TOKENS[choice]);
 
-        // Apply taints
-        Object taint = choice; //Symbolicator.symbolic((byte)0);
-        if (taint instanceof TaintedObjectWithObjTag) {
-            if (((Object)token) instanceof TaintedObjectWithObjTag)
-                ((TaintedObjectWithObjTag)(Object)token).setPHOSPHOR_TAG(((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG());
-        }
+        token = applyTaints(token, choice);
 
         return token + " " + generateExpression(random);
     }
