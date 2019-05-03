@@ -79,6 +79,7 @@ public class Coordinator implements Runnable {
                             existing.falseExplored = new HashSet<>();
                             existing.control = new HashMap<>();
                             existing.keep = b.keep;
+                            existing.source = (b.source == null ? "" : b.source);
                             branches.put(b, b);
                         } else {
                             existing = branches.get(b);
@@ -86,11 +87,11 @@ public class Coordinator implements Runnable {
 
                         if (b.result) {
                             if (existing.trueExplored.isEmpty())
-                                System.out.println("\tInput " + input.id + " explores T on " + existing.takenID);
+                                System.out.println("\tInput " + input.id + " explores T on " + existing.takenID + " (" + existing.source + ")");
                             existing.trueExplored.add(input);
                         } else {
                             if (existing.falseExplored.isEmpty())
-                                System.out.println("\tInput " + input.id + " explores F on " + existing.takenID);
+                                System.out.println("\tInput " + input.id + " explores F on " + existing.takenID + " (" + existing.source + ")");
                             existing.falseExplored.add(input);
                         }
 
@@ -157,6 +158,7 @@ public class Coordinator implements Runnable {
         public int takenID, notTakenID;
         public boolean result, keep;
         public HashSet<Integer> controllingBytes;
+        public String source = "";
 
         transient HashMap<Input, Integer[]> control;
         transient HashSet<Input> trueExplored;

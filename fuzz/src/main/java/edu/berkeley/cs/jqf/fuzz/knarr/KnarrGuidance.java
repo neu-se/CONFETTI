@@ -95,6 +95,7 @@ public class KnarrGuidance implements Guidance {
         bb.keep = b.breaksLoop;
         bb.result = b.taken;
         bb.controllingBytes = new HashSet<>();
+        bb.source = b.source;
 
         findControllingBytes(e, bb.controllingBytes);
 
