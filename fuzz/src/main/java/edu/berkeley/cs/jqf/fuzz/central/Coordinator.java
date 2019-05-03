@@ -72,6 +72,10 @@ public class Coordinator implements Runnable {
 
                     // Check if any previous branches were explored
                     for (Branch b : bs) {
+                        // TODO make source filter generic and not Closure specific
+                        if (b.source == null || b.source.contains("quickcheck") || b.source.contains("Token") || b.source.contains("parsing/parser/"))
+                            continue;
+
                         Branch existing;
                         if (!branches.containsKey(b)) {
                             existing = b;
