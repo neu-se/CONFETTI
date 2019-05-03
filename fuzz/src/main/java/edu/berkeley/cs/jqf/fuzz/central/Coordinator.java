@@ -57,8 +57,11 @@ public class Coordinator implements Runnable {
                 m = new LinkedList<>(inputs);
             }
 
+            int n = 0;
             for (Input input : m) {
                 if (input.isNew) {
+                    if (n++ > 10)
+                        break;
                     // Compute coverage and branches with Knarr
                     LinkedList<Branch> bs;
                     try {
