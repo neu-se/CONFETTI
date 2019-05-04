@@ -106,8 +106,6 @@ public class HTTPRequestGenerator extends Generator<String> {
 
     protected void getHeaders(RequestBuilder builder, SourceOfRandomness random, GenerationStatus status) {
         int index = random.nextInt(max_elements);
-        boolean useDict  = random.nextBoolean();
-
         for(int i = 0; i< index; i++) {
                 builder.addHeader(makeString(random, status), makeMultiLineString(random,status));
 
