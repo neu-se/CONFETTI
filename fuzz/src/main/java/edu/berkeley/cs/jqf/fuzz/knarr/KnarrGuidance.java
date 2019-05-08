@@ -16,6 +16,7 @@ import za.ac.sun.cs.green.expr.Variable;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.function.Consumer;
@@ -56,6 +57,7 @@ public class KnarrGuidance implements Guidance {
         System.out.println(result);
 
         LinkedList<Coordinator.Branch> branches = new LinkedList<>();
+        HashMap<Integer, HashSet<String>> stringEqualsArgs = new HashMap<>();
 
         // Get branches from constraints
         {
@@ -65,15 +67,15 @@ public class KnarrGuidance implements Guidance {
                 e = op.getOperand(0);
                 Expression ee = op.getOperand(1);
 
-                process(branches, ee);
+                process(branches, stringEqualsArgs, ee);
             }
 
-            process(branches, e);
+            process(branches, stringEqualsArgs, e);
         }
 
         // Send branches
         try {
-            this.client.sendBranches(branches);
+            this.client.sendBranches(branches, stringEqualsArgs);
         } catch (IOException e) {
             throw new Error(e);
         }
@@ -82,7 +84,7 @@ public class KnarrGuidance implements Guidance {
         this.input = null;
     }
 
-    private void process(LinkedList<Coordinator.Branch> bs, Expression e) {
+    private void process(LinkedList<Coordinator.Branch> bs, HashMap<Integer, HashSet<String>> stringEqualsArgs, Expression e) {
         Coverage.BranchData b = (Coverage.BranchData) e.metadata;
 
         if (b == null)
@@ -97,12 +99,19 @@ public class KnarrGuidance implements Guidance {
         bb.controllingBytes = new HashSet<>();
         bb.source = b.source;
 
-        findControllingBytes(e, bb.controllingBytes);
+        HashSet<String> eq = new HashSet<>();
+
+        findControllingBytes(e, bb.controllingBytes, eq);
 
         bs.add(bb);
+
+        if (!eq.isEmpty()) {
+            for (Integer i : bb.controllingBytes)
+                stringEqualsArgs.put(i, eq);
+        }
     }
 
-    private void findControllingBytes(Expression e, HashSet<Integer> bytes) {
+    private void findControllingBytes(Expression e, HashSet<Integer> bytes, HashSet<String> stringEqualsArgs) {
         if (e instanceof Variable) {
             Variable v = (Variable) e;
             if (v.getName().startsWith("autoVar_")) {
@@ -110,8 +119,10 @@ public class KnarrGuidance implements Guidance {
             }
         } else if (e instanceof Operation) {
             Operation op = (Operation) e;
+            if (e.metadata != null && e.metadata instanceof HashSet)
+                stringEqualsArgs.addAll((HashSet<String>)e.metadata);
             for (int i = 0 ; i < op.getArity() ; i++)
-                findControllingBytes(op.getOperand(i), bytes);
+                findControllingBytes(op.getOperand(i), bytes, stringEqualsArgs);
         }
     }
 

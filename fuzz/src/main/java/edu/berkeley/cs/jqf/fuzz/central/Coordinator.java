@@ -64,8 +64,9 @@ public class Coordinator implements Runnable {
                         break;
                     // Compute coverage and branches with Knarr
                     LinkedList<Branch> bs;
+                    HashMap<Integer, HashSet<String>> eqs = new HashMap<>();
                     try {
-                        bs = knarr.getBranchCoverage(input.bytes);
+                        bs = knarr.getBranchCoverage(input.bytes, eqs);
                     } catch (IOException e) {
                         throw new Error(e);
                     }

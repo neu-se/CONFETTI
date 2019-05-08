@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 
@@ -17,7 +18,7 @@ class KnarrWorker extends Worker {
         this.c = c;
     }
 
-    public LinkedList<Coordinator.Branch> getBranchCoverage(byte[] bytes) throws IOException {
+    public LinkedList<Coordinator.Branch> getBranchCoverage(byte[] bytes, HashMap<Integer, HashSet<String>> stringEqualsArgs) throws IOException {
 
         // Send input to Knarr process
         oos.writeObject(bytes);
@@ -28,6 +29,7 @@ class KnarrWorker extends Worker {
 
         try {
             lst = ((LinkedList<Coordinator.Branch>)ois.readObject());
+            stringEqualsArgs.putAll(((HashMap<Integer, HashSet<String>>)ois.readObject()));
         } catch (ClassNotFoundException e) {
             throw new Error(e);
         }

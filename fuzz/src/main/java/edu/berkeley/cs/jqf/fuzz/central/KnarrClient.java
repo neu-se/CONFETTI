@@ -1,6 +1,8 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 
 public class KnarrClient extends Central {
@@ -18,8 +20,9 @@ public class KnarrClient extends Central {
         }
     }
 
-    public void sendBranches(LinkedList<Coordinator.Branch> branches) throws IOException {
+    public void sendBranches(LinkedList<Coordinator.Branch> branches, HashMap<Integer, HashSet<String>> stringEqualsArgs) throws IOException {
         oos.writeObject(branches);
+        oos.writeObject(stringEqualsArgs);
         oos.flush();
     }
 }
