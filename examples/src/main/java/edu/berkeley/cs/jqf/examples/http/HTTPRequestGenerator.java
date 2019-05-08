@@ -21,7 +21,7 @@ public class HTTPRequestGenerator extends Generator<String> {
         super(String.class);
     }
 
-    protected final int max_elements = 5;
+    protected final int max_elements = 8;
 
 
 

