@@ -6,6 +6,7 @@ import java.util.function.*;
 import com.pholser.junit.quickcheck.generator.GenerationStatus;
 import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
+import edu.berkeley.cs.jqf.fuzz.guidance.StringEqualsHintingInputStream;
 import edu.columbia.cs.psl.phosphor.runtime.Taint;
 import edu.columbia.cs.psl.phosphor.struct.LazyCharArrayObjTags;
 import edu.columbia.cs.psl.phosphor.struct.TaintedObjectWithObjTag;
@@ -301,8 +302,19 @@ public class JavaScriptCodeGenerator extends Generator<String> {
             identifiersList.add(identifier);
         }
 
-        int choice = random.nextInt(identifiers.size());
-        identifier = new String(identifiersList.get(choice));
+        boolean coin = random.nextBoolean();
+        int choice = random.nextInt(0, Integer.MAX_VALUE);
+
+        String[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+
+        if (hints != null && hints.length > 0 && coin) {
+            choice = choice % hints.length;
+            identifier = new String(hints[choice]);
+        } else {
+            choice = choice % identifiers.size();
+            identifier = new String(identifiersList.get(choice));
+        }
+
 
         identifier = applyTaints(identifier, choice);
 
