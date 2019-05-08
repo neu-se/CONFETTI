@@ -626,6 +626,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         if (central != null) {
             ris = new RecordingInputStream(is);
             is = ris;
+
+            if (stringEqualsHints != null)
+                is = new StringEqualsHintingInputStream(is, instructions, stringEqualsHints);
         }
 
         return is;
