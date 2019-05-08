@@ -761,8 +761,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             }
 
             // Attempt to add this to the set of unique failures
-            StackTraceElement[] trace = new StackTraceElement[1];
-            System.arraycopy(rootCause.getStackTrace(), 0, trace, 0, trace.length);
+            StackTraceElement[] trace = new StackTraceElement[5];
+            StackTraceElement[] root = rootCause.getStackTrace();
+            System.arraycopy(root, 0, trace, 0, Math.min(trace.length, root.length));
 //            if (uniqueFailures.add(Arrays.asList(rootCause.getStackTrace()))) {
             if (uniqueFailures.add(Arrays.asList(trace))) {
 
