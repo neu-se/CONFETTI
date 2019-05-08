@@ -259,6 +259,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private ZestClient central;
     private RecordingInputStream ris;
     private LinkedList<int[]> instructions;
+    public LinkedList<String[]> stringEqualsHints;
 
     /**
      * @param testName the name of test to display on the status screen
@@ -561,6 +562,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 try {
                     central.selectInput(parent.id);
                     instructions = central.receiveInstructions();
+                    stringEqualsHints = central.receiveStringEqualsHints();
                 } catch (IOException e) {
                     throw new Error(e);
                 }

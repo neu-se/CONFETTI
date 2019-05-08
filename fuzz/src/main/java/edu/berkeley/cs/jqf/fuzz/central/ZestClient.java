@@ -39,6 +39,14 @@ public class ZestClient extends Central {
         }
     }
 
+    public LinkedList<String[]> receiveStringEqualsHints() throws IOException {
+        try {
+            return (LinkedList<String[]>) ois.readObject();
+        } catch (ClassNotFoundException e) {
+            throw new Error(e);
+        }
+    }
+
     public void sendCoverage(Coverage totalCoverage) {
         // TODO
     }

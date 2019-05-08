@@ -12,6 +12,7 @@ import java.util.TreeSet;
 public class Coordinator implements Runnable {
     private LinkedList<Input> inputs = new LinkedList<>();
     private HashMap<Branch, Branch> branches = new HashMap<>();
+    private HashMap<Input, HashMap<Integer, HashSet<String>>> stringEqualsHints = new HashMap<>();
     private KnarrWorker knarr;
     private ZestWorker zest;
 
@@ -67,6 +68,8 @@ public class Coordinator implements Runnable {
                     HashMap<Integer, HashSet<String>> eqs = new HashMap<>();
                     try {
                         bs = knarr.getBranchCoverage(input.bytes, eqs);
+                        if (!eqs.isEmpty())
+                            stringEqualsHints.put(input, eqs);
                     } catch (IOException e) {
                         throw new Error(e);
                     }
@@ -128,7 +131,7 @@ public class Coordinator implements Runnable {
                         lastRecommendation.put(input.id, recommendation);
                     }
 
-                    zest.recommend(input.id, recommendation);
+                    zest.recommend(input.id, recommendation, stringEqualsHints.get(input));
                 }
             }
         }

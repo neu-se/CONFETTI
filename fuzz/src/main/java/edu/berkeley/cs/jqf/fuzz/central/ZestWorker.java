@@ -6,6 +6,8 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.TreeSet;
 
@@ -13,7 +15,10 @@ class ZestWorker extends Worker {
     private ArrayList<LinkedList<byte[]>> inputs = new ArrayList<>();
     private ArrayList<Integer> fuzzing = new ArrayList<>();
     private ArrayList<TreeSet<Integer>> recommendations = new ArrayList<>();
+    private ArrayList<HashMap<Integer, HashSet<String>>> stringEqualsHints = new ArrayList<>();
     private Coordinator c;
+
+    private final String[] EMPTY = new String[0];
 
     public ZestWorker(ObjectInputStream ois, ObjectOutputStream oos, Coordinator c) {
         super(ois, oos);
@@ -55,6 +60,7 @@ class ZestWorker extends Worker {
 
                 synchronized (recommendations) {
                     recommendations.add(new TreeSet<>());
+                    stringEqualsHints.add(null);
                 }
 
             } else if (o instanceof Integer) {
@@ -67,32 +73,45 @@ class ZestWorker extends Worker {
                 int size = 0;
                 int toFuzz = fuzzing.get(selected);
                 LinkedList<int[]> instructionsToSend = new LinkedList<>();
+                LinkedList<String[]> stringsToSend = new LinkedList<>();
                 TreeSet<Integer> recs;
                 synchronized (recommendations) {
                     recs = recommendations.get(selected);
                 }
+
+                HashMap<Integer, HashSet<String>> inputStrings = stringEqualsHints.get(selected);
 
                 for (byte[] b : inputs.get(selected)) {
                     if (!recs.isEmpty()) {
                         boolean addThis = false;
 
                         for (int j = offset ; j < offset+b.length ; j++) {
-                            if (recs.contains(j)) {
-                                addThis = true;
+                            addThis =recs.contains(j);
+
+                            if (addThis)
                                 break;
-                            }
                         }
 
-                        if (!addThis)
+                        if (!addThis) {
+                            offset += b.length;
                             continue;
+                        }
                     }
 
                     instructionsToSend.addLast(new int[]{offset, b.length});
+                    if (inputStrings != null && inputStrings.containsKey(offset))
+                        stringsToSend.addLast(inputStrings.get(offset).toArray(new String[0]));
+                    else
+                        stringsToSend.addLast(EMPTY);
+
                     offset += b.length;
                 }
 
                 // Send instructions
                 oos.writeObject(instructionsToSend);
+                oos.writeObject(stringsToSend);
+
+//                printSentStringHints(stringsToSend);
 
                 // Update state
                 fuzzing.set(selected, (toFuzz + 1) % inputs.get(selected).size());
@@ -100,9 +119,20 @@ class ZestWorker extends Worker {
         }
     }
 
-    public void recommend(int inputID, TreeSet<Integer> recommendation) {
+    private void printSentStringHints(LinkedList<String[]> stringHintsSent) {
+        System.out.print("\tSent strings: ");
+        for (String[] s : stringHintsSent) {
+            System.out.print("[ ");
+            for (String ss : s)
+                System.out.print(ss + ",");
+            System.out.println("] ");
+        }
+    }
+
+    public void recommend(int inputID, TreeSet<Integer> recommendation, HashMap<Integer, HashSet<String>> eqs) {
         synchronized (recommendations) {
             recommendations.set(inputID, recommendation);
+            stringEqualsHints.set(inputID, eqs);
         }
     }
 }
