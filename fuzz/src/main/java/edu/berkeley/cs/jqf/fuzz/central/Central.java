@@ -10,7 +10,7 @@ import java.net.Socket;
 import java.util.Properties;
 
 public class Central {
-    private static final int PORT = 54321;
+    private static final int PORT = Integer.getInteger("centralPort",54321);
 
     protected Socket s;
     protected ObjectInputStream ois;
