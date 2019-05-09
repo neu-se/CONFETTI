@@ -1,11 +1,13 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Properties;
 
 public class Central {
     private static final int PORT = 54321;
@@ -34,7 +36,16 @@ public class Central {
         ZestWorker zest = null;
         KnarrWorker knarr = null;
 
-        Coordinator c = new Coordinator();
+        Properties props = new Properties();
+        System.out.println(args.length);
+        if (args.length > 0) {
+            try (FileInputStream fis = new FileInputStream(args[0])) {
+                props.load(fis);
+                System.out.println(props);
+            }
+        }
+
+        Coordinator c = new Coordinator(new Coordinator.Config(props));
 
         new Thread(c).start();
 

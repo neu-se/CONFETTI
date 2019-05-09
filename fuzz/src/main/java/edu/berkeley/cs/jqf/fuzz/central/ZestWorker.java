@@ -20,7 +20,7 @@ class ZestWorker extends Worker {
 
     private final String[] EMPTY = new String[0];
 
-    public ZestWorker(ObjectInputStream ois, ObjectOutputStream oos, Coordinator c) {
+    public ZestWorker(ObjectInputStream ois, ObjectOutputStream oos, Coordinator c) throws IOException {
         super(ois, oos);
         this.c = c;
     }
@@ -120,13 +120,21 @@ class ZestWorker extends Worker {
     }
 
     private void printSentStringHints(LinkedList<String[]> stringHintsSent) {
+        if (stringHintsSent.isEmpty())
+            return;
+
         System.out.print("\tSent strings: ");
         for (String[] s : stringHintsSent) {
+            if (s.length == 0)
+                continue;
+
             System.out.print("[ ");
             for (String ss : s)
                 System.out.print(ss + ",");
-            System.out.println("] ");
+            System.out.print("] ");
         }
+
+        System.out.println();
     }
 
     public void recommend(int inputID, TreeSet<Integer> recommendation, HashMap<Integer, HashSet<String>> eqs) {

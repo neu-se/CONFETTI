@@ -7,14 +7,23 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.TreeSet;
 
 public class Coordinator implements Runnable {
     private LinkedList<Input> inputs = new LinkedList<>();
     private HashMap<Branch, Branch> branches = new HashMap<>();
-    private HashMap<Input, HashMap<Integer, HashSet<String>>> stringEqualsHints = new HashMap<>();
+    private HashMap<Input, HashSet<String>> perInputStringEqualsHints = new HashMap<>();
+    private HashMap<Input, HashMap<Integer, HashSet<String>>> perByteStringEqualsHints = new HashMap<>();
+    private HashSet<String> globalStringEqualsHints = new HashSet<>();
     private KnarrWorker knarr;
     private ZestWorker zest;
+
+    private final Config config;
+
+    public Coordinator(Config config) {
+        this.config = config;
+    }
 
     protected final synchronized void foundInput(int id, byte[] bytes, boolean valid) {
         Input in = new Input();
@@ -68,17 +77,40 @@ public class Coordinator implements Runnable {
                     HashMap<Integer, HashSet<String>> eqs = new HashMap<>();
                     try {
                         bs = knarr.getBranchCoverage(input.bytes, eqs);
-                        if (!eqs.isEmpty())
-                            stringEqualsHints.put(input, eqs);
+                        if (!eqs.isEmpty()) {
+                            switch (config.hinting) {
+                                case NONE:
+                                    break;
+                                case GLOBAL:
+                                    for (HashSet<String> s : eqs.values())
+                                        globalStringEqualsHints.addAll(s);
+                                    break;
+                                case PER_INPUT:
+                                    HashSet<String> ss = new HashSet<>();
+                                    for (HashSet<String> s : eqs.values())
+                                        ss.addAll(s);
+                                    perInputStringEqualsHints.put(input, ss);
+                                    break;
+                                case PER_BYTE:
+                                    perByteStringEqualsHints.put(input, eqs);
+                                    break;
+                                default:
+                                    throw new Error("Not implemented");
+                            }
+
+                        }
                     } catch (IOException e) {
                         throw new Error(e);
                     }
 
                     // Check if any previous branches were explored
-                    for (Branch b : bs) {
-                        // TODO make source filter generic and not Closure specific
-                        if (b.source == null || b.source.contains("quickcheck") || b.source.contains("Token") || b.source.contains("parsing/parser/"))
+                    branches: for (Branch b : bs) {
+                        if (b.source == null)
                             continue;
+
+                        for (String f : config.filter)
+                            if (b.source.contains(f))
+                                continue branches;
 
                         Branch existing;
                         if (!branches.containsKey(b)) {
@@ -131,7 +163,28 @@ public class Coordinator implements Runnable {
                         lastRecommendation.put(input.id, recommendation);
                     }
 
-                    zest.recommend(input.id, recommendation, stringEqualsHints.get(input));
+                    HashMap<Integer, HashSet<String>> stringHints = new HashMap<>();
+                    switch (config.hinting) {
+                        case NONE:
+                            break;
+                        case GLOBAL:
+                            HashSet<String> globals = new HashSet<>(globalStringEqualsHints);
+                            for (int i = 0 ; i < input.bytes.length ; i++)
+                                stringHints.put(i, globals);
+                            break;
+                        case PER_INPUT:
+                            HashSet<String> perInput = new HashSet<>(perInputStringEqualsHints.getOrDefault(input, new HashSet<>()));
+                            for (int i = 0 ; i < input.bytes.length ; i++)
+                                stringHints.put(i, perInput);
+                            break;
+                        case PER_BYTE:
+                            stringHints.putAll(perByteStringEqualsHints.getOrDefault(input, new HashMap<>()));
+                            break;
+                        default:
+                            throw new Error("Not implemented");
+                    }
+
+                    zest.recommend(input.id, recommendation, stringHints);
                 }
             }
         }
@@ -141,6 +194,10 @@ public class Coordinator implements Runnable {
         this.knarr = knarr;
         this.zest = zest;
         this.notifyAll();
+    }
+
+    public Config getConfig() {
+        return this.config;
     }
 
     private static class Input {
@@ -184,6 +241,30 @@ public class Coordinator implements Runnable {
         @Override
         public int hashCode() {
             return Objects.hash(takenID, notTakenID);
+        }
+    }
+
+    public static class Config {
+        public enum Hinting { NONE, GLOBAL, PER_INPUT, PER_BYTE }
+
+        public final String[] filter;
+        public final Hinting hinting;
+
+        public Config(Properties p) {
+            {
+                String f = p.getProperty("path.filter");
+                filter = (f == null) ? null : f.split(",");
+            }
+            {
+                Hinting h;
+                try {
+                    h = Hinting.valueOf(p.getProperty("string.hints"));
+                } catch (IllegalArgumentException _) {
+                    h = Hinting.NONE;
+                }
+
+                hinting = h;
+            }
         }
     }
 }

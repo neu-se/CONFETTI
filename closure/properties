@@ -1,0 +1,5 @@
+path.filter=quickcheck,Token,parsing/parser/
+#string.hints=NONE
+#string.hints=GLOBAL
+#string.hints=PER_INPUT
+string.hints=PER_BYTE
