@@ -159,7 +159,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private Map<Object, Input> responsibleInputs = new HashMap<>(totalCoverage.size());
 
     /** The set of unique failures found so far. */
-    Set<List<StackTraceElement>> uniqueFailures = new HashSet<>();
+    private Set<List<StackTraceElement>> uniqueFailures = new HashSet<>();
 
     /**
      * A map of execution contexts (call stacks) to locations in saved inputs with those contexts.
@@ -255,6 +255,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     /** Probability of splicing in getOrGenerateFresh() */
     static final double DEMAND_DRIVEN_SPLICING_PROBABILITY = 0;
+
+    static final int UNIQUE_SENSITIVITY = Integer.getInteger("jqf.ei.UNIQUE_SENSITIVITY", Integer.MAX_VALUE);
 
     private ZestClient central;
     private RecordingInputStream ris;
@@ -761,10 +763,16 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             }
 
             // Attempt to add this to the set of unique failures
-            StackTraceElement[] trace = new StackTraceElement[5];
             StackTraceElement[] root = rootCause.getStackTrace();
-            System.arraycopy(root, 0, trace, 0, Math.min(trace.length, root.length));
-//            if (uniqueFailures.add(Arrays.asList(rootCause.getStackTrace()))) {
+            StackTraceElement[] trace;
+
+            if (root.length < UNIQUE_SENSITIVITY) {
+                trace = root;
+            } else {
+                trace = new StackTraceElement[Math.min(UNIQUE_SENSITIVITY, root.length)];
+                System.arraycopy(root, 0, trace, 0, trace.length);
+            }
+
             if (uniqueFailures.add(Arrays.asList(trace))) {
 
                 // Save crash to disk
