@@ -96,13 +96,13 @@ class ZestWorker extends Worker {
                             offset += b.length;
                             continue;
                         }
-                    }
 
-                    instructionsToSend.addLast(new int[]{offset, b.length});
-                    if (inputStrings != null && inputStrings.containsKey(offset))
-                        stringsToSend.addLast(inputStrings.get(offset).toArray(new String[0]));
-                    else
-                        stringsToSend.addLast(EMPTY);
+                        instructionsToSend.addLast(new int[]{offset, b.length});
+                        if (inputStrings != null && inputStrings.containsKey(offset))
+                            stringsToSend.addLast(inputStrings.get(offset).toArray(new String[0]));
+                        else
+                            stringsToSend.addLast(EMPTY);
+                    }
 
                     offset += b.length;
                 }

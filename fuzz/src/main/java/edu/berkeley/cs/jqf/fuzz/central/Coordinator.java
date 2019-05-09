@@ -168,11 +168,13 @@ public class Coordinator implements Runnable {
                         case NONE:
                             break;
                         case GLOBAL:
+                            recommendation.clear();
                             HashSet<String> globals = new HashSet<>(globalStringEqualsHints);
                             for (int i = 0 ; i < input.bytes.length ; i++)
                                 stringHints.put(i, globals);
                             break;
                         case PER_INPUT:
+                            recommendation.clear();
                             HashSet<String> perInput = new HashSet<>(perInputStringEqualsHints.getOrDefault(input, new HashSet<>()));
                             for (int i = 0 ; i < input.bytes.length ; i++)
                                 stringHints.put(i, perInput);
