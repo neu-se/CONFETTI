@@ -59,4 +59,11 @@ public class CompilerTest {
         SourceFile input = SourceFile.fromCode("input", code);
         compile(input); // No assertions; we are looking for unexpected exceptions
     }
+
+    public static void main(String[] args) {
+        CompilerTest t = new CompilerTest();
+        t.compiler = new Compiler(System.out);
+        t.initCompiler();
+        t.compiler.compile(t.externs, SourceFile.fromFile(args[0]), t.options);
+    }
 }
