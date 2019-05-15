@@ -34,7 +34,7 @@ public class StrutsTomcatTest extends TomcatBaseTest {
 
     private static int count = 0;
 
-    private final String webapp_string = "struts2-showcase-2_3_10";
+    private final String webapp_string = "struts2-showcase-2_5_20";
 
     private static boolean tomcatTeardown = false;
 
@@ -300,7 +300,7 @@ public class StrutsTomcatTest extends TomcatBaseTest {
 
             }
         }, null).evaluate();
-     // StrutsTomcatTest.tomcat.getServer().await();
+       StrutsTomcatTest.tomcat.getServer().await();
 
 //        String request = "POST /struts2-showcase-2_3_10/integration/editGangster.action HTTP/1.1" + "\r\n"+
 //        "Host: any" + "\r\n" + "Content-Type: application/x-www-form-urlencoded\r\n" +

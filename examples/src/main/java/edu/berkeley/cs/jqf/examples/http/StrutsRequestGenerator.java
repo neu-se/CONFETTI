@@ -66,15 +66,15 @@ public class StrutsRequestGenerator extends HTTPRequestGenerator {
 
 
         // Add more headers - make sure not to step over the ones we need
-        int index = random.nextInt(max_elements);
-        int i = 0;
-        while(i< index) {
-            String newHeader = makeString(random, status);
-            if(!staticHeaders.contains(newHeader)) {
-                builder.addHeader(newHeader, (injectOGNLInHeaders && this.decideIfInjectOGNL(random)) ? OGNLInjectionStrings.generate(random, status) :makeMultiLineString(random, status));
-                i++;
-            }
-        }
+//        int index = random.nextInt(max_elements);
+//        int i = 0;
+//        while(i< index) {
+//            String newHeader = makeString(random, status);
+//            if(!staticHeaders.contains(newHeader)) {
+//                builder.addHeader(newHeader, (injectOGNLInHeaders && this.decideIfInjectOGNL(random)) ? OGNLInjectionStrings.generate(random, status) :makeMultiLineString(random, status));
+//                i++;
+//            }
+//        }
     }
 
     @Override
@@ -96,6 +96,7 @@ public class StrutsRequestGenerator extends HTTPRequestGenerator {
         }
         request += "\r\n";
         request += body;
+        request += "\r\n\r\n";
 
         this.OGNLInjectionDone = false;
         return request;
@@ -135,7 +136,7 @@ public class StrutsRequestGenerator extends HTTPRequestGenerator {
             if(random.nextBoolean()) {
                 body += OGNL_INJECTION_STRING;
             } else {
-                body += stringGenerator.generate(random, status);
+                body += randomStringGenerator.generate(random, status);
             }
 
             if(i != bodyVals.size() - 1) {
@@ -143,7 +144,7 @@ public class StrutsRequestGenerator extends HTTPRequestGenerator {
             }
         }
 
-        body += "\r\n\r\n";
+
         return body;
     }
 
