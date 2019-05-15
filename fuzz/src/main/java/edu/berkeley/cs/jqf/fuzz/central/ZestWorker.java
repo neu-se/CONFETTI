@@ -110,6 +110,7 @@ class ZestWorker extends Worker {
                 // Send instructions
                 oos.writeObject(instructionsToSend);
                 oos.writeObject(stringsToSend);
+                oos.reset();
 
 //                printSentStringHints(stringsToSend);
 

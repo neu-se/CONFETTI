@@ -24,6 +24,7 @@ public class ZestClient extends Central {
         oos.writeObject(inputRequests);
         oos.writeObject(result);
         oos.writeInt(id);
+        oos.reset();
         oos.flush();
     }
 

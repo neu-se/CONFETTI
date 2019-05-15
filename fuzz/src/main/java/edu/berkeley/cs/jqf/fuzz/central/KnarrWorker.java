@@ -22,6 +22,7 @@ class KnarrWorker extends Worker {
 
         // Send input to Knarr process
         oos.writeObject(bytes);
+        oos.reset();
         oos.flush();
 
         // Get results from Knarr process
