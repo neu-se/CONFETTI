@@ -1,0 +1,6 @@
+action:redirectActionPrefixAction
+redirect-action:redirectActionPrefix
+method:alternateMethod
+action:actionPrefix
+text
+redirect:http://www.google.com

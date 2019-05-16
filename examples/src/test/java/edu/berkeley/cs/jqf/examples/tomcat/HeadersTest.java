@@ -42,16 +42,16 @@ import org.junit.runner.RunWith;
 @RunWith(JQF.class)
 public class HeadersTest {
 
-    @Fuzz
-    public void parseCoyoteHeaders(byte[] input) {
-        Assume.assumeTrue(input.length < 200);
-        HeaderParser parser = new HeaderParser(input);
-        try {
-            parser.parseHeaders();
-        } catch (IllegalArgumentException e) {
-            Assume.assumeNoException(e);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
+//    @Fuzz
+//    public void parseCoyoteHeaders(byte[] input) {
+//        Assume.assumeTrue(input.length < 200);
+//        HeaderParser parser = new HeaderParser(input);
+//        try {
+//            parser.parseHeaders();
+//        } catch (IllegalArgumentException e) {
+//            Assume.assumeNoException(e);
+//        } catch (IOException e) {
+//            throw new RuntimeException(e);
+//        }
+//    }
 }

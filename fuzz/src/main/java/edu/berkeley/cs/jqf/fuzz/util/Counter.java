@@ -81,11 +81,11 @@ public class Counter {
         }
     }
 
-    private int idx(int key) {
+    private synchronized int idx(int key) {
         return Hashing.hash(key, size);
     }
 
-    protected int incrementAtIndex(int index, int delta) {
+    protected synchronized int incrementAtIndex(int index, int delta) {
         return (this.counts[index] += delta);
     }
 
@@ -99,7 +99,7 @@ public class Counter {
      * @param key the key whose count to increment
      * @return the new value after incrementing the count
      */
-    public int increment(int key) {
+    public synchronized int increment(int key) {
         return incrementAtIndex(idx(key), 1);
     }
 
@@ -115,7 +115,7 @@ public class Counter {
      * @param delta the amount to increment by
      * @return the new value after incrementing the count
      */
-    public int increment(int key, int delta) {
+    public synchronized int increment(int key, int delta) {
         return incrementAtIndex(idx(key), delta);
     }
 
@@ -124,7 +124,7 @@ public class Counter {
      *
      * @return the number of indices with non-zero counts
      */
-    public int getNonZeroSize() {
+    public synchronized int getNonZeroSize() {
         int size = 0;
         for (int i = 0; i < counts.length; i++) {
             int count = counts[i];
@@ -161,7 +161,7 @@ public class Counter {
      *
      * @return a set of non-zero count values in this counter.
      */
-    public Collection<Integer> getNonZeroValues() {
+    public synchronized Collection<Integer> getNonZeroValues() {
         List<Integer> values = new ArrayList<>(size /2);
         for (int i = 0; i < counts.length; i++) {
             int count = counts[i];
@@ -181,16 +181,16 @@ public class Counter {
      * @param key the key to query
      * @return the count for the index corresponding to this key
      */
-    public int get(int key) {
+    public synchronized int get(int key) {
         return this.counts[idx(key)];
     }
 
 
-    public int getAtIndex(int idx) {
+    public synchronized int getAtIndex(int idx) {
         return this.counts[idx];
     }
 
-    public void setAtIndex(int idx, int value) {
+    public synchronized void setAtIndex(int idx, int value) {
         this.counts[idx] = value;
     }
 }

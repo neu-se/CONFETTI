@@ -9,31 +9,51 @@ import com.pholser.junit.quickcheck.random.SourceOfRandomness;
 import edu.berkeley.cs.jqf.examples.common.AlphaStringGenerator;
 import edu.berkeley.cs.jqf.examples.common.Dictionary;
 import edu.berkeley.cs.jqf.examples.common.DictionaryBackedStringGenerator;
+import org.apache.http.Header;
 import org.apache.http.client.methods.RequestBuilder;
 import org.apache.http.client.methods.HttpUriRequest;
 
 import java.io.IOException;
 
-public class HTTPRequestGenerator extends Generator<HttpUriRequest> {
+public class HTTPRequestGenerator extends Generator<String> {
 
     public HTTPRequestGenerator() {
-        super(HttpUriRequest.class);
+        super(String.class);
     }
 
-    private final int max_elements = 5;
+    protected final int max_elements = 8;
+
+
 
     @Override
-    public HttpUriRequest generate(SourceOfRandomness random, GenerationStatus status) {
+    public String generate(SourceOfRandomness random, GenerationStatus status) {
             RequestBuilder builder = getReqType(random, status);
             getHeaders(builder,random,status);
 
-            getParameters(builder,random,status);
-            return builder.build();
+           // getParameters(builder,random,status);
+            HttpUriRequest req =  builder.build();
+            String request = req.toString() + "\r\n";
+
+            Header[] headerFields = req.getAllHeaders();
+            for (int i = 0; i < headerFields.length; i++) {
+                request += (headerFields[i].getName() + ": " + headerFields[i].getValue() + "\r\n");
+            }
+            request += "\r\n";
+            request += getBody();
+
+        System.out.println(request);
+            return request;
     }
 
-    private Generator<String> stringGenerator = new AlphaStringGenerator();
 
-    private Generator<String> randomStringGenerator = new AlphaStringGenerator();
+    // Basic Http Request Generator returns request with no body
+    protected String getBody() {
+        return "";
+    }
+
+    protected Generator<String> stringGenerator = new AlphaStringGenerator();
+
+    protected Generator<String> randomStringGenerator = new AlphaStringGenerator();
     /**
      * Configures the string generator used by this generator to use
      * a dictionary. This is useful for overriding the default
@@ -47,15 +67,15 @@ public class HTTPRequestGenerator extends Generator<HttpUriRequest> {
         stringGenerator = new DictionaryBackedStringGenerator(dict.value(), stringGenerator);
     }
 
-    private String makeString(SourceOfRandomness random, GenerationStatus status) {
+    protected String makeString(SourceOfRandomness random, GenerationStatus status) {
         return stringGenerator.generate(random, status);
     }
 
-    private String makeAlphaString(SourceOfRandomness random, GenerationStatus status) {
+    protected String makeAlphaString(SourceOfRandomness random, GenerationStatus status) {
         return randomStringGenerator.generate(random,status);
     }
 
-    private String makeMultiLineString(SourceOfRandomness random, GenerationStatus status) {
+    protected String makeMultiLineString(SourceOfRandomness random, GenerationStatus status) {
         String final_string = randomStringGenerator.generate(random,status);
         while(random.nextBoolean()) {
             final_string += "\n";
@@ -64,8 +84,8 @@ public class HTTPRequestGenerator extends Generator<HttpUriRequest> {
         return final_string;
     }
 
-    private RequestBuilder getReqType(SourceOfRandomness random, GenerationStatus status) {
-        int index = random.nextInt(5);
+    protected RequestBuilder getReqType(SourceOfRandomness random, GenerationStatus status) {
+        int index  = random.nextInt(5);
         switch(index) {
             case 0:
                 return RequestBuilder.get(makeAlphaString(random, status));
@@ -84,18 +104,14 @@ public class HTTPRequestGenerator extends Generator<HttpUriRequest> {
 
     }
 
-    private void getHeaders(RequestBuilder builder, SourceOfRandomness random, GenerationStatus status) {
+    protected void getHeaders(RequestBuilder builder, SourceOfRandomness random, GenerationStatus status) {
         int index = random.nextInt(max_elements);
-        boolean useDict  = random.nextBoolean();
-
         for(int i = 0; i< index; i++) {
-            if (useDict)
                 builder.addHeader(makeString(random, status), makeMultiLineString(random,status));
-            else
-                builder.addHeader(makeAlphaString(random, status), makeAlphaString(random,status));
+
         }
     }
-    private void getParameters(RequestBuilder builder, SourceOfRandomness random, GenerationStatus status) {
+    protected void getParameters(RequestBuilder builder, SourceOfRandomness random, GenerationStatus status) {
         int index = random.nextInt(max_elements);
         for(int i = 0; i< index; i++) {
             builder.addParameter(makeAlphaString(random, status), makeAlphaString(random,status));

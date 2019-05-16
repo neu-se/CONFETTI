@@ -28,6 +28,7 @@
  */
 package edu.berkeley.cs.jqf.fuzz.util;
 
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Collection;
 
@@ -49,6 +50,7 @@ public class Coverage implements TraceEventVisitor {
     /** The coverage counts for each edge. */
     private final Counter counter = new NonZeroCachingCounter(COVERAGE_MAP_SIZE);
 
+    private boolean lock = false;
     /** Creates a new coverage map. */
     public Coverage() {
 
@@ -88,12 +90,16 @@ public class Coverage implements TraceEventVisitor {
 
     @Override
     public void visitBranchEvent(BranchEvent b) {
-        counter.increment(b.getIid() * 31 + b.getArm());
+        if(!lock) {
+            counter.increment(b.getIid() * 31 + b.getArm());
+        }
     }
 
     @Override
     public void visitCallEvent(CallEvent e) {
-        counter.increment(e.getIid());
+        if(!lock) {
+            counter.increment(e.getIid());
+        }
     }
 
     /**
@@ -117,10 +123,14 @@ public class Coverage implements TraceEventVisitor {
 
     public Collection<?> computeNewCoverage(Coverage baseline) {
         Collection<Integer> newCoverage = new ArrayList<>();
-        for (int idx : this.counter.getNonZeroIndices()) {
-            if (baseline.counter.getAtIndex(idx) == 0) {
-                newCoverage.add(idx);
-            }
+
+
+
+       Collection<Integer> baseNonZero = this.counter.getNonZeroIndices();
+       for (int idx : baseNonZero) {
+           if (baseline.counter.getAtIndex(idx) == 0) {
+             newCoverage.add(idx);
+           }
         }
         return newCoverage;
 
@@ -133,6 +143,14 @@ public class Coverage implements TraceEventVisitor {
      */
     public void clear() {
         this.counter.clear();
+    }
+
+    public void lock() {
+        lock = true;
+    }
+
+    public void unlock() {
+        lock = false;
     }
 
     private static int[] HOB_CACHE = new int[1024];
