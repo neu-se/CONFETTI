@@ -55,7 +55,7 @@ import edu.berkeley.cs.jqf.fuzz.guidance.StreamBackedRandom;
 import edu.berkeley.cs.jqf.fuzz.Fuzz;
 import edu.berkeley.cs.jqf.fuzz.junit.GuidedFuzzing;
 import edu.berkeley.cs.jqf.fuzz.junit.TrialRunner;
-import edu.columbia.cs.psl.vmvm.runtime.Reinitializer;
+import java.edu.columbia.cs.psl.vmvm.runtime.Reinitializer;
 import janala.instrument.SnoopInstructionTransformer;
 import org.junit.AssumptionViolatedException;
 import org.junit.runners.model.FrameworkMethod;
