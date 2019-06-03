@@ -43,12 +43,20 @@ import edu.berkeley.cs.jqf.examples.common.Dictionary;
 import edu.berkeley.cs.jqf.fuzz.Fuzz;
 import edu.berkeley.cs.jqf.fuzz.JQF;
 import org.apache.tools.ant.BuildException;
+import org.apache.tools.ant.Location;
 import org.apache.tools.ant.Project;
 import org.apache.tools.ant.helper.ProjectHelperImpl;
+import org.apache.tools.ant.util.FileUtils;
+import org.apache.tools.ant.util.JAXPUtils;
 import org.junit.Assume;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.w3c.dom.Document;
+import org.xml.sax.HandlerBase;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+import org.xml.sax.SAXParseException;
+import org.xml.sax.helpers.XMLReaderAdapter;
 
 @RunWith(JQF.class)
 public class ProjectBuilderTest {
@@ -68,11 +76,8 @@ public class ProjectBuilderTest {
     public void testWithInputStream(InputStream in) {
         File buildXml = null;
         try {
-            buildXml = serializeInputStream(in);
-            ProjectHelperImpl p = new ProjectHelperImpl();
-            p.parse(new Project(), buildXml);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+            ProjectHelperImpl p = new MyProjectHelperImpl();
+            p.parse(new Project(), in);
         } catch (BuildException e) {
             Assume.assumeNoException(e);
         } finally {
@@ -103,5 +108,92 @@ public class ProjectBuilderTest {
     @Test
     public void testSmall() throws BuildException {
         testWithString("<project default='s' />");
+    }
+
+    private static class MyProjectHelperImpl extends ProjectHelperImpl {
+
+        @Override
+        public void parse(Project project, Object source) throws BuildException {
+            if (source instanceof InputStream) {
+
+                InputStream inputStream = (InputStream) source;
+                InputSource inputSource = null;
+
+                org.xml.sax.Parser parser;
+
+                try {
+                    try {
+                        parser = JAXPUtils.getParser();
+                    } catch (BuildException e) {
+                        parser = new XMLReaderAdapter(JAXPUtils.getXMLReader());
+                    }
+                    inputSource = new InputSource(inputStream);
+                    HandlerBase hb; // = new RootHandler(this);
+                    try {
+                        Class<?> c = Class.forName(ProjectHelperImpl.class.getName() + "$RootHandler");
+                        Constructor<?> cc = c.getDeclaredConstructor(ProjectHelperImpl.class);
+                        cc.setAccessible(true);
+                        hb = (HandlerBase) cc.newInstance(this);
+
+                        {
+                            Field f = ProjectHelperImpl.class.getDeclaredField("parser");
+                            f.setAccessible(true);
+                            f.set(this, parser);
+                        }
+                        {
+                            Field f = ProjectHelperImpl.class.getDeclaredField("project");
+                            f.setAccessible(true);
+                            f.set(this, project);
+                        }
+                        {
+                            Field f = ProjectHelperImpl.class.getDeclaredField("buildFile");
+                            f.setAccessible(true);
+                            f.set(this, new File("/tmp/build.xml"));
+                        }
+                        {
+                            Field f = ProjectHelperImpl.class.getDeclaredField("buildFileParent");
+                            f.setAccessible(true);
+                            f.set(this, new File("/tmp"));
+                        }
+                    } catch (ClassNotFoundException | NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchFieldException e) {
+                        throw new Error(e);
+                    }
+                    parser.setDocumentHandler(hb);
+                    parser.setEntityResolver(hb);
+                    parser.setErrorHandler(hb);
+                    parser.setDTDHandler(hb);
+                    parser.parse(inputSource);
+                } catch (SAXParseException exc) {
+                    Location location = new Location(exc.getSystemId(), exc.getLineNumber(), exc
+                            .getColumnNumber());
+
+                    Throwable t = exc.getException();
+                    if (t instanceof BuildException) {
+                        BuildException be = (BuildException) t;
+                        if (be.getLocation() == Location.UNKNOWN_LOCATION) {
+                            be.setLocation(location);
+                        }
+                        throw be;
+                    }
+                    throw new BuildException(exc.getMessage(), t, location);
+                } catch (SAXException exc) {
+                    Throwable t = exc.getException();
+                    if (t instanceof BuildException) {
+                        throw (BuildException) t;
+                    }
+                    throw new BuildException(exc.getMessage(), t);
+                } catch (FileNotFoundException exc) {
+                    throw new BuildException(exc);
+                } catch (UnsupportedEncodingException exc) {
+                    throw new BuildException("Encoding of project file is invalid.", exc);
+                } catch (IOException exc) {
+                    throw new BuildException("Error reading project file: " + exc.getMessage(), exc);
+                } finally {
+                    FileUtils.close(inputStream);
+                }
+            } else {
+                super.parse(project, source);
+            }
+        }
     }
 }
