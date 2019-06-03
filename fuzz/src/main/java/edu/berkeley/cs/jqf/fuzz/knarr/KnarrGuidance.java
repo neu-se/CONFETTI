@@ -106,8 +106,14 @@ public class KnarrGuidance implements Guidance {
         bs.add(bb);
 
         if (!eq.isEmpty()) {
-            for (Integer i : bb.controllingBytes)
-                stringEqualsArgs.put(i, eq);
+            for (Integer i : bb.controllingBytes) {
+                HashSet<String> cur = stringEqualsArgs.get(i);
+                if (cur == null) {
+                    cur = new HashSet<>();
+                    stringEqualsArgs.put(i, cur);
+                }
+                cur.addAll(eq);
+            }
         }
     }
 
