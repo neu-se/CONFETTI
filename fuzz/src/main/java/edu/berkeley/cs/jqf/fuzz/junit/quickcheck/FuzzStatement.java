@@ -173,7 +173,7 @@ public class FuzzStatement extends Statement {
                         } else {
                             throw e;
                         }
-                    } catch (AssumptionViolatedException e) {
+                    } catch (org.junit.internal.AssumptionViolatedException e) {
                         // Propagate assumption violations out
                         throw e;
                     } catch (GuidanceException e) {
@@ -194,7 +194,7 @@ public class FuzzStatement extends Statement {
                 } catch (GuidanceException e) {
                     // Throw the guidance exception outside to stop fuzzing
                     throw e;
-                } catch (AssumptionViolatedException e) {
+                } catch (org.junit.internal.AssumptionViolatedException e) {
                     result = INVALID;
                     error = e;
                 } catch (TimeoutException e) {
