@@ -788,7 +788,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     File argsFile = new File(savedFailuresDirectory, saveFileName + ".input");
                     try (PrintWriter pw = new PrintWriter(new FileWriter(argsFile))) {
                         for (Object o : args)
-                            pw.println(o.toString());
+                            saveInputToDisk(pw, o);
                     }
                     infoLog("%s","Found crash: " + error.getClass() + " - " + (msg != null ? msg : ""));
                     String how = currentInput.desc;
@@ -878,6 +878,27 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     }
 
+    private void saveInputToDisk(PrintWriter pw, Object o) {
+        if (o instanceof Document) {
+            try {
+                TransformerFactory tf = TransformerFactory.newInstance();
+                Transformer transformer = null;
+                transformer = tf.newTransformer();
+                transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "no");
+                transformer.setOutputProperty(OutputKeys.METHOD, "xml");
+                transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+                transformer.setOutputProperty(OutputKeys.ENCODING, "UTF-8");
+                transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "4");
+
+                transformer.transform(new DOMSource((Document)o), new StreamResult(pw));
+            } catch (TransformerException e) {
+                e.printStackTrace();
+            }
+        } else {
+            pw.println(o.toString());
+        }
+    }
+
     private void saveCurrentInput(Set<Object> responsibilities, String why) throws IOException {
 
         // First, save to disk (note: we issue IDs to everyone, but only write to disk  if valid)
@@ -892,8 +913,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
         File argsFile = new File(savedInputsDirectory, saveFileName + ".input");
         try (PrintWriter pw = new PrintWriter(new FileWriter(argsFile))) {
-            for (Object o : args)
-                pw.println(o.toString());
+            for (Object o : args) {
+                saveInputToDisk(pw, o);
+            }
         }
 
         // If not using guidance, do nothing else
