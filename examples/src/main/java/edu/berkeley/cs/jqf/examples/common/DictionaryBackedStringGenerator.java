@@ -39,6 +39,11 @@ import java.util.List;
 import com.pholser.junit.quickcheck.generator.GenerationStatus;
 import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
+import edu.berkeley.cs.jqf.fuzz.guidance.StringEqualsHintingInputStream;
+import edu.columbia.cs.psl.phosphor.runtime.Taint;
+import edu.columbia.cs.psl.phosphor.struct.LazyCharArrayObjTags;
+import edu.columbia.cs.psl.phosphor.struct.TaintedObjectWithObjTag;
+import edu.gmu.swe.knarr.runtime.Symbolicator;
 
 public class DictionaryBackedStringGenerator extends Generator<String> {
 
@@ -66,9 +71,23 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
 
     @Override
     public String generate(SourceOfRandomness random, GenerationStatus status) {
+        int coin = random.nextInt(0,100);
         if (true) {
-            int choice = random.nextInt(dictionary.size());
-            return dictionary.get(choice);
+            int choice = random.nextInt(0, Integer.MAX_VALUE);
+
+            String[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+
+            String word;
+
+            if (hints != null && hints.length > 0 && (coin < 90)) {
+                choice = choice % hints.length;
+                word = hints[choice];
+            } else {
+                choice = choice % dictionary.size();
+                word = dictionary.get(choice);
+            }
+
+            return applyTaints(word, choice);
         } else {
             if (fallback == null) {
                 fallback = gen().type(String.class);
@@ -76,5 +95,28 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
             return fallback.generate(random, status);
         }
     }
+
+    private static String applyTaints(String result, Object taint) {
+        if (!(taint instanceof TaintedObjectWithObjTag))
+            return result;
+
+        // New string to avoid adding taints to the dictionary itself
+        String ret = new String(result);
+
+        if (Symbolicator.getTaints(result) instanceof LazyCharArrayObjTags) {
+            LazyCharArrayObjTags taints = (LazyCharArrayObjTags) Symbolicator.getTaints(result);
+            if (taints.taints != null)
+                for (int i = 0 ; i < taints.taints.length ; i++)
+                    taints.taints[i] = (taints.taints[i] == null ? ((Taint)((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG()) : taints.taints[i]);
+            else
+                taints.setTaints(((Taint)((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG()));
+        }
+
+        // New string so that Knarr can compute the tag for the string itself based on the tag for each character
+        ret = new String(ret.getBytes(), 0, ret.length());
+
+        return ret;
+    }
+
 
 }

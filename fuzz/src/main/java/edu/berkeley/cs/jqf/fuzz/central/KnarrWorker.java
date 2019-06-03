@@ -31,6 +31,7 @@ class KnarrWorker extends Worker {
         try {
             lst = ((LinkedList<Coordinator.Branch>)ois.readObject());
             stringEqualsArgs.putAll(((HashMap<Integer, HashSet<String>>)ois.readObject()));
+//            System.out.println(stringEqualsArgs);
         } catch (ClassNotFoundException e) {
             throw new Error(e);
         }
