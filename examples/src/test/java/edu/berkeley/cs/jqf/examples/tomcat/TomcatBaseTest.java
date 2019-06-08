@@ -48,8 +48,10 @@ public abstract class TomcatBaseTest  {
 
     private static final String baseDir = "tomcat";
 
-    private static final String webappDir = "/home/jamesk/Documents/CS_701/junit-ifc/experiments/apache-tomcat-8.0.47/webapps"; //".." + File.separator + "struts-2.3.37" + File.separator + "apps";
+    //private static final String webappDir = "/home/jamesk/Documents/jqf-artifact/software/jqf/examples-inst/apache-tomcat-8.0.47/webapps"; //".." + File.separator + "struts-2.3.37" + File.separator + "apps";
+    private static final String webappDir = "/home/jamesk/Documents/jqf-artifact/software/jqf/examples/apache-tomcat-8.0.47/webapps"; //".." + File.separator + "struts-2.3.37" + File.separator + "apps";
 
+    private static final String  instrumentedWebappDir= "/home/jamesk/Documents/jqf-artifact/software/jqf/examples-inst/apache-tomcat-8.0.47/webapps";
     private static final HashSet<String> addedWebapps = new HashSet<>();
 
 //
@@ -175,7 +177,7 @@ public abstract class TomcatBaseTest  {
 
                 // Use a random free port
 
-                connector.setPort(8080);
+                connector.setPort(0);
 
 
                 tomcat.getService().addConnector(connector);
@@ -302,7 +304,10 @@ public abstract class TomcatBaseTest  {
 
         if(addedWebapps.add(name)) {
 
-            tomcat.addWebapp("/" + name, new File(webappDir + File.separator + name).getAbsolutePath());
+            if(System.getenv("KNARR_EXEC") == null)
+                tomcat.addWebapp("/" + name, new File(webappDir + File.separator + name).getAbsolutePath());
+            else
+                tomcat.addWebapp("/" + name, new File(instrumentedWebappDir + File.separator + name).getAbsolutePath());
 
         }
 

