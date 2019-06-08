@@ -18,7 +18,9 @@ public class StringEqualsHintingInputStream extends InputStream {
     private static String[] hintsForCurrentInput = EMPTY;
 
     public static String[] getHintsForCurrentInput() {
-        return hintsForCurrentInput;
+        String[] ret = hintsForCurrentInput;
+        hintsForCurrentInput = EMPTY;
+        return ret;
     }
 
     public StringEqualsHintingInputStream(InputStream is, LinkedList<int[]> reqs, LinkedList<String[]> hints) {

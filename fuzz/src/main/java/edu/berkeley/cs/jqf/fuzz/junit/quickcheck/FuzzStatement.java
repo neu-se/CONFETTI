@@ -55,7 +55,7 @@ import edu.berkeley.cs.jqf.fuzz.guidance.StreamBackedRandom;
 import edu.berkeley.cs.jqf.fuzz.Fuzz;
 import edu.berkeley.cs.jqf.fuzz.junit.GuidedFuzzing;
 import edu.berkeley.cs.jqf.fuzz.junit.TrialRunner;
-import edu.columbia.cs.psl.vmvm.runtime.Reinitializer;
+import java.edu.columbia.cs.psl.vmvm.runtime.Reinitializer;
 import janala.instrument.SnoopInstructionTransformer;
 import org.junit.AssumptionViolatedException;
 import org.junit.runners.model.FrameworkMethod;
@@ -173,7 +173,7 @@ public class FuzzStatement extends Statement {
                         } else {
                             throw e;
                         }
-                    } catch (AssumptionViolatedException e) {
+                    } catch (org.junit.internal.AssumptionViolatedException e) {
                         // Propagate assumption violations out
                         throw e;
                     } catch (GuidanceException e) {
@@ -194,7 +194,7 @@ public class FuzzStatement extends Statement {
                 } catch (GuidanceException e) {
                     // Throw the guidance exception outside to stop fuzzing
                     throw e;
-                } catch (AssumptionViolatedException e) {
+                } catch (org.junit.internal.AssumptionViolatedException e) {
                     result = INVALID;
                     error = e;
                 } catch (TimeoutException e) {

@@ -29,7 +29,7 @@ public class Coordinator implements Runnable {
         Input in = new Input();
         in.bytes = bytes;
         in.id = id;
-        in.isNew = valid;
+        in.isNew = true; //valid;
         this.inputs.addLast(in);
         this.notifyAll();
 

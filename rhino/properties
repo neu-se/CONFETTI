@@ -1,0 +1,6 @@
+#path.filter=quickcheck,TokenStream,UintMap,ObjToIntMap,ScriptRuntime
+path.filter=quickcheck
+#string.hints=NONE
+#string.hints=GLOBAL
+#string.hints=PER_INPUT
+string.hints=PER_BYTE

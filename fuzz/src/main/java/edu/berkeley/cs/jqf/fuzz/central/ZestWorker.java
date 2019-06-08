@@ -112,7 +112,7 @@ class ZestWorker extends Worker {
                 oos.writeObject(stringsToSend);
                 oos.reset();
 
-//                printSentStringHints(stringsToSend);
+                printSentStringHints(stringsToSend);
 
                 // Update state
                 fuzzing.set(selected, (toFuzz + 1) % inputs.get(selected).size());
