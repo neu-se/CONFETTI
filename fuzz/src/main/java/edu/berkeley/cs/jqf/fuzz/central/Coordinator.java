@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.ListIterator;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.TreeSet;
@@ -29,7 +30,7 @@ public class Coordinator implements Runnable {
         Input in = new Input();
         in.bytes = bytes;
         in.id = id;
-        in.isNew = true; //valid;
+        in.isNew = (config.useInvalid ? true : valid);
         this.inputs.addLast(in);
         this.notifyAll();
 
@@ -103,9 +104,20 @@ public class Coordinator implements Runnable {
                         throw new Error(e);
                     }
 
+                    {
+                        ListIterator<Branch> iter = bs.listIterator(0);
+                        while (iter.hasNext()) {
+                            Branch b = iter.next();
+
+                            for (String f : config.filter)
+                                if (b.source.contains(f))
+                                    iter.remove();
+                        }
+                    }
+
                     // Check if any previous branches were explored
                     branches: for (Branch b : bs) {
-                        if (b.source == null)
+                        if (b.source == null || b.controllingBytes.isEmpty())
                             continue;
 
                         for (String f : config.filter)
@@ -252,6 +264,8 @@ public class Coordinator implements Runnable {
         public final String[] filter;
         public final Hinting hinting;
 
+        public final boolean useInvalid;
+
         public Config(Properties p) {
             {
                 String f = p.getProperty("path.filter");
@@ -266,6 +280,10 @@ public class Coordinator implements Runnable {
                 }
 
                 hinting = h;
+            }
+                useInvalid = (p.getProperty("useInvalid") != null);
+            {
+
             }
         }
     }
