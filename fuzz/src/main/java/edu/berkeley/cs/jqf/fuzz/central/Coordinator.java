@@ -1,5 +1,7 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
+import za.ac.sun.cs.green.expr.Expression;
+
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.Collections;
@@ -17,6 +19,7 @@ public class Coordinator implements Runnable {
     private HashMap<Input, HashSet<String>> perInputStringEqualsHints = new HashMap<>();
     private HashMap<Input, HashMap<Integer, HashSet<String>>> perByteStringEqualsHints = new HashMap<>();
     private HashSet<String> globalStringEqualsHints = new HashSet<>();
+    private HashMap<Input, LinkedList<Expression>> constraints = new HashMap<>();
     private KnarrWorker knarr;
     private ZestWorker zest;
 
@@ -73,35 +76,44 @@ public class Coordinator implements Runnable {
                 if (input.isNew) {
                     if (n++ > 10)
                         break;
-                    // Compute coverage and branches with Knarr
-                    LinkedList<Branch> bs;
-                    HashMap<Integer, HashSet<String>> eqs = new HashMap<>();
+                    // Get constraints from Knarr
+                    LinkedList<Expression> cs;
                     try {
-                        bs = knarr.getBranchCoverage(input.bytes, eqs);
-                        if (!eqs.isEmpty()) {
-                            switch (config.hinting) {
-                                case NONE:
-                                    break;
-                                case GLOBAL:
-                                    for (HashSet<String> s : eqs.values())
-                                        globalStringEqualsHints.addAll(s);
-                                    break;
-                                case PER_INPUT:
-                                    HashSet<String> ss = new HashSet<>();
-                                    for (HashSet<String> s : eqs.values())
-                                        ss.addAll(s);
-                                    perInputStringEqualsHints.put(input, ss);
-                                    break;
-                                case PER_BYTE:
-                                    perByteStringEqualsHints.put(input, eqs);
-                                    break;
-                                default:
-                                    throw new Error("Not implemented");
-                            }
-
-                        }
+                        cs = knarr.getConstraints(input.bytes);
                     } catch (IOException e) {
                         throw new Error(e);
+                    }
+
+                    this.constraints.put(input, cs);
+
+                    // Compute coverage and branches from constraints
+                    LinkedList<Branch> bs = new LinkedList<>();
+                    HashMap<Integer, HashSet<String>> eqs = new HashMap<>();
+                    for (Expression e : cs)
+                        knarr.process(bs, eqs, e);
+
+                    // Adjust string hints
+                    if (!eqs.isEmpty()) {
+                        switch (config.hinting) {
+                            case NONE:
+                                break;
+                            case GLOBAL:
+                                for (HashSet<String> s : eqs.values())
+                                    globalStringEqualsHints.addAll(s);
+                                break;
+                            case PER_INPUT:
+                                HashSet<String> ss = new HashSet<>();
+                                for (HashSet<String> s : eqs.values())
+                                    ss.addAll(s);
+                                perInputStringEqualsHints.put(input, ss);
+                                break;
+                            case PER_BYTE:
+                                perByteStringEqualsHints.put(input, eqs);
+                                break;
+                            default:
+                                throw new Error("Not implemented");
+                        }
+
                     }
 
                     {
