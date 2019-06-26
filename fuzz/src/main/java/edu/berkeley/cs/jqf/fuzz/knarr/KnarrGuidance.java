@@ -1,23 +1,18 @@
 package edu.berkeley.cs.jqf.fuzz.knarr;
 
-import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
 import edu.berkeley.cs.jqf.fuzz.central.KnarrClient;
 import edu.berkeley.cs.jqf.fuzz.guidance.Guidance;
 import edu.berkeley.cs.jqf.fuzz.guidance.GuidanceException;
 import edu.berkeley.cs.jqf.fuzz.guidance.Result;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEvent;
-import edu.gmu.swe.knarr.runtime.Coverage;
 import edu.gmu.swe.knarr.runtime.PathUtils;
 import edu.gmu.swe.knarr.runtime.Symbolicator;
 import za.ac.sun.cs.green.expr.Expression;
 import za.ac.sun.cs.green.expr.Operation;
-import za.ac.sun.cs.green.expr.Variable;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.function.Consumer;
 
@@ -52,84 +47,34 @@ public class KnarrGuidance implements Guidance {
 
     @Override
     public void handleResult(Result result, Throwable error) throws GuidanceException {
-        Expression constraints = PathUtils.getCurPC().constraints;
 
         System.out.println(result);
 
-        LinkedList<Coordinator.Branch> branches = new LinkedList<>();
-        HashMap<Integer, HashSet<String>> stringEqualsArgs = new HashMap<>();
+        LinkedList<Expression> constraints = new LinkedList<>();
 
-        // Get branches from constraints
+        // Turn constraints into list
         {
-            Expression e = constraints;
-            while (e instanceof Operation && ((Operation) e).getOperator() == Operation.Operator.AND) {
-                Operation op = (Operation) e;
-                e = op.getOperand(0);
-                Expression ee = op.getOperand(1);
+            Expression exp = PathUtils.getCurPC().constraints;
+            while (exp instanceof Operation && ((Operation) exp).getOperator() == Operation.Operator.AND) {
+                Operation op = (Operation) exp;
+                exp = op.getOperand(0);
+                Expression e = op.getOperand(1);
 
-                process(branches, stringEqualsArgs, ee);
+                constraints.addLast(e);
             }
 
-            process(branches, stringEqualsArgs, e);
+            constraints.addLast(exp);
         }
 
-        // Send branches
+        // Send constraints
         try {
-            this.client.sendBranches(branches, stringEqualsArgs);
+            this.client.sendConstraints(constraints);
         } catch (IOException e) {
             throw new Error(e);
         }
 
         // Reset input
         this.input = null;
-    }
-
-    private void process(LinkedList<Coordinator.Branch> bs, HashMap<Integer, HashSet<String>> stringEqualsArgs, Expression e) {
-        Coverage.BranchData b = (Coverage.BranchData) e.metadata;
-
-        if (b == null)
-            return;
-
-        Coordinator.Branch bb = new Coordinator.Branch();
-
-        bb.takenID = b.takenCode;
-        bb.notTakenID = b.notTakenCode;
-        bb.keep = b.breaksLoop;
-        bb.result = b.taken;
-        bb.controllingBytes = new HashSet<>();
-        bb.source = b.source;
-
-        HashSet<String> eq = new HashSet<>();
-
-        findControllingBytes(e, bb.controllingBytes, eq);
-
-        bs.add(bb);
-
-        if (!eq.isEmpty()) {
-            for (Integer i : bb.controllingBytes) {
-                HashSet<String> cur = stringEqualsArgs.get(i);
-                if (cur == null) {
-                    cur = new HashSet<>();
-                    stringEqualsArgs.put(i, cur);
-                }
-                cur.addAll(eq);
-            }
-        }
-    }
-
-    private void findControllingBytes(Expression e, HashSet<Integer> bytes, HashSet<String> stringEqualsArgs) {
-        if (e instanceof Variable) {
-            Variable v = (Variable) e;
-            if (v.getName().startsWith("autoVar_")) {
-                bytes.add(Integer.parseInt(v.getName().substring("autoVar_".length())));
-            }
-        } else if (e instanceof Operation) {
-            Operation op = (Operation) e;
-            if (e.metadata != null && e.metadata instanceof HashSet)
-                stringEqualsArgs.addAll((HashSet<String>)e.metadata);
-            for (int i = 0 ; i < op.getArity() ; i++)
-                findControllingBytes(op.getOperand(i), bytes, stringEqualsArgs);
-        }
     }
 
     @Override

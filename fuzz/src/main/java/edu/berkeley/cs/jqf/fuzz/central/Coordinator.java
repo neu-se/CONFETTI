@@ -1,11 +1,14 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
+import za.ac.sun.cs.green.expr.Expression;
+
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.ListIterator;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.TreeSet;
@@ -16,6 +19,7 @@ public class Coordinator implements Runnable {
     private HashMap<Input, HashSet<String>> perInputStringEqualsHints = new HashMap<>();
     private HashMap<Input, HashMap<Integer, HashSet<String>>> perByteStringEqualsHints = new HashMap<>();
     private HashSet<String> globalStringEqualsHints = new HashSet<>();
+    private HashMap<Input, LinkedList<Expression>> constraints = new HashMap<>();
     private KnarrWorker knarr;
     private ZestWorker zest;
 
@@ -29,7 +33,7 @@ public class Coordinator implements Runnable {
         Input in = new Input();
         in.bytes = bytes;
         in.id = id;
-        in.isNew = true; //valid;
+        in.isNew = (config.useInvalid ? true : valid);
         this.inputs.addLast(in);
         this.notifyAll();
 
@@ -72,40 +76,60 @@ public class Coordinator implements Runnable {
                 if (input.isNew) {
                     if (n++ > 10)
                         break;
-                    // Compute coverage and branches with Knarr
-                    LinkedList<Branch> bs;
-                    HashMap<Integer, HashSet<String>> eqs = new HashMap<>();
+                    // Get constraints from Knarr
+                    LinkedList<Expression> cs;
                     try {
-                        bs = knarr.getBranchCoverage(input.bytes, eqs);
-                        if (!eqs.isEmpty()) {
-                            switch (config.hinting) {
-                                case NONE:
-                                    break;
-                                case GLOBAL:
-                                    for (HashSet<String> s : eqs.values())
-                                        globalStringEqualsHints.addAll(s);
-                                    break;
-                                case PER_INPUT:
-                                    HashSet<String> ss = new HashSet<>();
-                                    for (HashSet<String> s : eqs.values())
-                                        ss.addAll(s);
-                                    perInputStringEqualsHints.put(input, ss);
-                                    break;
-                                case PER_BYTE:
-                                    perByteStringEqualsHints.put(input, eqs);
-                                    break;
-                                default:
-                                    throw new Error("Not implemented");
-                            }
-
-                        }
+                        cs = knarr.getConstraints(input.bytes);
                     } catch (IOException e) {
                         throw new Error(e);
                     }
 
+                    this.constraints.put(input, cs);
+
+                    // Compute coverage and branches from constraints
+                    LinkedList<Branch> bs = new LinkedList<>();
+                    HashMap<Integer, HashSet<String>> eqs = new HashMap<>();
+                    for (Expression e : cs)
+                        knarr.process(bs, eqs, e);
+
+                    // Adjust string hints
+                    if (!eqs.isEmpty()) {
+                        switch (config.hinting) {
+                            case NONE:
+                                break;
+                            case GLOBAL:
+                                for (HashSet<String> s : eqs.values())
+                                    globalStringEqualsHints.addAll(s);
+                                break;
+                            case PER_INPUT:
+                                HashSet<String> ss = new HashSet<>();
+                                for (HashSet<String> s : eqs.values())
+                                    ss.addAll(s);
+                                perInputStringEqualsHints.put(input, ss);
+                                break;
+                            case PER_BYTE:
+                                perByteStringEqualsHints.put(input, eqs);
+                                break;
+                            default:
+                                throw new Error("Not implemented");
+                        }
+
+                    }
+
+                    {
+                        ListIterator<Branch> iter = bs.listIterator(0);
+                        while (iter.hasNext()) {
+                            Branch b = iter.next();
+
+                            for (String f : config.filter)
+                                if (b.source.contains(f))
+                                    iter.remove();
+                        }
+                    }
+
                     // Check if any previous branches were explored
                     branches: for (Branch b : bs) {
-                        if (b.source == null)
+                        if (b.source == null || b.controllingBytes.isEmpty())
                             continue;
 
                         for (String f : config.filter)
@@ -252,6 +276,8 @@ public class Coordinator implements Runnable {
         public final String[] filter;
         public final Hinting hinting;
 
+        public final boolean useInvalid;
+
         public Config(Properties p) {
             {
                 String f = p.getProperty("path.filter");
@@ -266,6 +292,10 @@ public class Coordinator implements Runnable {
                 }
 
                 hinting = h;
+            }
+                useInvalid = (p.getProperty("useInvalid") != null);
+            {
+
             }
         }
     }
