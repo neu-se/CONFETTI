@@ -38,4 +38,4 @@ fi
 JAVA_HOME=$KNARR_DIR/knarr/target/jre-inst
 JAVA_OPTS="-Xss1G -Xbootclasspath/p:$KNARR_DIR/knarr/target/Knarr-0.0.2-SNAPSHOT.jar -javaagent:$KNARR_DIR/knarr/target/Knarr-0.0.2-SNAPSHOT.jar"
 
-$JAVA_HOME/bin/java $JAVA_OPTS $JVM_OPTS -cp $CLASSPATH edu.berkeley.cs.jqf.fuzz.knarr.KnarrDriver $@
+$KNARR_DIR/knarr/target/jre-inst/bin/java $JAVA_OPTS $JVM_OPTS -cp $CLASSPATH edu.berkeley.cs.jqf.fuzz.knarr.KnarrDriver $@
