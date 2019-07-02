@@ -56,6 +56,11 @@
             <artifactId>Knarr</artifactId>
             <version>0.0.2-SNAPSHOT</version>
         </dependency>
+        <dependency>
+            <groupId>edu.gmu.swe.knarr</groupId>
+            <artifactId>Knarr-Server</artifactId>
+            <version>0.0.2-SNAPSHOT</version>
+        </dependency>
     </dependencies>
 
     <build>
