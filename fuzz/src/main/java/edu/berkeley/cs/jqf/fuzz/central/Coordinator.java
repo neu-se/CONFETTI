@@ -2,16 +2,10 @@ package edu.berkeley.cs.jqf.fuzz.central;
 
 import za.ac.sun.cs.green.expr.Expression;
 
+import javax.xml.bind.SchemaOutputResolver;
 import java.io.IOException;
 import java.io.Serializable;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.ListIterator;
-import java.util.Objects;
-import java.util.Properties;
-import java.util.TreeSet;
+import java.util.*;
 
 public class Coordinator implements Runnable {
     private LinkedList<Input> inputs = new LinkedList<>();
@@ -19,6 +13,14 @@ public class Coordinator implements Runnable {
     private HashMap<Input, HashSet<String>> perInputStringEqualsHints = new HashMap<>();
     private HashMap<Input, HashMap<Integer, HashSet<String>>> perByteStringEqualsHints = new HashMap<>();
     private HashSet<String> globalStringEqualsHints = new HashSet<>();
+
+
+
+    private HashMap<Input, HashSet<String>> perInputIndexOfHints = new HashMap<>();
+    private HashMap<Input, HashMap<Integer, HashSet<String>>> perByteIndexOfHints = new HashMap<>();
+    private HashSet<String> globalStringIndexOfHints = new HashSet<>();
+
+
     private HashMap<Input, LinkedList<Expression>> constraints = new HashMap<>();
     private KnarrWorker knarr;
     private ZestWorker zest;
@@ -29,15 +31,20 @@ public class Coordinator implements Runnable {
         this.config = config;
     }
 
-    protected final synchronized void foundInput(int id, byte[] bytes, boolean valid) {
+    protected final synchronized void foundInput(int id, byte[] bytes, boolean valid, LinkedList<String[]>hints) {
         Input in = new Input();
         in.bytes = bytes;
         in.id = id;
         in.isNew = (config.useInvalid ? true : valid);
+        in.hints = hints;
+
         this.inputs.addLast(in);
+        //this.inputs.addFirst(in);
         this.notifyAll();
 
         System.out.println("Input added " + id);
+        if(!hints.isEmpty())
+            System.out.println("HINTS FOUND! " + hints);
     }
 
     @Override
@@ -79,7 +86,7 @@ public class Coordinator implements Runnable {
                     // Get constraints from Knarr
                     LinkedList<Expression> cs;
                     try {
-                        cs = knarr.getConstraints(input.bytes);
+                        cs = knarr.getConstraints(input.bytes, input.hints);
                     } catch (IOException e) {
                         throw new Error(e);
                     }
@@ -89,8 +96,9 @@ public class Coordinator implements Runnable {
                     // Compute coverage and branches from constraints
                     LinkedList<Branch> bs = new LinkedList<>();
                     HashMap<Integer, HashSet<String>> eqs = new HashMap<>();
+                    HashMap<Integer, HashSet<String>> ios = new HashMap<>();
                     for (Expression e : cs)
-                        knarr.process(bs, eqs, e);
+                        knarr.process(bs, eqs, ios, e);
 
                     // Adjust string hints
                     if (!eqs.isEmpty()) {
@@ -116,13 +124,36 @@ public class Coordinator implements Runnable {
 
                     }
 
+                    if (!ios.isEmpty()) {
+                        switch (config.hinting) {
+                            case NONE:
+                                break;
+                            case GLOBAL:
+                                for (HashSet<String> s : ios.values())
+                                    globalStringIndexOfHints.addAll(s);
+                                break;
+                            case PER_INPUT:
+                                HashSet<String> ss = new HashSet<>();
+                                for (HashSet<String> s : ios.values())
+                                    ss.addAll(s);
+                                perInputIndexOfHints.put(input, ss);
+                                break;
+                            case PER_BYTE:
+                                perByteIndexOfHints.put(input, ios);
+                                break;
+                            default:
+                                throw new Error("Not implemented");
+                        }
+
+                    }
+
                     {
                         ListIterator<Branch> iter = bs.listIterator(0);
                         while (iter.hasNext()) {
                             Branch b = iter.next();
 
                             for (String f : config.filter)
-                                if (b.source.contains(f))
+                                if (b.source != null && b.source.contains(f))
                                     iter.remove();
                         }
                     }
@@ -187,30 +218,39 @@ public class Coordinator implements Runnable {
                         lastRecommendation.put(input.id, recommendation);
                     }
 
-                    HashMap<Integer, HashSet<String>> stringHints = new HashMap<>();
+                    HashMap<Integer, HashSet<String>> stringEqualsHints = new HashMap<>();
+                    HashMap<Integer, HashSet<String>> indexOfHints = new HashMap<>();
                     switch (config.hinting) {
                         case NONE:
                             break;
                         case GLOBAL:
                             recommendation.clear();
                             HashSet<String> globals = new HashSet<>(globalStringEqualsHints);
-                            for (int i = 0 ; i < input.bytes.length ; i++)
-                                stringHints.put(i, globals);
+                            HashSet<String> globalIndexOf = new HashSet<>(globalStringIndexOfHints);
+                            for (int i = 0 ; i < input.bytes.length ; i++) {
+                                stringEqualsHints.put(i, globals);
+                                indexOfHints.put(i, globalIndexOf);
+                            }
                             break;
                         case PER_INPUT:
                             recommendation.clear();
                             HashSet<String> perInput = new HashSet<>(perInputStringEqualsHints.getOrDefault(input, new HashSet<>()));
-                            for (int i = 0 ; i < input.bytes.length ; i++)
-                                stringHints.put(i, perInput);
+                            HashSet<String> perInputIndexOf = new HashSet<>(perInputIndexOfHints.getOrDefault(input, new HashSet<>()));
+
+                            for (int i = 0 ; i < input.bytes.length ; i++) {
+                                stringEqualsHints.put(i, perInput);
+                                indexOfHints.put(i, perInputIndexOf);
+                            }
                             break;
                         case PER_BYTE:
-                            stringHints.putAll(perByteStringEqualsHints.getOrDefault(input, new HashMap<>()));
+                            stringEqualsHints.putAll(perByteStringEqualsHints.getOrDefault(input, new HashMap<>()));
+                            indexOfHints.putAll(perByteIndexOfHints.getOrDefault(input, new HashMap<>()));
                             break;
                         default:
                             throw new Error("Not implemented");
                     }
 
-                    zest.recommend(input.id, recommendation, stringHints);
+                    zest.recommend(input.id, recommendation, stringEqualsHints, indexOfHints);
                 }
             }
         }
@@ -230,6 +270,10 @@ public class Coordinator implements Runnable {
         int id;
         byte[] bytes;
         boolean isNew;
+        LinkedList<String[]> hints;
+
+
+
 
         @Override
         public boolean equals(Object o) {

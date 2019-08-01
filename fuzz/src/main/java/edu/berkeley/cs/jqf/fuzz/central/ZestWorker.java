@@ -16,6 +16,7 @@ class ZestWorker extends Worker {
     private ArrayList<Integer> fuzzing = new ArrayList<>();
     private ArrayList<TreeSet<Integer>> recommendations = new ArrayList<>();
     private ArrayList<HashMap<Integer, HashSet<String>>> stringEqualsHints = new ArrayList<>();
+    private ArrayList<HashMap<Integer, HashSet<String>>> indexOfHints = new ArrayList<>();
     private Coordinator c;
 
     private final String[] EMPTY = new String[0];
@@ -38,6 +39,8 @@ class ZestWorker extends Worker {
                 Result res = (Result) ois.readObject();
                 int id = ois.readInt();
 
+                LinkedList<String[]> hints = (LinkedList<String[]>) ois.readObject();
+
                 // Receive coverage
 //                Coverage cov = (Coverage) ois.readObject();
 
@@ -56,7 +59,7 @@ class ZestWorker extends Worker {
                     i += b.length;
                 }
 
-                c.foundInput(id, bs, res != Result.INVALID);
+                c.foundInput(id, bs, res != Result.INVALID, hints);
 
                 synchronized (recommendations) {
                     recommendations.add(new TreeSet<>());
@@ -138,10 +141,11 @@ class ZestWorker extends Worker {
         System.out.println();
     }
 
-    public void recommend(int inputID, TreeSet<Integer> recommendation, HashMap<Integer, HashSet<String>> eqs) {
+    public void recommend(int inputID, TreeSet<Integer> recommendation, HashMap<Integer, HashSet<String>> eqs,HashMap<Integer, HashSet<String>> ios ) {
         synchronized (recommendations) {
             recommendations.set(inputID, recommendation);
             stringEqualsHints.set(inputID, eqs);
+            //indexOfHints.set(inputID, ios);
         }
     }
 }

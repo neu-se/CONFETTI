@@ -2,13 +2,16 @@ package edu.berkeley.cs.jqf.fuzz.guidance;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Collection;
+import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.Queue;
 
 public class StringEqualsHintingInputStream extends InputStream {
 
     private final InputStream is;
     private final LinkedList<int[]> reqs;
-    private final LinkedList<String[]> hints;
+    private  final LinkedList<String[]> hints;
 
     private int offset = 0;
     private int[] curReqs;
@@ -17,16 +20,46 @@ public class StringEqualsHintingInputStream extends InputStream {
     private static String[] EMPTY = new String[0];
     private static String[] hintsForCurrentInput = EMPTY;
 
+    public static Boolean hintUsedInCurrentInput = false;
+
+    private static LinkedList<String[]> globalHints;
+    private static LinkedList<String[]> hintsCopy;
+
+
     public static String[] getHintsForCurrentInput() {
         String[] ret = hintsForCurrentInput;
         hintsForCurrentInput = EMPTY;
         return ret;
     }
 
+
+    public static String[] getHintsForCurrentInputGlobal() {
+
+        if(globalHints == null || globalHints.isEmpty())
+            return EMPTY;
+        else
+            return globalHints.removeFirst();
+
+    }
+
+
+    // This will only be called in the Knarr process - we use this class to hold the hints.
+    public StringEqualsHintingInputStream(LinkedList<String[]> hints) {
+        this.hints = hints;
+        this.is = null;
+        this.reqs = null;
+        globalHints = new LinkedList<>(hints);
+        hintsCopy = new LinkedList<>(hints);
+    }
+
     public StringEqualsHintingInputStream(InputStream is, LinkedList<int[]> reqs, LinkedList<String[]> hints) {
         this.is = is;
         this.reqs = reqs;
         this.hints = hints;
+
+        globalHints = new LinkedList<>(hints);
+        hintsCopy = new LinkedList<>(hints);
+
 
         if (reqs.size() != hints.size())
             throw new IllegalStateException();
@@ -35,6 +68,11 @@ public class StringEqualsHintingInputStream extends InputStream {
             curReqs = reqs.removeFirst();
             curHints = hints.removeFirst();
         }
+
+    }
+
+    public static LinkedList<String[]> getHints() {
+        return hintsCopy;
     }
 
     private int setHints(int read) {

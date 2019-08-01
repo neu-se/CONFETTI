@@ -1,6 +1,7 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
 import edu.gmu.swe.knarr.runtime.Coverage;
+import org.jgrapht.alg.util.Pair;
 import za.ac.sun.cs.green.expr.Expression;
 import za.ac.sun.cs.green.expr.Operation;
 import za.ac.sun.cs.green.expr.Variable;
@@ -8,10 +9,7 @@ import za.ac.sun.cs.green.expr.Variable;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
+import java.util.*;
 
 class KnarrWorker extends Worker {
     private ArrayList<LinkedList<byte[]>> inputs = new ArrayList<>();
@@ -23,9 +21,10 @@ class KnarrWorker extends Worker {
         this.c = c;
     }
 
-    public LinkedList<Expression> getConstraints(byte[] bytes) throws IOException {
+    public LinkedList<Expression> getConstraints(byte[] bytes, LinkedList<String[]>hints) throws IOException {
         // Send input to Knarr process
         oos.writeObject(bytes);
+        oos.writeObject(hints);
         oos.reset();
         oos.flush();
 
@@ -40,7 +39,8 @@ class KnarrWorker extends Worker {
         return constraints;
     }
 
-    public void process(LinkedList<Coordinator.Branch> bs, HashMap<Integer, HashSet<String>> stringEqualsArgs, Expression e) {
+    public void process(LinkedList<Coordinator.Branch> bs, HashMap<Integer, HashSet<String>> stringEqualsArgs,
+                        HashMap<Integer, HashSet<String>> indexOfArgs, Expression e) {
         Coverage.BranchData b = (Coverage.BranchData) e.metadata;
 
         if (b == null)
@@ -56,8 +56,9 @@ class KnarrWorker extends Worker {
         bb.source = b.source;
 
         HashSet<String> eq = new HashSet<>();
+        HashSet<String> io = new HashSet<>();
 
-        findControllingBytes(e, bb.controllingBytes, eq);
+        findControllingBytes(e, bb.controllingBytes, eq, io);
 
         bs.add(bb);
 
@@ -71,9 +72,21 @@ class KnarrWorker extends Worker {
                 cur.addAll(eq);
             }
         }
+
+        if (!io.isEmpty()) {
+            for (Integer i : bb.controllingBytes) {
+                HashSet<String> cur = indexOfArgs.get(i);
+                if (cur == null) {
+                    cur = new HashSet<>();
+                    indexOfArgs.put(i, cur);
+                }
+                cur.addAll(io);
+            }
+        }
     }
 
-    private void findControllingBytes(Expression e, HashSet<Integer> bytes, HashSet<String> stringEqualsArgs) {
+    private void findControllingBytes(Expression e, HashSet<Integer> bytes, HashSet<String> stringEqualsArgs,
+                                      HashSet<String> indexOfArgs) {
         if (e instanceof Variable) {
             Variable v = (Variable) e;
             if (v.getName().startsWith("autoVar_")) {
@@ -81,10 +94,24 @@ class KnarrWorker extends Worker {
             }
         } else if (e instanceof Operation) {
             Operation op = (Operation) e;
-            if (e.metadata != null && e.metadata instanceof HashSet)
-                stringEqualsArgs.addAll((HashSet<String>)e.metadata);
+            if (e.metadata != null && e.metadata instanceof HashSet) {
+                Iterator<Pair<String,String>> it = ((HashSet<Pair<String,String>>)e.metadata).iterator();
+                while(it.hasNext()) {
+                    Pair<String, String> cur = it.next();
+                    switch(cur.getFirst()) {
+                        case "EQUALS":
+                            stringEqualsArgs.add(cur.getSecond());
+                            break;
+                        case "INDEXOF":
+                            indexOfArgs.add(cur.getSecond());
+                            break;
+                    }
+
+                }
+
+            }
             for (int i = 0 ; i < op.getArity() ; i++)
-                findControllingBytes(op.getOperand(i), bytes, stringEqualsArgs);
+                findControllingBytes(op.getOperand(i), bytes, stringEqualsArgs, indexOfArgs);
         }
     }
 

