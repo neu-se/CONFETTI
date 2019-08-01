@@ -23,6 +23,7 @@ public class Coordinator implements Runnable {
 
     private HashMap<Input, LinkedList<Expression>> constraints = new HashMap<>();
     private KnarrWorker knarr;
+    private Z3Worker z3 = new Z3Worker();
     private ZestWorker zest;
 
     private final Config config;
@@ -49,6 +50,7 @@ public class Coordinator implements Runnable {
 
     @Override
     public void run() {
+        new Thread(z3).start();
 
         HashMap<Integer, TreeSet<Integer>> lastRecommendation = new HashMap<>();
 
@@ -92,6 +94,7 @@ public class Coordinator implements Runnable {
                     }
 
                     this.constraints.put(input, cs);
+                    z3.addConstraints(cs);
 
                     // Compute coverage and branches from constraints
                     LinkedList<Branch> bs = new LinkedList<>();
