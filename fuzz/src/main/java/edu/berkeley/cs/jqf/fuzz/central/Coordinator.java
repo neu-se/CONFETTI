@@ -2,7 +2,6 @@ package edu.berkeley.cs.jqf.fuzz.central;
 
 import za.ac.sun.cs.green.expr.Expression;
 
-import javax.xml.bind.SchemaOutputResolver;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.*;

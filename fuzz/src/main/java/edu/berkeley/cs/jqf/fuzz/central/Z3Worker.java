@@ -1,5 +1,8 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
+import com.microsoft.z3.Context;
+import com.microsoft.z3.Expr;
+import com.microsoft.z3.Sort;
 import edu.gmu.swe.knarr.server.ConstraintOptionGenerator;
 import edu.gmu.swe.knarr.server.HashMapStateStore;
 import edu.gmu.swe.knarr.server.StateStore;
@@ -7,6 +10,7 @@ import za.ac.sun.cs.green.Green;
 import za.ac.sun.cs.green.Instance;
 import za.ac.sun.cs.green.expr.Expression;
 import za.ac.sun.cs.green.expr.Variable;
+import za.ac.sun.cs.green.expr.VisitorException;
 import za.ac.sun.cs.green.service.canonizer.ModelCanonizerService;
 import za.ac.sun.cs.green.service.factorizer.ModelFactorizerService;
 import za.ac.sun.cs.green.service.z3.ModelZ3JavaService;
@@ -14,7 +18,12 @@ import za.ac.sun.cs.green.service.z3.Z3JavaTranslator;
 import za.ac.sun.cs.green.util.Configuration;
 import za.ac.sun.cs.green.util.NotSatException;
 
+import java.io.BufferedOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.file.Paths;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -27,7 +36,25 @@ import java.util.Properties;
 
 public class Z3Worker extends Worker {
     private LinkedList<LinkedList<Expression>> constraints = new LinkedList<>();
-    Data data;
+    private Data data;
+
+    private static final File Z3_OUTPUT_DIR;
+
+    static {
+        String z3Dir = System.getProperty("Z3_OUTPUT_DIR");
+        if (z3Dir != null) {
+            File f = new File(z3Dir);
+            if (!f.exists())
+                f.mkdirs();
+
+            if (!f.isDirectory())
+                throw new Error("Path " + f + " is not a directory");
+
+            Z3_OUTPUT_DIR = f;
+        } else {
+            Z3_OUTPUT_DIR = null;
+        }
+    }
 
     public Z3Worker() {
         super(null, null);
@@ -62,7 +89,9 @@ public class Z3Worker extends Worker {
                 Z3JavaTranslator.timeoutMS = 3600 * 1000; // 1h
         }
 
+        int solved = -1;
         while (true) {
+            solved++;
             LinkedList<Expression> csToSolve;
 
             synchronized (constraints) {
@@ -86,6 +115,9 @@ public class Z3Worker extends Worker {
             sat.clear();
             unsat.clear();
             solve(res, sat, unsat);
+
+            if (Z3_OUTPUT_DIR != null)
+                dumpToTXTFile(Paths.get(Z3_OUTPUT_DIR.getAbsolutePath(), "constraints" + solved + ".txt").toFile(), res);
 
             for (String s : unsat)
                 System.out.println(res.get(s));
@@ -149,6 +181,64 @@ public class Z3Worker extends Worker {
                 return o1.getKey().compareTo(o2.getKey());
             }
         });
+    }
+
+    private void dumpToTXTFile(File file, Map<String, Expression> constraints) throws IOException {
+        try (PrintStream ps = new PrintStream(new BufferedOutputStream(new FileOutputStream(file)))) {
+            ps.println("(set-option :produce-unsat-cores true)");
+
+            Context ctx = new Context();
+            {
+                // Get all variables into a new translator
+                Z3JavaTranslator translator = new Z3JavaTranslator(ctx);
+
+                for (Expression e : constraints.values())
+                    try {
+                        e.accept(translator);
+                    } catch (VisitorException e1) {
+                        throw new Error(e1);
+                    }
+
+                // Declare functions
+                for (String function : translator.getFunctions().keySet())
+                    ps.println("(declare-fun " + function + " (Int (_ BitVec 32)) (_ BitVec 32))");
+
+                // Declare variables
+                HashSet<String> seen = new HashSet<>();
+                for (Expr v : translator.getVariableMap().values()) {
+                    if (seen.add(v.toString())) {
+                        Sort s = v.getSort();
+                        ps.println("(declare-const " + v + " " + s + ")");
+                    }
+                }
+            }
+
+            // Print constraints
+            for (Map.Entry<String, Expression> entry : constraints.entrySet()) {
+                Z3JavaTranslator t = new Z3JavaTranslator(ctx);
+                try {
+                    entry.getValue().accept(t);
+                } catch (VisitorException e1) {
+                    throw new Error(e1);
+                }
+
+                // Print constraint number as a comment
+                ps.println("; c" + entry.getKey());
+
+                // Print Knarr constraint as comment
+                ps.println("; " + entry.getValue().toString());
+
+                ps.println("(assert (!" + t.getTranslation() + " :named " + entry.getKey() + "))");
+                ps.println();
+            }
+
+            // Check model
+            ps.println("(check-sat)");
+            ps.println("(get-model)");
+
+            ps.println("; uncomment below to get unsat core");
+            ps.println(";(get-unsat-core)");
+        }
     }
 
     public void addConstraints(LinkedList<Expression> cs) {
