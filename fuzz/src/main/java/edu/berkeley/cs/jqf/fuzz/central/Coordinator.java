@@ -16,11 +16,6 @@ public class Coordinator implements Runnable {
 
 
 
-    private HashMap<Input, HashSet<String>> perInputIndexOfHints = new HashMap<>();
-    private HashMap<Input, HashMap<Integer, HashSet<String>>> perByteIndexOfHints = new HashMap<>();
-    private HashSet<String> globalStringIndexOfHints = new HashSet<>();
-
-
     private HashMap<Input, LinkedList<Expression>> constraints = new HashMap<>();
     private KnarrWorker knarr;
     private Z3Worker z3 = new Z3Worker();
@@ -99,9 +94,8 @@ public class Coordinator implements Runnable {
                     // Compute coverage and branches from constraints
                     LinkedList<Branch> bs = new LinkedList<>();
                     HashMap<Integer, HashSet<String>> eqs = new HashMap<>();
-                    HashMap<Integer, HashSet<String>> ios = new HashMap<>();
                     for (Expression e : cs)
-                        knarr.process(bs, eqs, ios, e);
+                        knarr.process(bs, eqs, e);
 
                     // Adjust string hints
                     if (!eqs.isEmpty()) {
@@ -127,28 +121,6 @@ public class Coordinator implements Runnable {
 
                     }
 
-                    if (!ios.isEmpty()) {
-                        switch (config.hinting) {
-                            case NONE:
-                                break;
-                            case GLOBAL:
-                                for (HashSet<String> s : ios.values())
-                                    globalStringIndexOfHints.addAll(s);
-                                break;
-                            case PER_INPUT:
-                                HashSet<String> ss = new HashSet<>();
-                                for (HashSet<String> s : ios.values())
-                                    ss.addAll(s);
-                                perInputIndexOfHints.put(input, ss);
-                                break;
-                            case PER_BYTE:
-                                perByteIndexOfHints.put(input, ios);
-                                break;
-                            default:
-                                throw new Error("Not implemented");
-                        }
-
-                    }
 
                     {
                         ListIterator<Branch> iter = bs.listIterator(0);
@@ -222,38 +194,31 @@ public class Coordinator implements Runnable {
                     }
 
                     HashMap<Integer, HashSet<String>> stringEqualsHints = new HashMap<>();
-                    HashMap<Integer, HashSet<String>> indexOfHints = new HashMap<>();
                     switch (config.hinting) {
                         case NONE:
                             break;
                         case GLOBAL:
                             recommendation.clear();
                             HashSet<String> globals = new HashSet<>(globalStringEqualsHints);
-                            HashSet<String> globalIndexOf = new HashSet<>(globalStringIndexOfHints);
                             for (int i = 0 ; i < input.bytes.length ; i++) {
                                 stringEqualsHints.put(i, globals);
-                                indexOfHints.put(i, globalIndexOf);
                             }
                             break;
                         case PER_INPUT:
                             recommendation.clear();
                             HashSet<String> perInput = new HashSet<>(perInputStringEqualsHints.getOrDefault(input, new HashSet<>()));
-                            HashSet<String> perInputIndexOf = new HashSet<>(perInputIndexOfHints.getOrDefault(input, new HashSet<>()));
-
                             for (int i = 0 ; i < input.bytes.length ; i++) {
                                 stringEqualsHints.put(i, perInput);
-                                indexOfHints.put(i, perInputIndexOf);
                             }
                             break;
                         case PER_BYTE:
                             stringEqualsHints.putAll(perByteStringEqualsHints.getOrDefault(input, new HashMap<>()));
-                            indexOfHints.putAll(perByteIndexOfHints.getOrDefault(input, new HashMap<>()));
                             break;
                         default:
                             throw new Error("Not implemented");
                     }
 
-                    zest.recommend(input.id, recommendation, stringEqualsHints, indexOfHints);
+                    zest.recommend(input.id, recommendation, stringEqualsHints);
                 }
             }
         }
