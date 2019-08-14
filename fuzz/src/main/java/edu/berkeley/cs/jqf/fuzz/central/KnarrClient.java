@@ -23,7 +23,7 @@ public class KnarrClient extends Central {
             byte[] ret = (byte[]) ois.readObject();
             LinkedList<String[]> hints = (LinkedList<String[]>) ois.readObject();
             if(!hints.isEmpty()) {
-                System.out.println("IN KNARR PROCESS - GOT INPUT WITH HINTS!!!");
+                //System.out.println("IN KNARR PROCESS - GOT INPUT WITH HINTS!!!");
                 StringEqualsHintingInputStream is = new StringEqualsHintingInputStream(hints);
             }
             return ret;

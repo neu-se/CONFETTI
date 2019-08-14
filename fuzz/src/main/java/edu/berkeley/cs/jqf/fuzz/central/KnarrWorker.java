@@ -39,8 +39,7 @@ class KnarrWorker extends Worker {
         return constraints;
     }
 
-    public void process(LinkedList<Coordinator.Branch> bs, HashMap<Integer, HashSet<String>> stringEqualsArgs,
-                        HashMap<Integer, HashSet<String>> indexOfArgs, Expression e) {
+    public void process(LinkedList<Coordinator.Branch> bs, HashMap<Integer, HashSet<String>> stringEqualsArgs, Expression e) {
         Coverage.BranchData b = (Coverage.BranchData) e.metadata;
 
         if (b == null)
@@ -58,7 +57,7 @@ class KnarrWorker extends Worker {
         HashSet<String> eq = new HashSet<>();
         HashSet<String> io = new HashSet<>();
 
-        findControllingBytes(e, bb.controllingBytes, eq, io);
+        findControllingBytes(e, bb.controllingBytes, eq);
 
         bs.add(bb);
 
@@ -73,20 +72,9 @@ class KnarrWorker extends Worker {
             }
         }
 
-        if (!io.isEmpty()) {
-            for (Integer i : bb.controllingBytes) {
-                HashSet<String> cur = indexOfArgs.get(i);
-                if (cur == null) {
-                    cur = new HashSet<>();
-                    indexOfArgs.put(i, cur);
-                }
-                cur.addAll(io);
-            }
-        }
     }
 
-    private void findControllingBytes(Expression e, HashSet<Integer> bytes, HashSet<String> stringEqualsArgs,
-                                      HashSet<String> indexOfArgs) {
+    private void findControllingBytes(Expression e, HashSet<Integer> bytes, HashSet<String> stringEqualsArgs) {
         if (e instanceof Variable) {
             Variable v = (Variable) e;
             if (v.getName().startsWith("autoVar_")) {
@@ -100,10 +88,8 @@ class KnarrWorker extends Worker {
                     Pair<String, String> cur = it.next();
                     switch(cur.getFirst()) {
                         case "EQUALS":
-                            stringEqualsArgs.add(cur.getSecond());
-                            break;
                         case "INDEXOF":
-                            indexOfArgs.add(cur.getSecond());
+                            stringEqualsArgs.add(cur.getSecond());
                             break;
                     }
 
@@ -111,7 +97,7 @@ class KnarrWorker extends Worker {
 
             }
             for (int i = 0 ; i < op.getArity() ; i++)
-                findControllingBytes(op.getOperand(i), bytes, stringEqualsArgs, indexOfArgs);
+                findControllingBytes(op.getOperand(i), bytes, stringEqualsArgs);
         }
     }
 
