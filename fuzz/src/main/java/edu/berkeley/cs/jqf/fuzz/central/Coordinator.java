@@ -126,9 +126,12 @@ public class Coordinator implements Runnable {
                         while (iter.hasNext()) {
                             Branch b = iter.next();
 
-                            for (String f : config.filter)
-                                if (b.source != null && b.source.contains(f))
+                            for (String f : config.filter) {
+                                if (b.source != null && b.source.contains(f)) {
                                     iter.remove();
+                                    break;
+                                }
+                            }
                         }
                     }
 
