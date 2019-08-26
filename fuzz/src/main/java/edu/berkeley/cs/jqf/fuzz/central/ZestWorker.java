@@ -118,6 +118,10 @@ class ZestWorker extends Worker {
 
                 // Update state
                 fuzzing.set(selected, (toFuzz + 1) % inputs.get(selected).size());
+            } else if (o instanceof Boolean) {
+                // Zest is asking if there's an input we'd like to explore now
+                oos.writeObject(null);
+                oos.reset();
             }
         }
     }
