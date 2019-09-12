@@ -43,7 +43,12 @@ import edu.berkeley.cs.jqf.fuzz.guidance.StringEqualsHintingInputStream;
 import edu.columbia.cs.psl.phosphor.runtime.Taint;
 import edu.columbia.cs.psl.phosphor.struct.LazyCharArrayObjTags;
 import edu.columbia.cs.psl.phosphor.struct.TaintedObjectWithObjTag;
+import edu.gmu.swe.knarr.runtime.ExpressionTaint;
 import edu.gmu.swe.knarr.runtime.Symbolicator;
+import za.ac.sun.cs.green.expr.Expression;
+import za.ac.sun.cs.green.expr.FunctionCall;
+import za.ac.sun.cs.green.expr.IntConstant;
+import za.ac.sun.cs.green.expr.Operation;
 
 public class DictionaryBackedStringGenerator extends Generator<String> {
 
@@ -96,23 +101,31 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
         }
     }
 
+    private static int currentFunctionNumber = 0;
+
     private static String applyTaints(String result, Object taint) {
-        if (!(taint instanceof TaintedObjectWithObjTag))
+        if (result.length() == 0 || !(taint instanceof TaintedObjectWithObjTag))
             return result;
 
         // New string to avoid adding taints to the dictionary itself
         String ret = new String(result);
 
+        Expression t = (Expression) ((Taint)((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG()).getSingleLabel();
+
         if (Symbolicator.getTaints(result) instanceof LazyCharArrayObjTags) {
             LazyCharArrayObjTags taints = (LazyCharArrayObjTags) Symbolicator.getTaints(result);
-            if (taints.taints != null)
-                for (int i = 0 ; i < taints.taints.length ; i++)
-                    taints.taints[i] = (taints.taints[i] == null ? ((Taint)((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG()) : taints.taints[i]);
-            else
-                taints.setTaints(((Taint)((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG()));
+            taints.taints = new Taint[result.length()];
+            for (int i = 0 ; i< taints.taints.length ; i++) {
+                taints.taints[i] = new ExpressionTaint(new FunctionCall(
+                        "gen" + currentFunctionNumber,
+                        new Expression[]{ new IntConstant(i), t}));
+            }
+
+            currentFunctionNumber += 1;
+
         }
 
-        // New string so that Knarr can compute the tag for the string itself based on the tag for each character
+        // New string so that Phosphor can compute the tag for the string itself based on the tag for each character
         ret = new String(ret.getBytes(), 0, ret.length());
 
         return ret;
