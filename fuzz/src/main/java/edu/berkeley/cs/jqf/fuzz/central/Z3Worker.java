@@ -12,6 +12,7 @@ import za.ac.sun.cs.green.Green;
 import za.ac.sun.cs.green.Instance;
 import za.ac.sun.cs.green.expr.Expression;
 import za.ac.sun.cs.green.expr.Operation;
+import za.ac.sun.cs.green.expr.StringConstant;
 import za.ac.sun.cs.green.expr.Variable;
 import za.ac.sun.cs.green.expr.VisitorException;
 import za.ac.sun.cs.green.service.canonizer.ModelCanonizerService;
@@ -152,6 +153,7 @@ public class Z3Worker extends Worker {
                                 String equalsHint = replaceEqualsByStartsWith(res, cs);
                                 if (equalsHint != null) {
                                     // Give hint to JQF
+                                    System.out.println("Equals hint: " + equalsHint);
                                 } else {
                                     // Failed, stop trying
                                     for (String s : unsat)
@@ -194,10 +196,32 @@ public class Z3Worker extends Worker {
        Operation newInner = new Operation(Operation.Operator.STARTSWITH, inner.getOperand(0), inner.getOperand(1));
        Operation newOuter = new Operation(outer.getOperator(), outer.getOperand(0), newInner);
 
+       Expression argumentToEquals = inner.getOperand(1);
+
         ArrayList<AbstractMap.SimpleEntry<String, Object>> sat = new ArrayList<>();
         HashSet<String> unsat = new HashSet<>();
 
+        // Our new negated constraint
         res.put("c" + res.size(), new Operation(Operation.Operator.NOT, newOuter));
+
+        String hint = null;
+        if (argumentToEquals instanceof StringConstant) {
+            // We know what's the argument to equals
+            hint = ((StringConstant)argumentToEquals).getValue();
+        } else {
+            // TODO we need to ask Z3 to give us what is the argument to equals
+            // TODO the code below was a try but it doesn't quite work, it always gets UNSAT
+            // TODO probably some silly reason
+//            // A string variable that is large enough for us to read what we just compared against
+//            int n = 50;
+//            Expression auxStringVar = new StringVariable("aux");
+//            for (int i = 0 ; i < 50 ; i++) {
+//                auxStringVar = new Operation(Operation.Operator.CONCAT, auxStringVar, new BVVariable("aux"+i, 32));
+//            }
+//
+//            res.put("aux1", new Operation(Operation.Operator.STARTSWITH, auxStringVar, argumentToEquals));
+        }
+
         solve(res, sat, unsat);
 
         if (!unsat.isEmpty()) {
@@ -207,7 +231,7 @@ public class Z3Worker extends Worker {
         } else {
             // It worked, get the string from the solution
             res.remove("c" + (res.size()-1));
-            return null;
+            return hint;
         }
     }
 
