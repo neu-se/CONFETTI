@@ -555,6 +555,17 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             // Make fresh input using either list or maps
             infoLog("Spawning new input from thin air");
             currentInput = DISABLE_EXECUTION_INDEXING ? new LinearInput() : new MappedInput();
+        } else if (central != null && (currentInput = central.getInput()) != null) {
+            // Central sent input, use that instead
+
+            // Write it to disk for debugging
+            try {
+                writeCurrentInputToFile(currentInputFile);
+            } catch (IOException ignore) { }
+
+            // Start time-counting for timeout handling
+            this.runStart = new Date();
+            this.branchCount = 0;
         } else {
             // The number of children to produce is determined by how much of the coverage
             // pool this parent input hits

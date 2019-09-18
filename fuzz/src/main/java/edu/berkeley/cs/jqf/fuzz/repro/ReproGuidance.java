@@ -41,13 +41,13 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 
-import edu.berkeley.cs.jqf.fuzz.guidance.Guidance;
-import edu.berkeley.cs.jqf.fuzz.guidance.GuidanceException;
-import edu.berkeley.cs.jqf.fuzz.guidance.Result;
+import edu.berkeley.cs.jqf.fuzz.central.ZestClient;
+import edu.berkeley.cs.jqf.fuzz.guidance.*;
 import edu.berkeley.cs.jqf.fuzz.util.Coverage;
 import edu.berkeley.cs.jqf.instrument.tracing.events.BranchEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.CallEvent;
@@ -79,6 +79,9 @@ public class ReproGuidance implements Guidance {
     private Set<String> allBranchesCovered;
     private boolean ignoreInvalidCoverage;
 
+    private ZestClient central;
+    private RecordingInputStream ris;
+
     HashMap<Integer, String> branchDescCache = new HashMap<>();
 
 
@@ -100,6 +103,12 @@ public class ReproGuidance implements Guidance {
             branchesCoveredInCurrentRun = new HashSet<>();
             ignoreInvalidCoverage = Boolean.getBoolean("jqf.repro.ignoreInvalidCoverage");
 
+        }
+
+        try {
+            this.central = new ZestClient();
+        } catch (IOException e) {
+            this.central = null;
         }
     }
 
@@ -128,9 +137,16 @@ public class ReproGuidance implements Guidance {
             File inputFile = inputFiles[nextFileIdx];
             this.inputStream = new BufferedInputStream(new FileInputStream(inputFile));
 
+            if (central != null) {
+                ris = new RecordingInputStream(this.inputStream);
+                this.inputStream = ris;
+                // TODO also replay String hints
+            }
+
             if (allBranchesCovered != null) {
                 branchesCoveredInCurrentRun.clear();
             }
+
 
             return this.inputStream;
         } catch (IOException e) {
@@ -172,6 +188,23 @@ public class ReproGuidance implements Guidance {
             throw new GuidanceException(e);
         }
 
+        if (central != null) {
+            try {
+                // Send new input / random requests used
+                Boolean hintsUsed = StringEqualsHintingInputStream.hintUsedInCurrentInput;
+                if (hintsUsed) {
+                    System.out.println("HINTS WERE USED IN CURRENT INPUT - SHOULD SEND THEM");
+                }
+                // TODO also replay String hints
+                central.sendInput(ris.getRequests(), result, 0, new LinkedList<>() );
+                StringEqualsHintingInputStream.hintUsedInCurrentInput = false;
+
+                // Send updated coverage
+                central.sendCoverage(new Coverage());
+            } catch (IOException e) {
+                throw new Error(e);
+            }
+        }
 
         // Show errors for invalid tests
         if (result == Result.INVALID && error != null) {

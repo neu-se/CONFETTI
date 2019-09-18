@@ -1,5 +1,6 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
+import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
 import edu.berkeley.cs.jqf.fuzz.guidance.Result;
 import edu.berkeley.cs.jqf.fuzz.util.Coverage;
 
@@ -51,5 +52,15 @@ public class ZestClient extends Central {
 
     public void sendCoverage(Coverage totalCoverage) {
         // TODO
+    }
+
+    public ZestGuidance.Input<?> getInput() {
+        try {
+            return (ZestGuidance.Input<?>) ois.readObject();
+        } catch (ClassNotFoundException e) {
+            throw new Error(e);
+        } catch (IOException e) {
+            return null;
+        }
     }
 }

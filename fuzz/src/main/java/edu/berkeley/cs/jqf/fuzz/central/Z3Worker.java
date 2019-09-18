@@ -3,12 +3,16 @@ package edu.berkeley.cs.jqf.fuzz.central;
 import com.microsoft.z3.Context;
 import com.microsoft.z3.Expr;
 import com.microsoft.z3.Sort;
+import com.microsoft.z3.Z3Exception;
+import edu.gmu.swe.knarr.runtime.Coverage;
 import edu.gmu.swe.knarr.server.ConstraintOptionGenerator;
 import edu.gmu.swe.knarr.server.HashMapStateStore;
 import edu.gmu.swe.knarr.server.StateStore;
 import za.ac.sun.cs.green.Green;
 import za.ac.sun.cs.green.Instance;
 import za.ac.sun.cs.green.expr.Expression;
+import za.ac.sun.cs.green.expr.Operation;
+import za.ac.sun.cs.green.expr.StringConstant;
 import za.ac.sun.cs.green.expr.Variable;
 import za.ac.sun.cs.green.expr.VisitorException;
 import za.ac.sun.cs.green.service.canonizer.ModelCanonizerService;
@@ -110,15 +114,120 @@ public class Z3Worker extends Worker {
 
             sat.clear();
             unsat.clear();
-            solve(res, sat, unsat);
 
             if (Z3_OUTPUT_DIR != null)
                 dumpToTXTFile(Paths.get(Z3_OUTPUT_DIR.getAbsolutePath(), "constraints" + solved + ".txt").toFile(), res);
 
-            for (String s : unsat)
-                System.out.println(res.get(s));
+            try {
+                solve(res, sat, unsat);
+
+                for (String s : unsat)
+                    System.out.println(res.get(s));
+
+                if (unsat.isEmpty()){
+                    // Try negating constraints of branches
+                    res.clear();
+                    for (Expression cs : csToSolve) {
+                        sat.clear();
+                        unsat.clear();
+                        if (cs.metadata instanceof Coverage.BranchData ) {
+                            Coverage.BranchData data = (Coverage.BranchData) cs.metadata;
+                            res.put("c" + res.size(), new Operation(Operation.Operator.NOT, cs));
+                            solve(res, sat, unsat);
+
+                            if (Z3_OUTPUT_DIR != null)
+                                dumpToTXTFile(Paths.get(Z3_OUTPUT_DIR.getAbsolutePath(), "constraints" + solved + ".txt").toFile(), res);
+
+
+                            if (!unsat.isEmpty()) {
+                                // Unsat, try different things to make it SAT
+                                res.remove("c" + (res.size() - 1));
+
+                                // Is it UNSAT because of a String.equals?
+                                // Maybe it's because the lengths don't match perfectly
+                                // Turn that into startsWith
+                                String equalsHint = replaceEqualsByStartsWith(res, cs);
+                                if (equalsHint != null) {
+                                    // Give hint to JQF
+                                    System.out.println("Equals hint: " + equalsHint);
+                                } else {
+                                    // Failed, stop trying
+                                    for (String s : unsat)
+                                        System.out.println(res.get(s));
+                                }
+                            }
+
+                            res.remove("c" + (res.size() - 1));
+                            res.put("c" + res.size(), cs);
+                        } else {
+                            res.put("c" + res.size(), cs);
+                        }
+                    }
+                }
+            } catch (Z3Exception | ClassCastException e) {
+                System.err.println(e.getMessage());
+                e.printStackTrace();
+            }
+
 
             continue;
+        }
+    }
+
+    private String replaceEqualsByStartsWith(Map<String, Expression> res, Expression cs) {
+        // Check if the constraint is EQUALS
+
+        if (!(cs instanceof Operation && ((Operation)cs).getOperand(1) instanceof Operation))
+            return null;
+
+        Operation outer = (Operation) cs;
+        Operation inner = (Operation) outer.getOperand(1);
+
+        if (inner.getOperator() != Operation.Operator.EQUALS)
+            return null;
+
+        // The constraint is EQUALS
+        // Replace it by STARTSWITH and try again
+
+       Operation newInner = new Operation(Operation.Operator.STARTSWITH, inner.getOperand(0), inner.getOperand(1));
+       Operation newOuter = new Operation(outer.getOperator(), outer.getOperand(0), newInner);
+
+       Expression argumentToEquals = inner.getOperand(1);
+
+        ArrayList<AbstractMap.SimpleEntry<String, Object>> sat = new ArrayList<>();
+        HashSet<String> unsat = new HashSet<>();
+
+        // Our new negated constraint
+        res.put("c" + res.size(), new Operation(Operation.Operator.NOT, newOuter));
+
+        String hint = null;
+        if (argumentToEquals instanceof StringConstant) {
+            // We know what's the argument to equals
+            hint = ((StringConstant)argumentToEquals).getValue();
+        } else {
+            // TODO we need to ask Z3 to give us what is the argument to equals
+            // TODO the code below was a try but it doesn't quite work, it always gets UNSAT
+            // TODO probably some silly reason
+//            // A string variable that is large enough for us to read what we just compared against
+//            int n = 50;
+//            Expression auxStringVar = new StringVariable("aux");
+//            for (int i = 0 ; i < 50 ; i++) {
+//                auxStringVar = new Operation(Operation.Operator.CONCAT, auxStringVar, new BVVariable("aux"+i, 32));
+//            }
+//
+//            res.put("aux1", new Operation(Operation.Operator.STARTSWITH, auxStringVar, argumentToEquals));
+        }
+
+        solve(res, sat, unsat);
+
+        if (!unsat.isEmpty()) {
+            // No good, didn't work
+            res.remove("c" + (res.size()-1));
+            return null;
+        } else {
+            // It worked, get the string from the solution
+            res.remove("c" + (res.size()-1));
+            return hint;
         }
     }
 
