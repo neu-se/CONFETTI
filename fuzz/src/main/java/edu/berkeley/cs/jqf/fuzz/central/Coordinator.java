@@ -2,8 +2,7 @@ package edu.berkeley.cs.jqf.fuzz.central;
 
 import za.ac.sun.cs.green.expr.Expression;
 
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 import java.util.*;
 
 public class Coordinator implements Runnable {
@@ -15,9 +14,9 @@ public class Coordinator implements Runnable {
 
 
 
-    private HashMap<Input, LinkedList<Expression>> constraints = new HashMap<>();
+    private HashMap<Input, ConstraintRepresentation> constraints = new HashMap<>();
     private KnarrWorker knarr;
-    private Z3Worker z3 = new Z3Worker();
+   // private Z3Worker z3 = new Z3Worker();
     private ZestWorker zest;
 
     private final Config config;
@@ -44,7 +43,9 @@ public class Coordinator implements Runnable {
 
     @Override
     public void run() {
-        new Thread(z3).start();
+        //new Thread(z3).start();
+
+        File outputDirectory = new File(config.constraintsPath);
 
         HashMap<Integer, TreeSet<Integer>> lastRecommendation = new HashMap<>();
 
@@ -87,8 +88,36 @@ public class Coordinator implements Runnable {
                         throw new Error(e);
                     }
 
-                    this.constraints.put(input, cs);
-                    z3.addConstraints(cs);
+                    if (config.useConstraints) {
+                        // Keep track of constraints, either filenames or in memory
+                        if (config.constraintsPath != null) {
+
+                            String filename = config.constraintsPath + "/input_" + input.id;
+                            //Saving of object in a file
+                            FileOutputStream file = null;
+                            try {
+                                file = new FileOutputStream(filename);
+                                ObjectOutputStream out = null;
+                                out = new ObjectOutputStream(file);
+
+                                // Serialize the constraints
+                                out.writeObject(cs);
+
+                                out.close();
+                                file.close();
+                            } catch (FileNotFoundException e) {
+                                e.printStackTrace();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+
+                            this.constraints.put(input, new ConstraintRepresentation(filename));
+                        } else {
+                            this.constraints.put(input, new ConstraintRepresentation(cs));
+                        }
+
+                    // z3.addConstraints(cs);
+                    }
 
                     // Compute coverage and branches from constraints
                     LinkedList<Branch> bs = new LinkedList<>();
@@ -291,6 +320,9 @@ public class Coordinator implements Runnable {
         public final Hinting hinting;
 
         public final boolean useInvalid;
+        public final boolean useConstraints;
+
+        public final String constraintsPath;
 
         public Config(Properties p) {
             {
@@ -309,8 +341,29 @@ public class Coordinator implements Runnable {
             }
                 useInvalid = (p.getProperty("useInvalid") != null);
             {
+                constraintsPath = p.getProperty("constraintsPath");
+                useConstraints = (p.getProperty("useConstraints") != null);
 
             }
         }
+    }
+
+    public static class ConstraintRepresentation {
+        private final LinkedList<Expression> expr;
+        private final String exprFile;
+
+        ConstraintRepresentation(LinkedList<Expression> e) {
+            this.expr = e;
+            this.exprFile = null;
+        }
+        ConstraintRepresentation(String exprFile) {
+            this.expr = null;
+            this.exprFile = exprFile;
+        }
+
+        public Object get() {
+            return this.expr == null ? this.exprFile : this.expr;
+        }
+
     }
 }

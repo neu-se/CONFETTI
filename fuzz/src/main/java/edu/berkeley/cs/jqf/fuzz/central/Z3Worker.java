@@ -18,11 +18,7 @@ import za.ac.sun.cs.green.service.z3.Z3JavaTranslator;
 import za.ac.sun.cs.green.util.Configuration;
 import za.ac.sun.cs.green.util.NotSatException;
 
-import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.PrintStream;
+import java.io.*;
 import java.nio.file.Paths;
 import java.util.AbstractMap;
 import java.util.ArrayList;
@@ -200,8 +196,8 @@ public class Z3Worker extends Worker {
                     }
 
                 // Declare functions
-                for (String function : translator.getFunctions().keySet())
-                    ps.println("(declare-fun " + function + " (Int (_ BitVec 32)) (_ BitVec 32))");
+               // for (String function : translator.getFunctions().keySet())
+                 //   ps.println("(declare-fun " + function + " (Int (_ BitVec 32)) (_ BitVec 32))");
 
                 // Declare variables
                 HashSet<String> seen = new HashSet<>();
@@ -245,6 +241,38 @@ public class Z3Worker extends Worker {
         synchronized (this.constraints) {
             this.constraints.addLast(cs);
             this.constraints.notifyAll();
+        }
+    }
+
+    public void addConstraints(String filename) {
+        // Deserialization
+        try
+        {
+            File file = new File(filename);
+            // Reading the object from a file
+            FileInputStream fis = new FileInputStream(file);
+            ObjectInputStream in = new ObjectInputStream(fis);
+
+            LinkedList<Expression> constraints = (LinkedList<Expression>)in.readObject();
+
+            in.close();
+            fis.close();
+
+            synchronized (this.constraints) {
+                this.constraints.addLast(constraints);
+                this.constraints.notifyAll();
+            }
+
+        }
+
+        catch(IOException ex)
+        {
+            System.out.println("Could not de-serialize constraints");
+        }
+
+        catch(ClassNotFoundException ex)
+        {
+            System.out.println("ClassNotFoundException is caught");
         }
     }
 

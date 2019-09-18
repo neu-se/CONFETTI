@@ -40,6 +40,11 @@ import com.pholser.junit.quickcheck.generator.GenerationStatus;
 import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
 import edu.berkeley.cs.jqf.examples.common.AsciiStringGenerator;
+import edu.berkeley.cs.jqf.fuzz.guidance.StringEqualsHintingInputStream;
+import edu.columbia.cs.psl.phosphor.runtime.Taint;
+import edu.columbia.cs.psl.phosphor.struct.LazyCharArrayObjTags;
+import edu.columbia.cs.psl.phosphor.struct.TaintedObjectWithObjTag;
+import edu.gmu.swe.knarr.runtime.Symbolicator;
 
 import static java.lang.Math.ceil;
 import static java.lang.Math.log;
@@ -57,6 +62,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     private static final int MAX_IDENTIFIERS = 100;
     private static final int MAX_EXPRESSION_DEPTH = 10;
     private static final int MAX_STATEMENT_DEPTH = 6;
+    private static List<String> identifiersList;
     private static Set<String> identifiers;
     private int statementDepth;
     private int expressionDepth;
@@ -78,6 +84,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     public String generate(SourceOfRandomness random, GenerationStatus status) {
         this.status = status;
         this.identifiers = new HashSet<>();
+        this.identifiersList = new ArrayList<>();
         this.statementDepth = 0;
         this.expressionDepth = 0;
         return generateStatement(random).toString();
@@ -248,11 +255,50 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         if (identifiers.isEmpty() || (identifiers.size() < MAX_IDENTIFIERS && random.nextBoolean())) {
             identifier = random.nextChar('a', 'z') + "_" + identifiers.size();
             identifiers.add(identifier);
-        } else {
-            identifier = random.choose(identifiers);
+            identifiersList.add(identifier);
         }
 
+        boolean coin = random.nextBoolean();
+        int choice = random.nextInt(0, Integer.MAX_VALUE);
+
+        String[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+
+        if (hints != null && hints.length > 0) {
+
+            identifier = "";
+
+            random.nextInt(0, Integer.MAX_VALUE);
+            choice = choice % hints.length;
+
+            identifier = new String(hints[choice]);
+            StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+        } else {
+            choice = choice % identifiers.size();
+            identifier = new String(identifiersList.get(choice));
+        }
+
+
+        identifier = applyTaints(identifier, choice);
+
         return identifier;
+    }
+
+    private static String applyTaints(String result, Object taint) {
+        if (!(taint instanceof TaintedObjectWithObjTag))
+            return result;
+
+        String ret = new String(result);
+
+        if (Symbolicator.getTaints(result) instanceof LazyCharArrayObjTags) {
+            LazyCharArrayObjTags taints = (LazyCharArrayObjTags) Symbolicator.getTaints(result);
+            if (taints.taints != null)
+                for (int i = 0 ; i < taints.taints.length ; i++)
+                    taints.taints[i] = (taints.taints[i] == null ? ((Taint)((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG()) : taints.taints[i]);
+            else
+                taints.setTaints(((Taint)((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG()));
+        }
+
+        return ret;
     }
 
     private String generateIfNode(SourceOfRandomness random) {

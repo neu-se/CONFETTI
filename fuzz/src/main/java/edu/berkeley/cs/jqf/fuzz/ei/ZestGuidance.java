@@ -722,6 +722,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
 
             if(StringEqualsHintingInputStream.hintUsedInCurrentInput) {
+
+                // TODO: Do we want to save all inputs that use hints??
                 toSave = true;
                // StringEqualsHintingInputStream.hintUsedInCurrentInput = false;
                 why= why + "+hint";

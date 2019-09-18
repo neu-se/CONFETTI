@@ -3,3 +3,5 @@ path.filter=quickcheck,Token,parsing/parser/
 #string.hints=GLOBAL
 #string.hints=PER_INPUT
 string.hints=PER_BYTE
+constraintsPath=/home/jamesk/Documents/constraints
+

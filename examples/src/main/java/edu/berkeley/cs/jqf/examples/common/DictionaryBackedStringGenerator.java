@@ -79,9 +79,12 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
 
             String word;
 
-            if (hints != null && hints.length > 0 && (coin < 90)) {
+            //if (hints != null && hints.length > 0 && (coin < 90)) {
+
+            if (hints != null && hints.length > 0 ) {
                 choice = choice % hints.length;
                 word = hints[choice];
+                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
             } else {
                 choice = choice % dictionary.size();
                 word = dictionary.get(choice);

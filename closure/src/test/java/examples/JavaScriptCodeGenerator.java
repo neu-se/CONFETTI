@@ -307,9 +307,15 @@ public class JavaScriptCodeGenerator extends Generator<String> {
 
         String[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
 
-        if (hints != null && hints.length > 0 && coin) {
+        if (hints != null && hints.length > 0) {
+
+            identifier = "";
+
+            random.nextInt(0, Integer.MAX_VALUE);
             choice = choice % hints.length;
+
             identifier = new String(hints[choice]);
+            StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         } else {
             choice = choice % identifiers.size();
             identifier = new String(identifiersList.get(choice));
