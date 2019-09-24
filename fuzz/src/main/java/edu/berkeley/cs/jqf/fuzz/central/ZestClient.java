@@ -56,6 +56,7 @@ public class ZestClient extends Central {
 
     public ZestGuidance.Input<?> getInput() {
         try {
+            oos.writeObject(Boolean.TRUE);
             return (ZestGuidance.Input<?>) ois.readObject();
         } catch (ClassNotFoundException e) {
             throw new Error(e);
