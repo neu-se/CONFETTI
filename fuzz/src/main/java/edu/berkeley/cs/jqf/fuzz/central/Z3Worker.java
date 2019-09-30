@@ -10,11 +10,7 @@ import edu.gmu.swe.knarr.server.HashMapStateStore;
 import edu.gmu.swe.knarr.server.StateStore;
 import za.ac.sun.cs.green.Green;
 import za.ac.sun.cs.green.Instance;
-import za.ac.sun.cs.green.expr.Expression;
-import za.ac.sun.cs.green.expr.Operation;
-import za.ac.sun.cs.green.expr.StringConstant;
-import za.ac.sun.cs.green.expr.Variable;
-import za.ac.sun.cs.green.expr.VisitorException;
+import za.ac.sun.cs.green.expr.*;
 import za.ac.sun.cs.green.service.canonizer.ModelCanonizerService;
 import za.ac.sun.cs.green.service.factorizer.ModelFactorizerService;
 import za.ac.sun.cs.green.service.z3.ModelZ3JavaService;
@@ -128,7 +124,7 @@ public class Z3Worker extends Worker {
                 for (String s : unsat)
                     System.out.println(res.get(s));
 
-                if (unsat.isEmpty()){
+                if (unsat.isEmpty()) {
                     // Try negating constraints of branches
                     res.clear();
                     for (Expression cs : csToSolve) {
@@ -142,39 +138,176 @@ public class Z3Worker extends Worker {
                             if (Z3_OUTPUT_DIR != null)
                                 dumpToTXTFile(Paths.get(Z3_OUTPUT_DIR.getAbsolutePath(), "constraints" + solved + ".txt").toFile(), res);
 
+                            res.remove("c" + (res.size() - 1));
 
                             if (!unsat.isEmpty()) {
                                 // Unsat, try different things to make it SAT
-                                res.remove("c" + (res.size() - 1));
 
                                 // Is it UNSAT because of a String.equals?
                                 // Maybe it's because the lengths don't match perfectly
                                 // Turn that into startsWith
-                                String equalsHint = replaceEqualsByStartsWith(res, cs);
-                                if (equalsHint != null) {
+                                String hint = replaceEqualsByStartsWith(res, cs);
+                                if (hint != null) {
                                     // Give hint to JQF
-                                    System.out.println("Equals hint: " + equalsHint);
+                                    System.out.println("Equals hint: " + hint);
+                                } else if ((hint = handleStringLength(res, cs)) != null) {
+                                    // Give hint to JQF
+                                    System.out.println("String length hint: " + hint);
                                 } else {
                                     // Failed, stop trying
                                     for (String s : unsat)
                                         System.out.println(res.get(s));
                                 }
                             }
-
-                            res.remove("c" + (res.size() - 1));
-                            res.put("c" + res.size(), cs);
-                        } else {
-                            res.put("c" + res.size(), cs);
                         }
                     }
+                } else {
+                    // Constraints were SAT, generate hint
                 }
             } catch (Z3Exception | ClassCastException e) {
+                System.err.println(e.getMessage());
+                e.printStackTrace();
+            } catch (Throwable e) {
                 System.err.println(e.getMessage());
                 e.printStackTrace();
             }
 
 
             continue;
+        }
+    }
+
+    private String handleStringLength(Map<String, Expression> res, Expression cs) {
+        // Check if the constraint is LENGTH
+
+        if (!(cs instanceof Operation && ((Operation)cs).getOperand(1) instanceof Operation))
+            return null;
+
+        Operation comparison = (Operation) cs;
+        Operation i2bv = (Operation) comparison.getOperand(1);
+
+        if (i2bv.getOperator() != Operation.Operator.I2BV || !(i2bv.getOperand(0) instanceof Operation))
+            return null;
+
+        Operation length = (Operation) i2bv.getOperand(0);
+
+        if (length.getOperator() != Operation.Operator.LENGTH)
+            return null;
+
+        // Is is a LENGTH constraint
+
+        // 1st figure out what length are we looking for
+        BVVariable bv = new BVVariable("expectedLength", 32);
+
+        res.put("expectedLength", new Operation(Operation.Operator.EQUALS, new Operation(Operation.Operator.I2BV, 32, comparison.getOperand(0)), bv));
+
+        ArrayList<AbstractMap.SimpleEntry<String, Object>> sat = new ArrayList<>();
+        HashSet<String> unsat = new HashSet<>();
+        solve(res, sat, unsat);
+
+        res.remove("expectedLength");
+
+        if (!unsat.isEmpty()) {
+            // No good, didn't work
+            res.remove("c" + (res.size()-1));
+            return null;
+        }
+
+        int expectedLength = -1;
+
+        for (AbstractMap.SimpleEntry<String, Object> e : sat) {
+            if (e.getKey().equals("expectedLength")) {
+                expectedLength = (int) e.getValue();
+                break;
+            }
+        }
+
+        // Something went wrong
+        if (expectedLength == -1) {
+            return null;
+        }
+
+        // 2nd add/remove characters from the generated string
+
+        // Find string var
+        int actualLength = 0;
+        Expression concat = length.getOperand(0);
+        while (concat instanceof Operation) {
+            actualLength += 1;
+            concat = ((Operation) concat).getOperand(0);
+        }
+
+        StringVariable generatedString;
+        if (concat instanceof StringVariable)
+            generatedString = (StringVariable) concat;
+        else
+            return null;
+
+        // Find generator function
+        Expression f = ((Operation)length.getOperand(0)).getOperand(1);
+        while (f instanceof Operation) {
+            f = ((Operation) f).getOperand(0);
+        }
+
+        FunctionCall gen;
+        if (f instanceof FunctionCall)
+            gen = (FunctionCall)f;
+        else
+            return null;
+
+        // Find the solution for the function
+        int[] genSol = null;
+        for (AbstractMap.SimpleEntry<String, Object> e : sat) {
+            if (e.getKey().equals(gen.getName())) {
+                genSol = (int[]) e.getValue();
+                break;
+            }
+        }
+
+        if (genSol == null)
+            return null;
+
+        // We are trying to negate this constraint, so generate a suitable hint
+        Operation.Operator op = comparison.getOperator();
+
+        if (op == Operation.Operator.NE) {
+            // Hint must be the same as expected length
+            if (expectedLength == actualLength)
+                return null;
+
+            if (expectedLength < actualLength) {
+                // Add characters
+                op = Operation.Operator.LT;
+            } else {
+                // Remove characters
+                op = Operation.Operator.GT;
+            }
+        }
+
+        switch (op) {
+            case GE:
+            case GT: {
+                // Hint must be smaller than expected length
+                if (expectedLength - 1 > genSol.length)
+                    return null;
+                byte[] hint = new byte[expectedLength - 1];
+                for (int i = 0 ; i < hint.length ; i++)
+                    hint[i] = (byte) genSol[i]; // Different types, cannot arrayCopy
+                return new String(hint);
+            }
+            case EQ:
+                // Hint must be different than expected length
+            case LE:
+            case LT: {
+                // Hint must be larger than expected length
+                byte[] hint = new byte[expectedLength + 1];
+                for (int i = 0 ; i < genSol.length ; i++)
+                    hint[i] = (byte) genSol[i]; // Different types, cannot arrayCopy
+                hint[hint.length - 1] = 'a';
+                return new String(hint);
+            }
+            default:
+                return null;
         }
     }
 
