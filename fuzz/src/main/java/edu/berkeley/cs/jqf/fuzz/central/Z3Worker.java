@@ -8,6 +8,7 @@ import edu.gmu.swe.knarr.runtime.Coverage;
 import edu.gmu.swe.knarr.server.ConstraintOptionGenerator;
 import edu.gmu.swe.knarr.server.HashMapStateStore;
 import edu.gmu.swe.knarr.server.StateStore;
+import org.jgrapht.alg.util.Pair;
 import za.ac.sun.cs.green.Green;
 import za.ac.sun.cs.green.Instance;
 import za.ac.sun.cs.green.expr.*;
@@ -24,15 +25,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Paths;
-import java.util.AbstractMap;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
+import java.util.function.BiConsumer;
 
 public class Z3Worker extends Worker {
     private LinkedList<LinkedList<Expression>> constraints = new LinkedList<>();
@@ -490,6 +484,10 @@ public class Z3Worker extends Worker {
         }
     }
 
+    public void exploreTarget(List<Target> targets, BiConsumer<Coordinator.Branch, Optional<Pair<byte[], HashMap<Integer,HashSet<String>>>>> done ) {
+        // TODO
+    }
+
     private static class Data {
         Green green;
         ModelFactorizerService slicer;
@@ -498,5 +496,17 @@ public class Z3Worker extends Worker {
         Map<Variable, Variable> variableMap;
         StateStore stateStore;
         ConstraintOptionGenerator optionGenerator;
+    }
+
+    public static class Target {
+        Coordinator.Branch branch;
+        List<Expression> constraints;
+        HashMap<Integer, HashSet<String>> hints;
+
+        public Target(Coordinator.Branch branch, List<Expression> constraints, HashMap<Integer, HashSet<String>> hints) {
+            this.branch = branch;
+            this.constraints = constraints;
+            this.hints = hints;
+        }
     }
 }

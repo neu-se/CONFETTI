@@ -1,10 +1,12 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
+import org.jgrapht.alg.util.Pair;
 import za.ac.sun.cs.green.expr.Expression;
 
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class Coordinator implements Runnable {
     private LinkedList<Input> inputs = new LinkedList<>();
@@ -174,6 +176,7 @@ public class Coordinator implements Runnable {
                     }
 
                     input.isNew = false;
+                    targetZ3(null, null);
                 }
             }
 
@@ -224,6 +227,31 @@ public class Coordinator implements Runnable {
                 }
             }
         }
+    }
+
+    private void targetZ3(Coordinator.Branch done, Optional<Pair<byte[], HashMap<Integer, HashSet<String>>>> result) {
+        if (done != null) {
+            System.out.println("Looks like Z3 found an input for this branch");
+            throw new Error("Not implemented yet");
+        }
+
+        // Figure out what is the branch that needs the most attention
+        Branch top = (Branch) (branches.values().stream()
+                .filter(b -> b.source != null)
+                .filter(b -> b.falseExplored.isEmpty() || b.trueExplored.isEmpty())
+                .sorted((b1,b2) -> Integer.compare(b2.trueExplored.size() + b2.falseExplored.size(), b1.trueExplored.size() + b1.falseExplored.size()))
+                .limit(1)
+                .toArray())[0];
+
+        // Create Z3 target
+        List<Z3Worker.Target> targets = inputs.stream()
+                .filter(i -> top.trueExplored.contains(i) || top.falseExplored.contains(i))
+                .map(i -> new Z3Worker.Target(top, constraints.get(i), perByteStringEqualsHints.get(i)))
+                .collect(Collectors.toList());
+
+        // Set Z3 target
+        z3.exploreTarget(targets, (branch,hints) -> targetZ3(branch,hints));
+        // When done, Z3 will call back this function
     }
 
     public final synchronized  void setKnarrWorker(KnarrWorker knarr, ZestWorker zest) {
