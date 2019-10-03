@@ -3,6 +3,7 @@ package edu.berkeley.cs.jqf.fuzz.central;
 import edu.gmu.swe.knarr.runtime.Coverage;
 import org.jgrapht.alg.util.Pair;
 import za.ac.sun.cs.green.expr.Expression;
+import za.ac.sun.cs.green.expr.FunctionCall;
 import za.ac.sun.cs.green.expr.Operation;
 import za.ac.sun.cs.green.expr.Variable;
 
@@ -98,6 +99,10 @@ class KnarrWorker extends Worker {
             }
             for (int i = 0 ; i < op.getArity() ; i++)
                 findControllingBytes(op.getOperand(i), bytes, stringEqualsArgs);
+        } else if (e instanceof FunctionCall) {
+            FunctionCall f = (FunctionCall) e;
+            for (Expression arg : f.getArguments())
+                findControllingBytes(arg, bytes, stringEqualsArgs);
         }
     }
 
