@@ -75,7 +75,7 @@ class KnarrWorker extends Worker {
 
     }
 
-    private void findControllingBytes(Expression e, HashSet<Integer> bytes, HashSet<String> stringEqualsArgs) {
+    public static void findControllingBytes(Expression e, HashSet<Integer> bytes, HashSet<String> stringEqualsArgs) {
         if (e instanceof Variable) {
             Variable v = (Variable) e;
             if (v.getName().startsWith("autoVar_")) {

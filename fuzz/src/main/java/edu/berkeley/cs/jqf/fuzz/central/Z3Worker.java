@@ -8,7 +8,6 @@ import edu.gmu.swe.knarr.runtime.Coverage;
 import edu.gmu.swe.knarr.server.ConstraintOptionGenerator;
 import edu.gmu.swe.knarr.server.HashMapStateStore;
 import edu.gmu.swe.knarr.server.StateStore;
-import org.jgrapht.alg.util.Pair;
 import za.ac.sun.cs.green.Green;
 import za.ac.sun.cs.green.Instance;
 import za.ac.sun.cs.green.expr.*;
@@ -26,10 +25,9 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.function.BiConsumer;
 
 public class Z3Worker extends Worker {
-    private LinkedList<LinkedList<Expression>> constraints = new LinkedList<>();
+    private LinkedList<Target> targets = new LinkedList<>();
     private Data data;
 
     private static final File Z3_OUTPUT_DIR;
@@ -84,25 +82,35 @@ public class Z3Worker extends Worker {
         }
 
         int solved = -1;
+        Target t = null;
         while (true) {
             solved++;
-            LinkedList<Expression> csToSolve;
 
-            synchronized (constraints) {
-                if (constraints.isEmpty()) {
+            synchronized (targets) {
+                if (targets.isEmpty()) {
                     try {
-                        constraints.wait();
+                        targets.wait();
                     } catch (InterruptedException _) {
                     }
                     continue;
                 }
 
-                csToSolve = constraints.removeFirst();
+                t = this.targets.removeFirst();
             }
 
+            LinkedList<Expression> csToSolve = new LinkedList<>();
             Map<String, Expression> res = new HashMap<>();
-            for (Expression e : csToSolve)
+
+            for (Expression e : t.constraints) {
+                csToSolve.add(e);
                 res.put("c" + res.size(), e);
+                if (e.metadata != null && e.metadata instanceof Coverage.BranchData) {
+                    Coverage.BranchData data = (Coverage.BranchData) e.metadata;
+                    if (data.takenCode == t.branch.takenID && data.notTakenCode == t.branch.notTakenID)
+                        break;
+                }
+            }
+
             ArrayList<AbstractMap.SimpleEntry<String, Object>> sat = new ArrayList<>();
             HashSet<String> unsat = new HashSet<>();
 
@@ -143,7 +151,9 @@ public class Z3Worker extends Worker {
                                 String hint = replaceEqualsByStartsWith(res, cs);
                                 if (hint != null) {
                                     // Give hint to JQF
-                                    System.out.println("Equals hint: " + hint);
+                                    HashSet<Integer> bytes = new HashSet<>();
+                                    KnarrWorker.findControllingBytes(cs, bytes, new HashSet<>());
+                                    System.out.println("Equals hint: " + hint + " on bytes " + bytes);
                                 } else if ((hint = handleStringLength(res, cs)) != null) {
                                     // Give hint to JQF
                                     System.out.println("String length hint: " + hint);
@@ -477,15 +487,14 @@ public class Z3Worker extends Worker {
         }
     }
 
-    public void addConstraints(LinkedList<Expression> cs) {
-        synchronized (this.constraints) {
-            this.constraints.addLast(cs);
-            this.constraints.notifyAll();
-        }
-    }
+    public void exploreTarget(List<Target> targets) {
+        synchronized (this.targets) {
+            if (!this.targets.isEmpty())
+                return;
 
-    public void exploreTarget(List<Target> targets, BiConsumer<Coordinator.Branch, Optional<Pair<byte[], HashMap<Integer,HashSet<String>>>>> done ) {
-        // TODO
+            this.targets.addAll(targets);
+            this.targets.notifyAll();
+        }
     }
 
     private static class Data {

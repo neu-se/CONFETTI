@@ -90,7 +90,6 @@ public class Coordinator implements Runnable {
                     }
 
                     this.constraints.put(input, cs);
-                    z3.addConstraints(cs);
 
                     // Compute coverage and branches from constraints
                     LinkedList<Branch> bs = new LinkedList<>();
@@ -250,7 +249,7 @@ public class Coordinator implements Runnable {
                 .collect(Collectors.toList());
 
         // Set Z3 target
-        z3.exploreTarget(targets, (branch,hints) -> targetZ3(branch,hints));
+        z3.exploreTarget(targets);
         // When done, Z3 will call back this function
     }
 
