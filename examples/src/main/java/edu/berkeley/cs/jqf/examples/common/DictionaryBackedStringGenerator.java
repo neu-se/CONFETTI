@@ -35,6 +35,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 import com.pholser.junit.quickcheck.generator.GenerationStatus;
 import com.pholser.junit.quickcheck.generator.Generator;
@@ -82,6 +83,8 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
 
             String[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
 
+
+
             String word;
 
             //if (hints != null && hints.length > 0 && (coin < 90)) {
@@ -109,6 +112,15 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
     private static String applyTaints(String result, Object taint) {
         if (result.length() == 0 || !(taint instanceof TaintedObjectWithObjTag))
             return result;
+
+        // if there is a z3 hint - use a random one.
+        String[] z3Hints = StringEqualsHintingInputStream.getHintsForGeneratorFunction("gen" + currentFunctionNumber);
+        if(z3Hints != null) {
+            System.out.println("Z3 Hints was not null for input!!!!!");
+            Random random = new Random();
+            result = z3Hints[random.nextInt() % z3Hints.length];
+        }
+
 
         // New string to avoid adding taints to the dictionary itself
         String ret = new String(result);

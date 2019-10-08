@@ -4,10 +4,14 @@ import com.microsoft.z3.Context;
 import com.microsoft.z3.Expr;
 import com.microsoft.z3.Sort;
 import com.microsoft.z3.Z3Exception;
+import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
 import edu.gmu.swe.knarr.runtime.Coverage;
 import edu.gmu.swe.knarr.server.ConstraintOptionGenerator;
 import edu.gmu.swe.knarr.server.HashMapStateStore;
 import edu.gmu.swe.knarr.server.StateStore;
+import java.util.regex.*;
+
+import javafx.util.Pair;
 import za.ac.sun.cs.green.Green;
 import za.ac.sun.cs.green.Instance;
 import za.ac.sun.cs.green.expr.*;
@@ -31,13 +35,13 @@ import java.util.Map;
 import java.util.Properties;
 
 public class Z3Worker extends Worker {
-    private LinkedList<LinkedList<Expression>> constraints = new LinkedList<>();
+    private LinkedList<Pair<Integer, LinkedList<Expression>>> constraints = new LinkedList<>();
     private Data data;
 
     private static final File Z3_OUTPUT_DIR;
 
     static {
-        String z3Dir = System.getProperty("Z3_OUTPUT_DIR");
+        String z3Dir = "/home/jamesk/Desktop/z3_out"; //System.getProperty("Z3_OUTPUT_DIR");
         if (z3Dir != null) {
             File f = new File(z3Dir);
             if (!f.exists())
@@ -89,6 +93,7 @@ public class Z3Worker extends Worker {
         while (true) {
             solved++;
             LinkedList<Expression> csToSolve;
+            Integer inputId;
 
             synchronized (constraints) {
                 if (constraints.isEmpty()) {
@@ -99,7 +104,9 @@ public class Z3Worker extends Worker {
                     continue;
                 }
 
-                csToSolve = constraints.removeFirst();
+                Pair<Integer, LinkedList<Expression>> toProcess = constraints.removeFirst();
+                inputId = toProcess.getKey();
+                csToSolve = toProcess.getValue();
             }
 
             Map<String, Expression> res = new HashMap<>();
@@ -142,13 +149,18 @@ public class Z3Worker extends Worker {
                                 // Is it UNSAT because of a String.equals?
                                 // Maybe it's because the lengths don't match perfectly
                                 // Turn that into startsWith
-                                String hint = replaceEqualsByStartsWith(res, cs);
+                                Pair<String, String> hint = replaceEqualsByStartsWith(res, cs);
+                                String lengthHint = null;
                                 if (hint != null) {
                                     // Give hint to JQF
-                                    System.out.println("Equals hint: " + hint);
-                                } else if ((hint = handleStringLength(res, cs)) != null) {
+                                    System.out.println("Equals hint: " + hint.getValue());
+                                    Z3InputHints z3InputHints = Z3InputHints.getInstance();
+                                    synchronized (z3InputHints) {
+                                        z3InputHints.addHint(inputId, hint);
+                                    }
+                                } else if ((lengthHint = handleStringLength(res, cs)) != null) {
                                     // Give hint to JQF
-                                    System.out.println("String length hint: " + hint);
+                                    System.out.println("String length hint: " + lengthHint);
                                 } else {
                                     // Failed, stop trying
                                     for (String s : unsat)
@@ -307,7 +319,7 @@ public class Z3Worker extends Worker {
         }
     }
 
-    private String replaceEqualsByStartsWith(Map<String, Expression> res, Expression cs) {
+    private Pair<String, String> replaceEqualsByStartsWith(Map<String, Expression> res, Expression cs) {
         // Check if the constraint is EQUALS
 
         if (!(cs instanceof Operation && ((Operation)cs).getOperand(1) instanceof Operation))
@@ -327,6 +339,9 @@ public class Z3Worker extends Worker {
 
        Expression argumentToEquals = inner.getOperand(1);
 
+       String leftSide = inner.getOperand(0).toString();
+       String generatorFunction = null;
+
         ArrayList<AbstractMap.SimpleEntry<String, Object>> sat = new ArrayList<>();
         HashSet<String> unsat = new HashSet<>();
 
@@ -335,6 +350,13 @@ public class Z3Worker extends Worker {
 
         String hint = null;
         if (argumentToEquals instanceof StringConstant) {
+            // Try to find the generator function number so we know what String to modify with the hint
+            Pattern p = Pattern.compile("gen[0-9]*");
+            Matcher m = p.matcher(inner.getOperand(0).toString());
+            if(m.find())
+                generatorFunction = m.group();
+
+
             // We know what's the argument to equals
             hint = ((StringConstant)argumentToEquals).getValue();
         } else {
@@ -360,7 +382,7 @@ public class Z3Worker extends Worker {
         } else {
             // It worked, get the string from the solution
             res.remove("c" + (res.size()-1));
-            return hint;
+            return new Pair<>(generatorFunction,hint);
         }
     }
 
@@ -479,44 +501,44 @@ public class Z3Worker extends Worker {
         }
     }
 
-    public void addConstraints(LinkedList<Expression> cs) {
+    public void addConstraints(int  inputId, LinkedList<Expression> cs) {
         synchronized (this.constraints) {
-            this.constraints.addLast(cs);
+            this.constraints.addLast(new Pair(inputId,cs));
             this.constraints.notifyAll();
         }
     }
 
-    public void addConstraints(String filename) {
-        // Deserialization
-        try
-        {
-            File file = new File(filename);
-            // Reading the object from a file
-            FileInputStream fis = new FileInputStream(file);
-            ObjectInputStream in = new ObjectInputStream(fis);
-
-            LinkedList<Expression> constraints = (LinkedList<Expression>)in.readObject();
-
-            in.close();
-            fis.close();
-
-            synchronized (this.constraints) {
-                this.constraints.addLast(constraints);
-                this.constraints.notifyAll();
-            }
-
-        }
-
-        catch(IOException ex)
-        {
-            System.out.println("Could not de-serialize constraints");
-        }
-
-        catch(ClassNotFoundException ex)
-        {
-            System.out.println("ClassNotFoundException is caught");
-        }
-    }
+//    public void addConstraints(String filename) {
+//        // Deserialization
+//        try
+//        {
+//            File file = new File(filename);
+//            // Reading the object from a file
+//            FileInputStream fis = new FileInputStream(file);
+//            ObjectInputStream in = new ObjectInputStream(fis);
+//
+//            LinkedList<Expression> constraints = (LinkedList<Expression>)in.readObject();
+//
+//            in.close();
+//            fis.close();
+//
+//            synchronized (this.constraints) {
+//                this.constraints.addLast(constraints);
+//                this.constraints.notifyAll();
+//            }
+//
+//        }
+//
+//        catch(IOException ex)
+//        {
+//            System.out.println("Could not de-serialize constraints");
+//        }
+//
+//        catch(ClassNotFoundException ex)
+//        {
+//            System.out.println("ClassNotFoundException is caught");
+//        }
+//    }
 
     private static class Data {
         Green green;

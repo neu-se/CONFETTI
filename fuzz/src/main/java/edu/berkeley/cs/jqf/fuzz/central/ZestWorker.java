@@ -1,6 +1,8 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
 import edu.berkeley.cs.jqf.fuzz.guidance.Result;
+import javafx.util.Pair;
+import sun.awt.image.ImageWatched;
 
 import java.io.IOException;
 import java.io.ObjectInputStream;
@@ -120,8 +122,28 @@ class ZestWorker extends Worker {
                 fuzzing.set(selected, (toFuzz + 1) % inputs.get(selected).size());
             } else if (o instanceof Boolean) {
                 // Zest is asking if there's an input we'd like to explore now
-                oos.writeObject(null);
-                oos.reset();
+                Z3InputHints z3InputHints = Z3InputHints.getInstance();
+                LinkedList<Z3InputHints.Z3StringHint> hints = null;
+                synchronized (z3InputHints) {
+                    hints = z3InputHints.getHints();
+                }
+                if (hints != null) {
+                    LinkedList<Pair<String, String>> z3StringHintsToSend = new LinkedList<>();
+                    System.out.println("GOT Z3 input hints!");
+                    Integer inputId = hints.get(0).getInputId();
+                    for (Z3InputHints.Z3StringHint hint : hints) {
+                        System.out.println("Input id " + hint.getInputId());
+                        System.out.println(hint.getHint().getKey() + "    " + hint.getHint().getValue());
+                        z3StringHintsToSend.addLast(hint.getHint());
+                    }
+                    oos.writeObject(inputId);
+                    oos.writeObject(z3StringHintsToSend);
+                    oos.reset();
+                   // fuzzing.set(inputId, (inputId + 1) % inputs.get(inputId).size());
+                } else {
+                    oos.writeObject(null);
+                    oos.reset();
+                }
             }
         }
     }

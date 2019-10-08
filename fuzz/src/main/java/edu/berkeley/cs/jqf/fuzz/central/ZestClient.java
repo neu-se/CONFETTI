@@ -3,6 +3,7 @@ package edu.berkeley.cs.jqf.fuzz.central;
 import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
 import edu.berkeley.cs.jqf.fuzz.guidance.Result;
 import edu.berkeley.cs.jqf.fuzz.util.Coverage;
+import sun.awt.image.ImageWatched;
 
 import java.io.IOException;
 import java.util.LinkedList;
@@ -50,16 +51,30 @@ public class ZestClient extends Central {
         }
     }
 
+    public Integer receiveInputId() throws IOException {
+        try {
+            return (Integer) ois.readObject();
+        } catch (ClassNotFoundException e) {
+            throw new Error(e);
+        }
+    }
+
+    public LinkedList<Z3InputHints.Z3StringHint> receiveZ3StringHints() throws IOException {
+        try {
+            return (LinkedList<Z3InputHints.Z3StringHint>) ois.readObject();
+        } catch (ClassNotFoundException e) {
+            throw new Error(e);
+        }
+    }
+
     public void sendCoverage(Coverage totalCoverage) {
         // TODO
     }
 
-    public ZestGuidance.Input<?> getInput() {
+    public Integer getZ3InputId() {
         try {
             oos.writeObject(Boolean.TRUE);
-            return (ZestGuidance.Input<?>) ois.readObject();
-        } catch (ClassNotFoundException e) {
-            throw new Error(e);
+            return receiveInputId();
         } catch (IOException e) {
             return null;
         }

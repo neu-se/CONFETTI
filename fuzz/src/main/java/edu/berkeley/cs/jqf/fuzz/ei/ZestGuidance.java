@@ -57,6 +57,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
+import edu.berkeley.cs.jqf.fuzz.central.Z3InputHints;
 import edu.berkeley.cs.jqf.fuzz.central.ZestClient;
 import edu.berkeley.cs.jqf.fuzz.ei.ExecutionIndex.Prefix;
 import edu.berkeley.cs.jqf.fuzz.ei.ExecutionIndex.Suffix;
@@ -276,6 +277,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private RecordingInputStream ris;
     private LinkedList<int[]> instructions;
     public LinkedList<String[]> stringEqualsHints;
+    public LinkedList<Z3InputHints.Z3StringHint> z3stringEqualsHints;
 
 
     /**
@@ -537,6 +539,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
         // Reset execution index state
         eiState = new ExecutionIndexingState();
+        Integer inputId = null;
 
         // Choose an input to execute based on state of queues
         if (!seedInputs.isEmpty()) {
@@ -555,17 +558,27 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             // Make fresh input using either list or maps
             infoLog("Spawning new input from thin air");
             currentInput = DISABLE_EXECUTION_INDEXING ? new LinearInput() : new MappedInput();
-        } else if (central != null && (currentInput = central.getInput()) != null) {
+
+        } else if (central != null && (inputId = central.getZ3InputId()) != null) {
             // Central sent input, use that instead
+            try {
+                z3stringEqualsHints= central.receiveZ3StringHints();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
+            currentInput = savedInputs.get(inputId);
 
             // Write it to disk for debugging
             try {
                 writeCurrentInputToFile(currentInputFile);
-            } catch (IOException ignore) { }
+            } catch (IOException ignore) {
+            }
 
             // Start time-counting for timeout handling
             this.runStart = new Date();
             this.branchCount = 0;
+
         } else {
             // The number of children to produce is determined by how much of the coverage
             // pool this parent input hits
@@ -655,8 +668,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             ris = new RecordingInputStream(is);
             is = ris;
 
-            if (stringEqualsHints != null)
-                is = new StringEqualsHintingInputStream(is, instructions, stringEqualsHints);
+            if (stringEqualsHints != null || z3stringEqualsHints != null )
+                is = new StringEqualsHintingInputStream(is, instructions, stringEqualsHints == null ? new LinkedList<String[]>() : stringEqualsHints, z3stringEqualsHints == null ? new LinkedList<Z3InputHints.Z3StringHint>() : z3stringEqualsHints);
         }
 
         return is;

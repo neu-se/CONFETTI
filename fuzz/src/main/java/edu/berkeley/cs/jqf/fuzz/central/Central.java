@@ -31,6 +31,8 @@ public class Central {
      * 3. Send instructions
      */
     public static void main(String[] args) throws Throwable {
+
+       // System.load("/home/jamesk/Documents/jqf-artifact/software/knarr/z3-4.6.0-x64-ubuntu-16.04/bin/libz3java.so");
         ServerSocket ss = new ServerSocket(PORT);
 
         ZestWorker zest = null;

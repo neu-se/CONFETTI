@@ -16,7 +16,7 @@ public class Coordinator implements Runnable {
 
     private HashMap<Input, ConstraintRepresentation> constraints = new HashMap<>();
     private KnarrWorker knarr;
-   // private Z3Worker z3 = new Z3Worker();
+    private Z3Worker z3 = new Z3Worker();
     private ZestWorker zest;
 
     private final Config config;
@@ -43,7 +43,7 @@ public class Coordinator implements Runnable {
 
     @Override
     public void run() {
-        //new Thread(z3).start();
+        new Thread(z3).start();
 
         File outputDirectory = new File(config.constraintsPath);
 
@@ -116,9 +116,9 @@ public class Coordinator implements Runnable {
                             this.constraints.put(input, new ConstraintRepresentation(cs));
                         }
 
-                    // z3.addConstraints(cs);
-                    }
 
+                    }
+                    z3.addConstraints(input.id, cs);
                     // Compute coverage and branches from constraints
                     LinkedList<Branch> bs = new LinkedList<>();
                     HashMap<Integer, HashSet<String>> eqs = new HashMap<>();
@@ -249,7 +249,12 @@ public class Coordinator implements Runnable {
                             throw new Error("Not implemented");
                     }
 
-                    zest.recommend(input.id, recommendation, stringEqualsHints);
+                    try {
+                        zest.recommend(input.id, recommendation, stringEqualsHints);
+                    } catch(NullPointerException e) {
+                        System.out.println("NPE details: " + input + recommendation + stringEqualsHints);
+                        throw e;
+                    }
                 }
             }
         }

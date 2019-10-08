@@ -1,17 +1,17 @@
 package edu.berkeley.cs.jqf.fuzz.guidance;
 
+import edu.berkeley.cs.jqf.fuzz.central.Z3InputHints;
+
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.Queue;
+import java.util.*;
 
 public class StringEqualsHintingInputStream extends InputStream {
 
     private final InputStream is;
     private final LinkedList<int[]> reqs;
-    private  final LinkedList<String[]> hints;
+    private final LinkedList<String[]> hints;
+    private final LinkedList<Z3InputHints.Z3StringHint> z3Hints;
 
     private int offset = 0;
     private int[] curReqs;
@@ -25,11 +25,29 @@ public class StringEqualsHintingInputStream extends InputStream {
     private static LinkedList<String[]> globalHints;
     private static LinkedList<String[]> hintsCopy;
 
+    private static LinkedList<Z3InputHints.Z3StringHint> z3HintsCopy;
 
     public static String[] getHintsForCurrentInput() {
         String[] ret = hintsForCurrentInput;
         hintsForCurrentInput = EMPTY;
         return ret;
+    }
+
+    public static String[] getHintsForGeneratorFunction(String genFunc) {
+        if(z3HintsCopy == null) return null;
+
+        ArrayList<String> ret = new ArrayList<>();
+
+        for(Z3InputHints.Z3StringHint z3StringHint: z3HintsCopy) {
+
+            if(z3StringHint.getHint().getKey().equals(genFunc)) {
+                ret.add(z3StringHint.getHint().getValue());
+            }
+
+        }
+        if(ret.size() == 0) return null;
+        else return ret.toArray(new String[0]);
+
     }
 
 
@@ -46,19 +64,23 @@ public class StringEqualsHintingInputStream extends InputStream {
     // This will only be called in the Knarr process - we use this class to hold the hints.
     public StringEqualsHintingInputStream(LinkedList<String[]> hints) {
         this.hints = hints;
+        this.z3Hints = new LinkedList<Z3InputHints.Z3StringHint>();
         this.is = null;
         this.reqs = null;
         globalHints = new LinkedList<>(hints);
         hintsCopy = new LinkedList<>(hints);
+        z3HintsCopy = new LinkedList<>();
     }
 
-    public StringEqualsHintingInputStream(InputStream is, LinkedList<int[]> reqs, LinkedList<String[]> hints) {
+    public StringEqualsHintingInputStream(InputStream is, LinkedList<int[]> reqs, LinkedList<String[]> hints, LinkedList<Z3InputHints.Z3StringHint> z3Hints) {
         this.is = is;
         this.reqs = reqs;
         this.hints = hints;
+        this.z3Hints = z3Hints;
 
         globalHints = new LinkedList<>(hints);
         hintsCopy = new LinkedList<>(hints);
+        z3HintsCopy = new LinkedList<>(z3Hints);
 
 
         if (reqs.size() != hints.size())
