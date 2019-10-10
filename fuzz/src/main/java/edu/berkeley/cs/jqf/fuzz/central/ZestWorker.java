@@ -20,6 +20,8 @@ class ZestWorker extends Worker {
 
     private final String[] EMPTY = new String[0];
 
+    private LinkedList<Coordinator.Input> fromZ3 = new LinkedList<>();
+
     public ZestWorker(ObjectInputStream ois, ObjectOutputStream oos, Coordinator c) throws IOException {
         super(ois, oos);
         this.c = c;
@@ -120,7 +122,12 @@ class ZestWorker extends Worker {
                 fuzzing.set(selected, (toFuzz + 1) % inputs.get(selected).size());
             } else if (o instanceof Boolean) {
                 // Zest is asking if there's an input we'd like to explore now
-                oos.writeObject(null);
+                Coordinator.Input next;
+                synchronized (fromZ3) {
+                    next = (fromZ3.isEmpty() ? null : fromZ3.removeFirst());
+                }
+
+                oos.writeObject(next);
                 oos.reset();
             }
         }
@@ -148,6 +155,12 @@ class ZestWorker extends Worker {
         synchronized (recommendations) {
             recommendations.set(inputID, recommendation);
             stringEqualsHints.set(inputID, eqs);
+        }
+    }
+
+    public void addInputFromZ3(Coordinator.Input i) {
+        synchronized (fromZ3) {
+            fromZ3.add(i);
         }
     }
 }

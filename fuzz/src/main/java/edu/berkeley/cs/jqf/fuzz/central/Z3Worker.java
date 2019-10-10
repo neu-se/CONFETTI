@@ -29,6 +29,7 @@ import java.util.*;
 public class Z3Worker extends Worker {
     private LinkedList<Target> targets = new LinkedList<>();
     private Data data;
+    private ZestWorker zest;
 
     private static final File Z3_OUTPUT_DIR;
 
@@ -48,7 +49,7 @@ public class Z3Worker extends Worker {
         }
     }
 
-    public Z3Worker() {
+    public Z3Worker(ZestWorker zest) {
         super(null, null);
         data = new Data();
         data.green = new Green();
@@ -68,6 +69,8 @@ public class Z3Worker extends Worker {
         data.modeler = new ModelZ3JavaService(data.green, null);
         data.stateStore = new HashMapStateStore();
         data.optionGenerator = new ConstraintOptionGenerator();
+
+        this.zest = zest;
     }
 
     @Override
@@ -148,15 +151,22 @@ public class Z3Worker extends Worker {
                                 // Is it UNSAT because of a String.equals?
                                 // Maybe it's because the lengths don't match perfectly
                                 // Turn that into startsWith
-                                String hint = replaceEqualsByStartsWith(res, cs);
-                                if (hint != null) {
-                                    // Give hint to JQF
+                                LinkedList<String> hints = new LinkedList<>();
+                                byte[] sol = replaceEqualsByStartsWith(res, cs, hints);
+                                if (sol != null) {
+                                    // Give solution and hint to JQF
                                     HashSet<Integer> bytes = new HashSet<>();
                                     KnarrWorker.findControllingBytes(cs, bytes, new HashSet<>());
-                                    System.out.println("Equals hint: " + hint + " on bytes " + bytes);
-                                } else if ((hint = handleStringLength(res, cs)) != null) {
+                                    System.out.println("Equals hint: " + hints + " on bytes " + bytes);
+                                    Coordinator.Input input = new Coordinator.Input();
+                                    input.bytes = sol;
+                                    input.hints = new LinkedList<>();
+                                    for (int i = 0 ; i < sol.length ; i++)
+                                        input.hints.add(bytes.contains(i) ? hints.toArray(new String[0]) : new String[0]);
+                                    zest.addInputFromZ3(input);
+                                } else if ((sol = handleStringLength(res, cs, hints)) != null) {
                                     // Give hint to JQF
-                                    System.out.println("String length hint: " + hint);
+                                    System.out.println("String length hint: " + hints);
                                 } else {
                                     // Failed, stop trying
                                     for (String s : unsat)
@@ -181,7 +191,7 @@ public class Z3Worker extends Worker {
         }
     }
 
-    private String handleStringLength(Map<String, Expression> res, Expression cs) {
+    private byte[] handleStringLength(Map<String, Expression> res, Expression cs, LinkedList<String> hints) {
         // Check if the constraint is LENGTH
 
         if (!(cs instanceof Operation && ((Operation)cs).getOperand(1) instanceof Operation))
@@ -297,7 +307,9 @@ public class Z3Worker extends Worker {
                 byte[] hint = new byte[expectedLength - 1];
                 for (int i = 0 ; i < hint.length ; i++)
                     hint[i] = (byte) genSol[i]; // Different types, cannot arrayCopy
-                return new String(hint);
+                hints.add(new String(hint));
+                // TODO
+                return new byte[0];
             }
             case EQ:
                 // Hint must be different than expected length
@@ -308,14 +320,16 @@ public class Z3Worker extends Worker {
                 for (int i = 0 ; i < genSol.length ; i++)
                     hint[i] = (byte) genSol[i]; // Different types, cannot arrayCopy
                 hint[hint.length - 1] = 'a';
-                return new String(hint);
+                hints.add(new String(hint));
+                // TODO
+                return new byte[0];
             }
             default:
                 return null;
         }
     }
 
-    private String replaceEqualsByStartsWith(Map<String, Expression> res, Expression cs) {
+    private byte[] replaceEqualsByStartsWith(Map<String, Expression> res, Expression cs, List<String> hints) {
         // Check if the constraint is EQUALS
 
         if (!(cs instanceof Operation && ((Operation)cs).getOperand(1) instanceof Operation))
@@ -366,9 +380,35 @@ public class Z3Worker extends Worker {
             res.remove("c" + (res.size()-1));
             return null;
         } else {
-            // It worked, get the string from the solution
+            // It worked, get the string and the solution
             res.remove("c" + (res.size()-1));
-            return hint;
+
+            // Get size of solution
+            int size = 0;
+            for (AbstractMap.SimpleEntry<String, Object> e : sat) {
+                if (e.getKey().startsWith("autoVar_")) {
+                    try {
+                        int n = Integer.parseInt(e.getKey().replace("autoVar_", ""));
+                        size = Math.max(size, n);
+                    } catch (NumberFormatException ex) {
+                        continue;
+                    }
+                }
+            }
+            byte ret[] = new byte[size+1];
+            for (AbstractMap.SimpleEntry<String, Object> e : sat) {
+                if (e.getKey().startsWith("autoVar_")) {
+                    try {
+                        int n = Integer.parseInt(e.getKey().replace("autoVar_", ""));
+                        ret[n] = ((Integer) e.getValue()).byteValue();
+                    } catch (NumberFormatException ex) {
+                        continue;
+                    }
+                }
+            }
+
+            hints.add(hint);
+            return ret;
         }
     }
 
@@ -509,13 +549,15 @@ public class Z3Worker extends Worker {
 
     public static class Target {
         Coordinator.Branch branch;
+        byte[] input;
         List<Expression> constraints;
         HashMap<Integer, HashSet<String>> hints;
 
-        public Target(Coordinator.Branch branch, List<Expression> constraints, HashMap<Integer, HashSet<String>> hints) {
+        public Target(Coordinator.Branch branch, byte[] input, List<Expression> constraints, HashMap<Integer, HashSet<String>> hints) {
             this.branch = branch;
             this.constraints = constraints;
             this.hints = hints;
+            this.input = input;
         }
     }
 }

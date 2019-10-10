@@ -30,6 +30,7 @@ package edu.berkeley.cs.jqf.fuzz.ei;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
 import java.io.Console;
 import java.io.File;
 import java.io.FileInputStream;
@@ -52,11 +53,13 @@ import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
+import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
 import edu.berkeley.cs.jqf.fuzz.central.ZestClient;
 import edu.berkeley.cs.jqf.fuzz.ei.ExecutionIndex.Prefix;
 import edu.berkeley.cs.jqf.fuzz.ei.ExecutionIndex.Suffix;
@@ -538,6 +541,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         // Reset execution index state
         eiState = new ExecutionIndexingState();
 
+        Coordinator.Input inputFromCentral;
+
         // Choose an input to execute based on state of queues
         if (!seedInputs.isEmpty()) {
             // First, if we have some specific seeds, use those
@@ -555,8 +560,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             // Make fresh input using either list or maps
             infoLog("Spawning new input from thin air");
             currentInput = DISABLE_EXECUTION_INDEXING ? new LinearInput() : new MappedInput();
-        } else if (central != null && (currentInput = central.getInput()) != null) {
+        } else if (central != null && (inputFromCentral = central.getInput()) != null) {
             // Central sent input, use that instead
+            ZestGuidance.SeedInput ret = new ZestGuidance.SeedInput(inputFromCentral.bytes, "From central");
 
             // Write it to disk for debugging
             try {
@@ -786,7 +792,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                         }
                         central.sendInput(ris.getRequests(), result, currentInput.id, hintsUsed ? StringEqualsHintingInputStream.getHints() : new LinkedList<>() );
                         StringEqualsHintingInputStream.hintUsedInCurrentInput = false;
-                        
+
                         // Send updated coverage
                         central.sendCoverage(totalCoverage);
                     } catch (IOException e) {
@@ -1778,14 +1784,21 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     }
 
     public class SeedInput extends LinearInput {
-        final File seedFile;
+        final Optional<File> seedFile;
         final InputStream in;
 
         public SeedInput(File seedFile) throws IOException {
             super();
-            this.seedFile = seedFile;
+            this.seedFile = Optional.of(seedFile);
             this.in = new BufferedInputStream(new FileInputStream(seedFile));
             this.desc = "seed";
+        }
+
+        public SeedInput(byte[] seedBytes, String desc) {
+            super();
+            this.seedFile = Optional.empty();
+            this.in = new ByteArrayInputStream(seedBytes);
+            this.desc = desc;
         }
 
         @Override
@@ -1794,7 +1807,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             try {
                 value = in.read();
             } catch (IOException e) {
-                throw new GuidanceException("Error reading from seed file: " + seedFile.getName(), e);
+                throw new GuidanceException("Error reading from seed file: " + seedFile.map(s -> s.getName()).orElse(desc), e);
 
             }
 
@@ -1819,7 +1832,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             try {
                 in.close();
             } catch (IOException e) {
-                throw new GuidanceException("Error closing seed file:" + seedFile.getName(), e);
+                throw new GuidanceException("Error closing seed file:" + seedFile.map(s -> s.getName()).orElse(desc), e);
             }
         }
 

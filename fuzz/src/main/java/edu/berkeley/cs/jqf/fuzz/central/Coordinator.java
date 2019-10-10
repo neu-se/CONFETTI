@@ -19,7 +19,7 @@ public class Coordinator implements Runnable {
 
     private HashMap<Input, LinkedList<Expression>> constraints = new HashMap<>();
     private KnarrWorker knarr;
-    private Z3Worker z3 = new Z3Worker();
+    private Z3Worker z3;
     private ZestWorker zest;
 
     private final Config config;
@@ -46,8 +46,6 @@ public class Coordinator implements Runnable {
 
     @Override
     public void run() {
-        new Thread(z3).start();
-
         HashMap<Integer, TreeSet<Integer>> lastRecommendation = new HashMap<>();
 
         while (true) {
@@ -245,17 +243,18 @@ public class Coordinator implements Runnable {
         // Create Z3 target
         List<Z3Worker.Target> targets = inputs.stream()
                 .filter(i -> top.trueExplored.contains(i) || top.falseExplored.contains(i))
-                .map(i -> new Z3Worker.Target(top, constraints.get(i), perByteStringEqualsHints.get(i)))
+                .map(i -> new Z3Worker.Target(top, i.bytes, constraints.get(i), perByteStringEqualsHints.get(i)))
                 .collect(Collectors.toList());
 
         // Set Z3 target
         z3.exploreTarget(targets);
-        // When done, Z3 will call back this function
     }
 
     public final synchronized  void setKnarrWorker(KnarrWorker knarr, ZestWorker zest) {
         this.knarr = knarr;
         this.zest = zest;
+        this.z3 = new Z3Worker(zest);
+//        new Thread(z3).start();
         this.notifyAll();
     }
 
@@ -263,14 +262,11 @@ public class Coordinator implements Runnable {
         return this.config;
     }
 
-    private static class Input {
+    public static class Input implements Serializable {
         int id;
-        byte[] bytes;
+        public byte[] bytes;
         boolean isNew;
-        LinkedList<String[]> hints;
-
-
-
+        public LinkedList<String[]> hints;
 
         @Override
         public boolean equals(Object o) {

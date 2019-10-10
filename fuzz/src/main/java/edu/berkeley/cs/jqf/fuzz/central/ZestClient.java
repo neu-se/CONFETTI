@@ -54,10 +54,10 @@ public class ZestClient extends Central {
         // TODO
     }
 
-    public ZestGuidance.Input<?> getInput() {
+    public Coordinator.Input getInput() {
         try {
             oos.writeObject(Boolean.TRUE);
-            return (ZestGuidance.Input<?>) ois.readObject();
+            return (Coordinator.Input) ois.readObject();
         } catch (ClassNotFoundException e) {
             throw new Error(e);
         } catch (IOException e) {
