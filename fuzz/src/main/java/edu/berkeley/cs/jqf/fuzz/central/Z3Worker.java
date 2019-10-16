@@ -161,8 +161,9 @@ public class Z3Worker extends Worker {
                                     Coordinator.Input input = new Coordinator.Input();
                                     input.bytes = sol;
                                     input.hints = new LinkedList<>();
-                                    for (int i = 0 ; i < sol.length ; i++)
-                                        input.hints.add(bytes.contains(i) ? hints.toArray(new String[0]) : new String[0]);
+                                    String[] empty = new String[0];
+                                    for (int i = 0 ; i < t.input.length ; i++)
+                                        input.hints.add(bytes.contains(i) ? hints.toArray(empty) : empty);
                                     zest.addInputFromZ3(input);
                                 } else if ((sol = handleStringLength(res, cs, hints)) != null) {
                                     // Give hint to JQF
@@ -172,7 +173,7 @@ public class Z3Worker extends Worker {
                                     for (String s : unsat)
                                         System.out.println(res.get(s));
                                 }
-                            }
+                            } // TODO It was SAT, generate input and send it to Zest
                         }
                     }
                 } else {

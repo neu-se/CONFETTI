@@ -562,7 +562,14 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             currentInput = DISABLE_EXECUTION_INDEXING ? new LinearInput() : new MappedInput();
         } else if (central != null && (inputFromCentral = central.getInput()) != null) {
             // Central sent input, use that instead
-            ZestGuidance.SeedInput ret = new ZestGuidance.SeedInput(inputFromCentral.bytes, "From central");
+            currentInput = new ZestGuidance.SeedInput(inputFromCentral.bytes, "From central");
+
+            stringEqualsHints = inputFromCentral.hints;
+            instructions = new LinkedList<>();
+            for (int i = 0 ; i < stringEqualsHints.size() ; i++)
+                // This input came from the central, so we don't know how the Random requests bytes
+                // Treat each byte as a single request
+                instructions.add(new int[]{i,1});
 
             // Write it to disk for debugging
             try {
