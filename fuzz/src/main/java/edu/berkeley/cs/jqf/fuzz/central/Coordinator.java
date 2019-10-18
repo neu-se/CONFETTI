@@ -233,12 +233,18 @@ public class Coordinator implements Runnable {
         }
 
         // Figure out what is the branch that needs the most attention
-        Branch top = (Branch) (branches.values().stream()
+        Object[] tops = (Object[]) (branches.values().stream()
                 .filter(b -> b.source != null)
                 .filter(b -> b.falseExplored.isEmpty() || b.trueExplored.isEmpty())
                 .sorted((b1,b2) -> Integer.compare(b2.trueExplored.size() + b2.falseExplored.size(), b1.trueExplored.size() + b1.falseExplored.size()))
                 .limit(1)
-                .toArray())[0];
+                .toArray());
+
+        Branch top;
+        if (tops.length > 0)
+            top = (Branch) tops[0];
+        else
+            return;
 
         // Create Z3 target
         List<Z3Worker.Target> targets = inputs.stream()
