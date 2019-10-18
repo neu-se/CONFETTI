@@ -16,16 +16,11 @@ public class KnarrClient extends Central {
         oos.writeObject(Type.Knarr);
         oos.flush();
     }
-    public byte[] getInput() throws IOException {
+    public Coordinator.Input getInput() throws IOException {
         try {
-
-
-            byte[] ret = (byte[]) ois.readObject();
-            LinkedList<String[]> hints = (LinkedList<String[]>) ois.readObject();
-            if(!hints.isEmpty()) {
-                //System.out.println("IN KNARR PROCESS - GOT INPUT WITH HINTS!!!");
-                StringEqualsHintingInputStream is = new StringEqualsHintingInputStream(hints);
-            }
+            Coordinator.Input ret = new Coordinator.Input();
+            ret.bytes = (byte[]) ois.readObject();
+            ret.hints = (LinkedList<String[]>) ois.readObject();
             return ret;
         } catch (ClassNotFoundException e) {
             throw new Error(e);

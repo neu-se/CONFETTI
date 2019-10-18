@@ -569,7 +569,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             for (int i = 0 ; i < stringEqualsHints.size() ; i++)
                 // This input came from the central, so we don't know how the Random requests bytes
                 // Treat each byte as a single request
-                instructions.add(new int[]{i,1});
+                instructions.addLast(new int[]{i,1});
 
             // Write it to disk for debugging
             try {
