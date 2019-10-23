@@ -1,9 +1,11 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
+import org.jgrapht.alg.util.Pair;
 import za.ac.sun.cs.green.expr.Expression;
 
 import java.io.*;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class Coordinator implements Runnable {
     private LinkedList<Input> inputs = new LinkedList<>();
@@ -16,7 +18,7 @@ public class Coordinator implements Runnable {
 
     private HashMap<Input, ConstraintRepresentation> constraints = new HashMap<>();
     private KnarrWorker knarr;
-    private Z3Worker z3 = new Z3Worker();
+    private Z3Worker z3;
     private ZestWorker zest;
 
     private final Config config;
@@ -43,10 +45,7 @@ public class Coordinator implements Runnable {
 
     @Override
     public void run() {
-        new Thread(z3).start();
-
         File outputDirectory = new File(config.constraintsPath);
-
         HashMap<Integer, TreeSet<Integer>> lastRecommendation = new HashMap<>();
 
         while (true) {
@@ -118,7 +117,7 @@ public class Coordinator implements Runnable {
 
 
                     }
-                    z3.addConstraints(input.id, cs);
+                    //z3.addConstraints(input.id, cs);
                     // Compute coverage and branches from constraints
                     LinkedList<Branch> bs = new LinkedList<>();
                     HashMap<Integer, HashSet<String>> eqs = new HashMap<>();
@@ -203,6 +202,7 @@ public class Coordinator implements Runnable {
                     }
 
                     input.isNew = false;
+                    targetZ3(null, null);
                 }
             }
 
@@ -249,20 +249,47 @@ public class Coordinator implements Runnable {
                             throw new Error("Not implemented");
                     }
 
-                    try {
-                        zest.recommend(input.id, recommendation, stringEqualsHints);
-                    } catch(NullPointerException e) {
-                        System.out.println("NPE details: " + input + recommendation + stringEqualsHints);
-                        throw e;
-                    }
+                    zest.recommend(input.id, recommendation, stringEqualsHints);
                 }
             }
         }
     }
 
+    private void targetZ3(Coordinator.Branch done, Optional<Pair<byte[], HashMap<Integer, HashSet<String>>>> result) {
+        if (done != null) {
+            System.out.println("Looks like Z3 found an input for this branch");
+            throw new Error("Not implemented yet");
+        }
+
+        // Figure out what is the branch that needs the most attention
+        Object[] tops = (Object[]) (branches.values().stream()
+                .filter(b -> b.source != null)
+                .filter(b -> b.falseExplored.isEmpty() || b.trueExplored.isEmpty())
+                .sorted((b1,b2) -> Integer.compare(b2.trueExplored.size() + b2.falseExplored.size(), b1.trueExplored.size() + b1.falseExplored.size()))
+                .limit(1)
+                .toArray());
+
+        Branch top;
+        if (tops.length > 0)
+            top = (Branch) tops[0];
+        else
+            return;
+
+        // Create Z3 target
+        List<Z3Worker.Target> targets = inputs.stream()
+                .filter(i -> top.trueExplored.contains(i) || top.falseExplored.contains(i))
+                .map(i -> new Z3Worker.Target(top, i.bytes, constraints.get(i), perByteStringEqualsHints.get(i)))
+                .collect(Collectors.toList());
+
+        // Set Z3 target
+        z3.exploreTarget(targets);
+    }
+
     public final synchronized  void setKnarrWorker(KnarrWorker knarr, ZestWorker zest) {
         this.knarr = knarr;
         this.zest = zest;
+        this.z3 = new Z3Worker(zest);
+//        new Thread(z3).start();
         this.notifyAll();
     }
 
@@ -270,14 +297,11 @@ public class Coordinator implements Runnable {
         return this.config;
     }
 
-    private static class Input {
+    public static class Input implements Serializable {
         int id;
-        byte[] bytes;
+        public byte[] bytes;
         boolean isNew;
-        LinkedList<String[]> hints;
-
-
-
+        public LinkedList<String[]> hints;
 
         @Override
         public boolean equals(Object o) {

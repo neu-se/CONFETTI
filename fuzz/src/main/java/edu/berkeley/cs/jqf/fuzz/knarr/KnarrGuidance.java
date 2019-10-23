@@ -1,9 +1,11 @@
 package edu.berkeley.cs.jqf.fuzz.knarr;
 
+import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
 import edu.berkeley.cs.jqf.fuzz.central.KnarrClient;
 import edu.berkeley.cs.jqf.fuzz.guidance.Guidance;
 import edu.berkeley.cs.jqf.fuzz.guidance.GuidanceException;
 import edu.berkeley.cs.jqf.fuzz.guidance.Result;
+import edu.berkeley.cs.jqf.fuzz.guidance.StringEqualsHintingInputStream;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEvent;
 import edu.gmu.swe.knarr.runtime.PathUtils;
 import edu.gmu.swe.knarr.runtime.Symbolicator;
@@ -17,7 +19,7 @@ import java.util.LinkedList;
 import java.util.function.Consumer;
 
 public class KnarrGuidance implements Guidance {
-    private byte[] input;
+    private Coordinator.Input input;
     private KnarrClient client;
 
     public KnarrGuidance() throws IOException  {
@@ -27,7 +29,11 @@ public class KnarrGuidance implements Guidance {
     @Override
     public InputStream getInput() throws IllegalStateException, GuidanceException {
         Symbolicator.reset();
-        return new TaintingInputStream(new ByteArrayInputStream(this.input));
+        LinkedList<int[]> reqs = new LinkedList<>();
+        for (int i = 0 ; i < input.hints.size() ; i++) {
+            reqs.addLast(new int[]{i,1});
+        }
+        return new TaintingInputStream(new StringEqualsHintingInputStream(new ByteArrayInputStream(this.input.bytes), reqs, input.hints));
     }
 
     @Override

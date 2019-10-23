@@ -24,19 +24,12 @@ import za.ac.sun.cs.green.util.NotSatException;
 
 import java.io.*;
 import java.nio.file.Paths;
-import java.util.AbstractMap;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 
 public class Z3Worker extends Worker {
-    private LinkedList<Pair<Integer, LinkedList<Expression>>> constraints = new LinkedList<>();
+
     private Data data;
+    private ZestWorker zest;
 
     private static final File Z3_OUTPUT_DIR;
 
@@ -56,7 +49,7 @@ public class Z3Worker extends Worker {
         }
     }
 
-    public Z3Worker() {
+    public Z3Worker(ZestWorker zest) {
         super(null, null);
         data = new Data();
         data.green = new Green();
@@ -76,6 +69,8 @@ public class Z3Worker extends Worker {
         data.modeler = new ModelZ3JavaService(data.green, null);
         data.stateStore = new HashMapStateStore();
         data.optionGenerator = new ConstraintOptionGenerator();
+
+        this.zest = zest;
     }
 
     @Override
@@ -90,28 +85,36 @@ public class Z3Worker extends Worker {
         }
 
         int solved = -1;
+        Target t = null;
         while (true) {
             solved++;
-            LinkedList<Expression> csToSolve;
-            Integer inputId;
 
-            synchronized (constraints) {
-                if (constraints.isEmpty()) {
+
+            synchronized (targets) {
+                if (targets.isEmpty()) {
                     try {
-                        constraints.wait();
+                        targets.wait();
                     } catch (InterruptedException _) {
                     }
                     continue;
                 }
 
-                Pair<Integer, LinkedList<Expression>> toProcess = constraints.removeFirst();
-                inputId = toProcess.getKey();
-                csToSolve = toProcess.getValue();
+
             }
 
+            LinkedList<Expression> csToSolve = new LinkedList<>();
             Map<String, Expression> res = new HashMap<>();
-            for (Expression e : csToSolve)
+
+            for (Expression e : t.constraints) {
+                csToSolve.add(e);
                 res.put("c" + res.size(), e);
+                if (e.metadata != null && e.metadata instanceof Coverage.BranchData) {
+                    Coverage.BranchData data = (Coverage.BranchData) e.metadata;
+                    if (data.takenCode == t.branch.takenID && data.notTakenCode == t.branch.notTakenID)
+                        break;
+                }
+            }
+
             ArrayList<AbstractMap.SimpleEntry<String, Object>> sat = new ArrayList<>();
             HashSet<String> unsat = new HashSet<>();
 
@@ -149,24 +152,29 @@ public class Z3Worker extends Worker {
                                 // Is it UNSAT because of a String.equals?
                                 // Maybe it's because the lengths don't match perfectly
                                 // Turn that into startsWith
-                                Pair<String, String> hint = replaceEqualsByStartsWith(res, cs);
-                                String lengthHint = null;
-                                if (hint != null) {
+                                LinkedList<String> hints = new LinkedList<>();
+                                byte[] sol = replaceEqualsByStartsWith(res, cs, hints);
+                                if (sol != null) {
+                                    // Give solution and hint to JQF
+                                    HashSet<Integer> bytes = new HashSet<>();
+                                    KnarrWorker.findControllingBytes(cs, bytes, new HashSet<>());
+                                    System.out.println("Equals hint: " + hints + " on bytes " + bytes);
+                                    Coordinator.Input input = new Coordinator.Input();
+                                    input.bytes = sol;
+                                    input.hints = new LinkedList<>();
+                                    String[] empty = new String[0];
+                                    for (int i = 0 ; i < t.input.length ; i++)
+                                        input.hints.add(bytes.contains(i) ? hints.toArray(empty) : empty);
+                                    zest.addInputFromZ3(input);
+                                } else if ((sol = handleStringLength(res, cs, hints)) != null) {
                                     // Give hint to JQF
-                                    System.out.println("Equals hint: " + hint.getValue());
-                                    Z3InputHints z3InputHints = Z3InputHints.getInstance();
-                                    synchronized (z3InputHints) {
-                                        z3InputHints.addHint(inputId, hint);
-                                    }
-                                } else if ((lengthHint = handleStringLength(res, cs)) != null) {
-                                    // Give hint to JQF
-                                    System.out.println("String length hint: " + lengthHint);
+                                    System.out.println("String length hint: " + hints);
                                 } else {
                                     // Failed, stop trying
                                     for (String s : unsat)
                                         System.out.println(res.get(s));
                                 }
-                            }
+                            } // TODO It was SAT, generate input and send it to Zest
                         }
                     }
                 } else {
@@ -185,7 +193,7 @@ public class Z3Worker extends Worker {
         }
     }
 
-    private String handleStringLength(Map<String, Expression> res, Expression cs) {
+    private byte[] handleStringLength(Map<String, Expression> res, Expression cs, LinkedList<String> hints) {
         // Check if the constraint is LENGTH
 
         if (!(cs instanceof Operation && ((Operation)cs).getOperand(1) instanceof Operation))
@@ -301,7 +309,9 @@ public class Z3Worker extends Worker {
                 byte[] hint = new byte[expectedLength - 1];
                 for (int i = 0 ; i < hint.length ; i++)
                     hint[i] = (byte) genSol[i]; // Different types, cannot arrayCopy
-                return new String(hint);
+                hints.add(new String(hint));
+                // TODO
+                return new byte[0];
             }
             case EQ:
                 // Hint must be different than expected length
@@ -312,14 +322,16 @@ public class Z3Worker extends Worker {
                 for (int i = 0 ; i < genSol.length ; i++)
                     hint[i] = (byte) genSol[i]; // Different types, cannot arrayCopy
                 hint[hint.length - 1] = 'a';
-                return new String(hint);
+                hints.add(new String(hint));
+                // TODO
+                return new byte[0];
             }
             default:
                 return null;
         }
     }
 
-    private Pair<String, String> replaceEqualsByStartsWith(Map<String, Expression> res, Expression cs) {
+    private byte[] replaceEqualsByStartsWith(Map<String, Expression> res, Expression cs, List<String> hints) {
         // Check if the constraint is EQUALS
 
         if (!(cs instanceof Operation && ((Operation)cs).getOperand(1) instanceof Operation))
@@ -339,9 +351,6 @@ public class Z3Worker extends Worker {
 
        Expression argumentToEquals = inner.getOperand(1);
 
-       String leftSide = inner.getOperand(0).toString();
-       String generatorFunction = null;
-
         ArrayList<AbstractMap.SimpleEntry<String, Object>> sat = new ArrayList<>();
         HashSet<String> unsat = new HashSet<>();
 
@@ -350,13 +359,6 @@ public class Z3Worker extends Worker {
 
         String hint = null;
         if (argumentToEquals instanceof StringConstant) {
-            // Try to find the generator function number so we know what String to modify with the hint
-            Pattern p = Pattern.compile("gen[0-9]*");
-            Matcher m = p.matcher(inner.getOperand(0).toString());
-            if(m.find())
-                generatorFunction = m.group();
-
-
             // We know what's the argument to equals
             hint = ((StringConstant)argumentToEquals).getValue();
         } else {
@@ -380,9 +382,35 @@ public class Z3Worker extends Worker {
             res.remove("c" + (res.size()-1));
             return null;
         } else {
-            // It worked, get the string from the solution
+            // It worked, get the string and the solution
             res.remove("c" + (res.size()-1));
-            return new Pair<>(generatorFunction,hint);
+
+            // Get size of solution
+            int size = 0;
+            for (AbstractMap.SimpleEntry<String, Object> e : sat) {
+                if (e.getKey().startsWith("autoVar_")) {
+                    try {
+                        int n = Integer.parseInt(e.getKey().replace("autoVar_", ""));
+                        size = Math.max(size, n);
+                    } catch (NumberFormatException ex) {
+                        continue;
+                    }
+                }
+            }
+            byte ret[] = new byte[size+1];
+            for (AbstractMap.SimpleEntry<String, Object> e : sat) {
+                if (e.getKey().startsWith("autoVar_")) {
+                    try {
+                        int n = Integer.parseInt(e.getKey().replace("autoVar_", ""));
+                        ret[n] = ((Integer) e.getValue()).byteValue();
+                    } catch (NumberFormatException ex) {
+                        continue;
+                    }
+                }
+            }
+
+            hints.add(hint);
+            return ret;
         }
     }
 
@@ -460,8 +488,8 @@ public class Z3Worker extends Worker {
                     }
 
                 // Declare functions
-               // for (String function : translator.getFunctions().keySet())
-                 //   ps.println("(declare-fun " + function + " (Int (_ BitVec 32)) (_ BitVec 32))");
+                for (String function : translator.getFunctions().keySet())
+                    ps.println("(declare-fun " + function + " (Int (_ BitVec 32)) (_ BitVec 32))");
 
                 // Declare variables
                 HashSet<String> seen = new HashSet<>();
@@ -501,44 +529,15 @@ public class Z3Worker extends Worker {
         }
     }
 
-    public void addConstraints(int  inputId, LinkedList<Expression> cs) {
-        synchronized (this.constraints) {
-            this.constraints.addLast(new Pair(inputId,cs));
-            this.constraints.notifyAll();
+    public void exploreTarget(List<Target> targets) {
+        synchronized (this.targets) {
+            if (!this.targets.isEmpty())
+                return;
+
+            this.targets.addAll(targets);
+            this.targets.notifyAll();
         }
     }
-
-//    public void addConstraints(String filename) {
-//        // Deserialization
-//        try
-//        {
-//            File file = new File(filename);
-//            // Reading the object from a file
-//            FileInputStream fis = new FileInputStream(file);
-//            ObjectInputStream in = new ObjectInputStream(fis);
-//
-//            LinkedList<Expression> constraints = (LinkedList<Expression>)in.readObject();
-//
-//            in.close();
-//            fis.close();
-//
-//            synchronized (this.constraints) {
-//                this.constraints.addLast(constraints);
-//                this.constraints.notifyAll();
-//            }
-//
-//        }
-//
-//        catch(IOException ex)
-//        {
-//            System.out.println("Could not de-serialize constraints");
-//        }
-//
-//        catch(ClassNotFoundException ex)
-//        {
-//            System.out.println("ClassNotFoundException is caught");
-//        }
-//    }
 
     private static class Data {
         Green green;
@@ -548,5 +547,19 @@ public class Z3Worker extends Worker {
         Map<Variable, Variable> variableMap;
         StateStore stateStore;
         ConstraintOptionGenerator optionGenerator;
+    }
+
+    public static class Target {
+        Coordinator.Branch branch;
+        byte[] input;
+        List<Expression> constraints;
+        HashMap<Integer, HashSet<String>> hints;
+
+        public Target(Coordinator.Branch branch, byte[] input, List<Expression> constraints, HashMap<Integer, HashSet<String>> hints) {
+            this.branch = branch;
+            this.constraints = constraints;
+            this.hints = hints;
+            this.input = input;
+        }
     }
 }

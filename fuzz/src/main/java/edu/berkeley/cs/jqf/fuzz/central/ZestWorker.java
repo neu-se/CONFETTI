@@ -1,8 +1,6 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
 import edu.berkeley.cs.jqf.fuzz.guidance.Result;
-import javafx.util.Pair;
-import sun.awt.image.ImageWatched;
 
 import java.io.IOException;
 import java.io.ObjectInputStream;
@@ -21,6 +19,8 @@ class ZestWorker extends Worker {
     private Coordinator c;
 
     private final String[] EMPTY = new String[0];
+
+    private LinkedList<Coordinator.Input> fromZ3 = new LinkedList<>();
 
     public ZestWorker(ObjectInputStream ois, ObjectOutputStream oos, Coordinator c) throws IOException {
         super(ois, oos);
@@ -122,28 +122,13 @@ class ZestWorker extends Worker {
                 fuzzing.set(selected, (toFuzz + 1) % inputs.get(selected).size());
             } else if (o instanceof Boolean) {
                 // Zest is asking if there's an input we'd like to explore now
-                Z3InputHints z3InputHints = Z3InputHints.getInstance();
-                LinkedList<Z3InputHints.Z3StringHint> hints = null;
-                synchronized (z3InputHints) {
-                    hints = z3InputHints.getHints();
+                Coordinator.Input next;
+                synchronized (fromZ3) {
+                    next = (fromZ3.isEmpty() ? null : fromZ3.removeFirst());
                 }
-                if (hints != null) {
-                    LinkedList<Pair<String, String>> z3StringHintsToSend = new LinkedList<>();
-                    System.out.println("GOT Z3 input hints!");
-                    Integer inputId = hints.get(0).getInputId();
-                    for (Z3InputHints.Z3StringHint hint : hints) {
-                        System.out.println("Input id " + hint.getInputId());
-                        System.out.println(hint.getHint().getKey() + "    " + hint.getHint().getValue());
-                        z3StringHintsToSend.addLast(hint.getHint());
-                    }
-                    oos.writeObject(inputId);
-                    oos.writeObject(z3StringHintsToSend);
-                    oos.reset();
-                   // fuzzing.set(inputId, (inputId + 1) % inputs.get(inputId).size());
-                } else {
-                    oos.writeObject(null);
-                    oos.reset();
-                }
+
+                oos.writeObject(next);
+                oos.reset();
             }
         }
     }
@@ -170,6 +155,12 @@ class ZestWorker extends Worker {
         synchronized (recommendations) {
             recommendations.set(inputID, recommendation);
             stringEqualsHints.set(inputID, eqs);
+        }
+    }
+
+    public void addInputFromZ3(Coordinator.Input i) {
+        synchronized (fromZ3) {
+            fromZ3.add(i);
         }
     }
 }
