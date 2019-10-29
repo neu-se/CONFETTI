@@ -27,7 +27,7 @@ import java.nio.file.Paths;
 import java.util.*;
 
 public class Z3Worker extends Worker {
-
+    private LinkedList<Target> targets = new LinkedList<>();
     private Data data;
     private ZestWorker zest;
 

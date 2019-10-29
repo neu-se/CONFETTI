@@ -45,7 +45,6 @@ public class Coordinator implements Runnable {
 
     @Override
     public void run() {
-        File outputDirectory = new File(config.constraintsPath);
         HashMap<Integer, TreeSet<Integer>> lastRecommendation = new HashMap<>();
 
         while (true) {
@@ -276,13 +275,18 @@ public class Coordinator implements Runnable {
             return;
 
         // Create Z3 target
-        List<Z3Worker.Target> targets = inputs.stream()
+        List<Input> inputToTarget = inputs.stream()
                 .filter(i -> top.trueExplored.contains(i) || top.falseExplored.contains(i))
-                .map(i -> new Z3Worker.Target(top, i.bytes, constraints.get(i), perByteStringEqualsHints.get(i)))
                 .collect(Collectors.toList());
+
+        List<Z3Worker.Target>targets = new LinkedList<>();
+        for(Input i : inputToTarget) {
+            targets.add(new Z3Worker.Target(top, i.bytes, constraints.get(i).get(), perByteStringEqualsHints.get(i)));
+        }
 
         // Set Z3 target
         z3.exploreTarget(targets);
+
     }
 
     public final synchronized  void setKnarrWorker(KnarrWorker knarr, ZestWorker zest) {
@@ -378,8 +382,8 @@ public class Coordinator implements Runnable {
     }
 
     public static class ConstraintRepresentation {
-        private final LinkedList<Expression> expr;
-        private final String exprFile;
+        private  LinkedList<Expression> expr;
+        private  String exprFile;
 
         ConstraintRepresentation(LinkedList<Expression> e) {
             this.expr = e;
@@ -390,8 +394,29 @@ public class Coordinator implements Runnable {
             this.exprFile = exprFile;
         }
 
-        public Object get() {
-            return this.expr == null ? this.exprFile : this.expr;
+
+        private LinkedList<Expression> readConstraintsFromFile() {
+
+            FileInputStream fileIn = null;
+            try {
+                fileIn = new FileInputStream(this.exprFile);
+                ObjectInputStream objectIn = new ObjectInputStream(fileIn);
+                Object constraints = objectIn.readObject();
+                fileIn.close();
+                return (LinkedList<Expression>) constraints;
+
+            } catch (FileNotFoundException e) {
+                return null;
+            } catch (IOException e) {
+                return null;
+            } catch (ClassNotFoundException e) {
+                return null;
+            }
+        }
+
+        public LinkedList<Expression> get() {
+
+            return this.expr != null ? this.expr : readConstraintsFromFile();
         }
 
     }

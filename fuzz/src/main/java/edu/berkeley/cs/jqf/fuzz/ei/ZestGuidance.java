@@ -60,6 +60,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
+import edu.berkeley.cs.jqf.fuzz.central.Z3InputHints;
 import edu.berkeley.cs.jqf.fuzz.central.ZestClient;
 import edu.berkeley.cs.jqf.fuzz.ei.ExecutionIndex.Prefix;
 import edu.berkeley.cs.jqf.fuzz.ei.ExecutionIndex.Suffix;
@@ -279,7 +280,6 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private RecordingInputStream ris;
     private LinkedList<int[]> instructions;
     public LinkedList<String[]> stringEqualsHints;
-    public LinkedList<Z3InputHints.Z3StringHint> z3stringEqualsHints;
 
 
     /**
@@ -561,28 +561,29 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             // Make fresh input using either list or maps
             infoLog("Spawning new input from thin air");
             currentInput = DISABLE_EXECUTION_INDEXING ? new LinearInput() : new MappedInput();
-        } else if (central != null && (inputFromCentral = central.getInput()) != null) {
-            // Central sent input, use that instead
-            currentInput = new ZestGuidance.SeedInput(inputFromCentral.bytes, "From central");
-
-            stringEqualsHints = inputFromCentral.hints;
-            instructions = new LinkedList<>();
-            for (int i = 0 ; i < stringEqualsHints.size() ; i++)
-                // This input came from the central, so we don't know how the Random requests bytes
-                // Treat each byte as a single request
-                instructions.addLast(new int[]{i,1});
-
-            // Write it to disk for debugging
-            try {
-                writeCurrentInputToFile(currentInputFile);
-            } catch (IOException ignore) {
-            }
-
-            // Start time-counting for timeout handling
-            this.runStart = new Date();
-            this.branchCount = 0;
-
-        } else {
+        }
+//        } else if (central != null && (inputFromCentral = central.getInput()) != null) {
+//            // Central sent input, use that instead
+//            currentInput = new ZestGuidance.SeedInput(inputFromCentral.bytes, "From central");
+//
+//            stringEqualsHints = inputFromCentral.hints;
+//            instructions = new LinkedList<>();
+//            for (int i = 0 ; i < stringEqualsHints.size() ; i++)
+//                // This input came from the central, so we don't know how the Random requests bytes
+//                // Treat each byte as a single request
+//                instructions.addLast(new int[]{i,1});
+//
+//            // Write it to disk for debugging
+//            try {
+//                writeCurrentInputToFile(currentInputFile);
+//            } catch (IOException ignore) {
+//            }
+//
+//            // Start time-counting for timeout handling
+//            this.runStart = new Date();
+//            this.branchCount = 0;
+//        }
+        else {
             // The number of children to produce is determined by how much of the coverage
             // pool this parent input hits
             Input currentParentInput = savedInputs.get(currentParentInputIdx);
@@ -672,7 +673,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             is = ris;
 
             if (stringEqualsHints != null)
-                is = new StringEqualsHintingInputStream(is, instructions, stringEqualsHints);
+                is = new StringEqualsHintingInputStream(is, instructions, stringEqualsHints, new LinkedList<>());
         }
 
         return is;

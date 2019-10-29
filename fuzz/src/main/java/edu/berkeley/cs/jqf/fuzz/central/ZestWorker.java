@@ -115,6 +115,7 @@ class ZestWorker extends Worker {
                 oos.writeObject(instructionsToSend);
                 oos.writeObject(stringsToSend);
                 oos.reset();
+                oos.flush();
 
                 printSentStringHints(stringsToSend);
 
