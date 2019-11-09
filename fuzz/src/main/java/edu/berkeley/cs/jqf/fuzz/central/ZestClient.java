@@ -21,7 +21,7 @@ public class ZestClient extends Central {
      * 3. Select input
      * 3. Receive instructions
      */
-    public void sendInput(LinkedList<byte[]> inputRequests, Result result, int id, LinkedList<String[]> hints) throws IOException {
+    public void sendInput(LinkedList<byte[]> inputRequests, Result result, int id, LinkedList<Coordinator.StringHint[]> hints) throws IOException {
         oos.writeObject(inputRequests);
         oos.writeObject(result);
         oos.writeInt(id);
@@ -42,9 +42,9 @@ public class ZestClient extends Central {
         }
     }
 
-    public LinkedList<String[]> receiveStringEqualsHints() throws IOException {
+    public LinkedList<Coordinator.StringHint[]> receiveStringEqualsHints() throws IOException {
         try {
-            return (LinkedList<String[]>) ois.readObject();
+            return (LinkedList<Coordinator.StringHint[]>) ois.readObject();
         } catch (ClassNotFoundException e) {
             throw new Error(e);
         }

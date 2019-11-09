@@ -10,9 +10,9 @@ import java.util.stream.Collectors;
 public class Coordinator implements Runnable {
     private LinkedList<Input> inputs = new LinkedList<>();
     private HashMap<Branch, Branch> branches = new HashMap<>();
-    private HashMap<Input, HashSet<String>> perInputStringEqualsHints = new HashMap<>();
-    private HashMap<Input, HashMap<Integer, HashSet<String>>> perByteStringEqualsHints = new HashMap<>();
-    private HashSet<String> globalStringEqualsHints = new HashSet<>();
+    private HashMap<Input, HashSet<StringHint>> perInputStringEqualsHints = new HashMap<>();
+    private HashMap<Input, HashMap<Integer, HashSet<StringHint>>> perByteStringEqualsHints = new HashMap<>();
+    private HashSet<StringHint> globalStringEqualsHints = new HashSet<>();
 
 
 
@@ -27,7 +27,7 @@ public class Coordinator implements Runnable {
         this.config = config;
     }
 
-    protected final synchronized void foundInput(int id, byte[] bytes, boolean valid, LinkedList<String[]>hints) {
+    protected final synchronized void foundInput(int id, byte[] bytes, boolean valid, LinkedList<StringHint[]>hints) {
         Input in = new Input();
         in.bytes = bytes;
         in.id = id;
@@ -119,7 +119,7 @@ public class Coordinator implements Runnable {
                     //z3.addConstraints(input.id, cs);
                     // Compute coverage and branches from constraints
                     LinkedList<Branch> bs = new LinkedList<>();
-                    HashMap<Integer, HashSet<String>> eqs = new HashMap<>();
+                    HashMap<Integer, HashSet<StringHint>> eqs = new HashMap<>();
                     for (Expression e : cs)
                         knarr.process(bs, eqs, e);
 
@@ -129,12 +129,12 @@ public class Coordinator implements Runnable {
                             case NONE:
                                 break;
                             case GLOBAL:
-                                for (HashSet<String> s : eqs.values())
+                                for (HashSet<StringHint> s : eqs.values())
                                     globalStringEqualsHints.addAll(s);
                                 break;
                             case PER_INPUT:
-                                HashSet<String> ss = new HashSet<>();
-                                for (HashSet<String> s : eqs.values())
+                                HashSet<StringHint> ss = new HashSet<>();
+                                for (HashSet<StringHint> s : eqs.values())
                                     ss.addAll(s);
                                 perInputStringEqualsHints.put(input, ss);
                                 break;
@@ -223,20 +223,20 @@ public class Coordinator implements Runnable {
                         lastRecommendation.put(input.id, recommendation);
                     }
 
-                    HashMap<Integer, HashSet<String>> stringEqualsHints = new HashMap<>();
+                    HashMap<Integer, HashSet<StringHint>> stringEqualsHints = new HashMap<>();
                     switch (config.hinting) {
                         case NONE:
                             break;
                         case GLOBAL:
                             recommendation.clear();
-                            HashSet<String> globals = new HashSet<>(globalStringEqualsHints);
+                            HashSet<StringHint> globals = new HashSet<>(globalStringEqualsHints);
                             for (int i = 0 ; i < input.bytes.length ; i++) {
                                 stringEqualsHints.put(i, globals);
                             }
                             break;
                         case PER_INPUT:
                             recommendation.clear();
-                            HashSet<String> perInput = new HashSet<>(perInputStringEqualsHints.getOrDefault(input, new HashSet<>()));
+                            HashSet<StringHint> perInput = new HashSet<>(perInputStringEqualsHints.getOrDefault(input, new HashSet<>()));
                             for (int i = 0 ; i < input.bytes.length ; i++) {
                                 stringEqualsHints.put(i, perInput);
                             }
@@ -254,7 +254,7 @@ public class Coordinator implements Runnable {
         }
     }
 
-    private void targetZ3(Coordinator.Branch done, Optional<Pair<byte[], HashMap<Integer, HashSet<String>>>> result) {
+    private void targetZ3(Coordinator.Branch done, Optional<Pair<byte[], HashMap<Integer, HashSet<StringHint>>>> result) {
         if (done != null) {
             System.out.println("Looks like Z3 found an input for this branch");
             throw new Error("Not implemented yet");
@@ -293,7 +293,9 @@ public class Coordinator implements Runnable {
         this.knarr = knarr;
         this.zest = zest;
         this.z3 = new Z3Worker(zest);
-//        new Thread(z3).start();
+
+        if(config.usez3Hints)
+            new Thread(z3).start();
         this.notifyAll();
     }
 
@@ -305,7 +307,7 @@ public class Coordinator implements Runnable {
         int id;
         public byte[] bytes;
         boolean isNew;
-        public LinkedList<String[]> hints;
+        public LinkedList<StringHint[]> hints;
 
         @Override
         public boolean equals(Object o) {
@@ -321,6 +323,29 @@ public class Coordinator implements Runnable {
         }
     }
 
+
+    public static class StringHint implements Serializable {
+        String hint;
+        HintType type;
+
+        public StringHint(String hint, HintType type) {
+            this.hint = hint;
+            this.type = type;
+        }
+
+        public HintType getType() {
+            return this.type;
+        }
+
+        public String getHint() {
+            return this.hint;
+        }
+
+    }
+    public enum HintType {
+        EQUALS,
+        Z3
+    }
     public static class Branch implements Serializable {
         public int takenID, notTakenID;
         public boolean result, keep;
@@ -355,6 +380,8 @@ public class Coordinator implements Runnable {
         public final boolean useInvalid;
         public final boolean useConstraints;
 
+        public final boolean usez3Hints;
+
         public final String constraintsPath;
 
         public Config(Properties p) {
@@ -376,6 +403,7 @@ public class Coordinator implements Runnable {
             {
                 constraintsPath = p.getProperty("constraintsPath");
                 useConstraints = (p.getProperty("useConstraints") != null);
+                usez3Hints = (p.getProperty("usez3Hints") != null);
 
             }
         }

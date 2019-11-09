@@ -40,6 +40,7 @@ import com.pholser.junit.quickcheck.generator.GenerationStatus;
 import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
 import edu.berkeley.cs.jqf.examples.common.AsciiStringGenerator;
+import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
 import edu.berkeley.cs.jqf.fuzz.guidance.StringEqualsHintingInputStream;
 import edu.columbia.cs.psl.phosphor.runtime.Taint;
 import edu.columbia.cs.psl.phosphor.struct.LazyCharArrayObjTags;
@@ -261,7 +262,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         boolean coin = random.nextBoolean();
         int choice = random.nextInt(0, Integer.MAX_VALUE);
 
-        String[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+        Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
 
         if (hints != null && hints.length > 0) {
 
@@ -270,7 +271,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
             random.nextInt(0, Integer.MAX_VALUE);
             choice = choice % hints.length;
 
-            identifier = new String(hints[choice]);
+            identifier = new String(hints[choice].getHint());
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         } else {
             choice = choice % identifiers.size();

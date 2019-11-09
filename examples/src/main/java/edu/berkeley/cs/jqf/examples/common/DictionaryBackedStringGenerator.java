@@ -34,12 +34,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
 
 import com.pholser.junit.quickcheck.generator.GenerationStatus;
 import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
+import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
 import edu.berkeley.cs.jqf.fuzz.guidance.StringEqualsHintingInputStream;
 import edu.columbia.cs.psl.phosphor.runtime.Taint;
 import edu.columbia.cs.psl.phosphor.struct.LazyCharArrayObjTags;
@@ -81,17 +83,27 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
         if (true) {
             int choice = random.nextInt(0, Integer.MAX_VALUE);
 
-            String[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
 
-
-
-            String word;
+            String word = "";
 
             //if (hints != null && hints.length > 0 && (coin < 90)) {
 
             if (hints != null && hints.length > 0 ) {
-                choice = choice % hints.length;
-                word = hints[choice];
+
+                for(Coordinator.StringHint hint : hints) {
+                    if(hint.getType() == Coordinator.HintType.Z3) {
+                        word = hint.getHint();
+                        StringEqualsHintingInputStream.z3HintsUsedInCurrentInput = true;
+                        break;
+
+                    }
+                }
+                if(word == "") {
+                    choice = choice % hints.length;
+                    word = hints[choice].getHint();
+                }
+
                 StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
             } else {
                 choice = choice % dictionary.size();
@@ -112,14 +124,6 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
     private static String applyTaints(String result, Object taint) {
         if (result.length() == 0 || !(taint instanceof TaintedObjectWithObjTag))
             return result;
-
-        // if there is a z3 hint - use a random one.
-        String[] z3Hints = StringEqualsHintingInputStream.getHintsForGeneratorFunction("gen" + currentFunctionNumber);
-        if(z3Hints != null) {
-            System.out.println("Z3 Hints was not null for input!!!!!");
-            Random random = new Random();
-            result = z3Hints[random.nextInt() % z3Hints.length];
-        }
 
 
         // New string to avoid adding taints to the dictionary itself

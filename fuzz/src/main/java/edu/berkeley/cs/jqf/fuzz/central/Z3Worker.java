@@ -94,14 +94,13 @@ public class Z3Worker extends Worker {
                 if (targets.isEmpty()) {
                     try {
                         targets.wait();
+
                     } catch (InterruptedException _) {
                     }
-                    continue;
                 }
-
+                t = targets.removeFirst();
 
             }
-
             LinkedList<Expression> csToSolve = new LinkedList<>();
             Map<String, Expression> res = new HashMap<>();
 
@@ -152,17 +151,18 @@ public class Z3Worker extends Worker {
                                 // Is it UNSAT because of a String.equals?
                                 // Maybe it's because the lengths don't match perfectly
                                 // Turn that into startsWith
-                                LinkedList<String> hints = new LinkedList<>();
+                                LinkedList<Coordinator.StringHint> hints = new LinkedList<>();
                                 byte[] sol = replaceEqualsByStartsWith(res, cs, hints);
                                 if (sol != null) {
                                     // Give solution and hint to JQF
                                     HashSet<Integer> bytes = new HashSet<>();
                                     KnarrWorker.findControllingBytes(cs, bytes, new HashSet<>());
-                                    System.out.println("Equals hint: " + hints + " on bytes " + bytes);
+                                    for(Coordinator.StringHint hint : hints)
+                                        System.out.println("Equals hint: " + hint.getHint() + " on bytes " + bytes);
                                     Coordinator.Input input = new Coordinator.Input();
                                     input.bytes = sol;
                                     input.hints = new LinkedList<>();
-                                    String[] empty = new String[0];
+                                    Coordinator.StringHint[] empty = new Coordinator.StringHint[0];
                                     for (int i = 0 ; i < t.input.length ; i++)
                                         input.hints.add(bytes.contains(i) ? hints.toArray(empty) : empty);
                                     zest.addInputFromZ3(input);
@@ -193,7 +193,7 @@ public class Z3Worker extends Worker {
         }
     }
 
-    private byte[] handleStringLength(Map<String, Expression> res, Expression cs, LinkedList<String> hints) {
+    private byte[] handleStringLength(Map<String, Expression> res, Expression cs, LinkedList<Coordinator.StringHint> hints) {
         // Check if the constraint is LENGTH
 
         if (!(cs instanceof Operation && ((Operation)cs).getOperand(1) instanceof Operation))
@@ -309,7 +309,7 @@ public class Z3Worker extends Worker {
                 byte[] hint = new byte[expectedLength - 1];
                 for (int i = 0 ; i < hint.length ; i++)
                     hint[i] = (byte) genSol[i]; // Different types, cannot arrayCopy
-                hints.add(new String(hint));
+                hints.add(new Coordinator.StringHint(new String(hint), Coordinator.HintType.Z3));
                 // TODO
                 return new byte[0];
             }
@@ -322,7 +322,7 @@ public class Z3Worker extends Worker {
                 for (int i = 0 ; i < genSol.length ; i++)
                     hint[i] = (byte) genSol[i]; // Different types, cannot arrayCopy
                 hint[hint.length - 1] = 'a';
-                hints.add(new String(hint));
+                hints.add(new Coordinator.StringHint(new String(hint), Coordinator.HintType.Z3));
                 // TODO
                 return new byte[0];
             }
@@ -331,7 +331,7 @@ public class Z3Worker extends Worker {
         }
     }
 
-    private byte[] replaceEqualsByStartsWith(Map<String, Expression> res, Expression cs, List<String> hints) {
+    private byte[] replaceEqualsByStartsWith(Map<String, Expression> res, Expression cs, List<Coordinator.StringHint> hints) {
         // Check if the constraint is EQUALS
 
         if (!(cs instanceof Operation && ((Operation)cs).getOperand(1) instanceof Operation))
@@ -357,10 +357,12 @@ public class Z3Worker extends Worker {
         // Our new negated constraint
         res.put("c" + res.size(), new Operation(Operation.Operator.NOT, newOuter));
 
-        String hint = null;
+        Coordinator.StringHint hint = null;
+
+
         if (argumentToEquals instanceof StringConstant) {
             // We know what's the argument to equals
-            hint = ((StringConstant)argumentToEquals).getValue();
+           hint = new Coordinator.StringHint(((StringConstant)argumentToEquals).getValue(), Coordinator.HintType.Z3);
         } else {
             // TODO we need to ask Z3 to give us what is the argument to equals
             // TODO the code below was a try but it doesn't quite work, it always gets UNSAT
@@ -553,9 +555,9 @@ public class Z3Worker extends Worker {
         Coordinator.Branch branch;
         byte[] input;
         List<Expression> constraints;
-        HashMap<Integer, HashSet<String>> hints;
+        HashMap<Integer, HashSet<Coordinator.StringHint>> hints;
 
-        public Target(Coordinator.Branch branch, byte[] input, List<Expression> constraints, HashMap<Integer, HashSet<String>> hints) {
+        public Target(Coordinator.Branch branch, byte[] input, List<Expression> constraints, HashMap<Integer, HashSet<Coordinator.StringHint>> hints) {
             this.branch = branch;
             this.constraints = constraints;
             this.hints = hints;

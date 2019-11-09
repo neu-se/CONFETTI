@@ -33,7 +33,7 @@ public class KnarrGuidance implements Guidance {
         for (int i = 0 ; i < input.hints.size() ; i++) {
             reqs.addLast(new int[]{i,1});
         }
-        return new TaintingInputStream(new StringEqualsHintingInputStream(new ByteArrayInputStream(this.input.bytes), reqs, input.hints, new LinkedList<>()));
+        return new TaintingInputStream(new StringEqualsHintingInputStream(new ByteArrayInputStream(this.input.bytes), reqs, input.hints));
     }
 
     @Override

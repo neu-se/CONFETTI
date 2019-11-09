@@ -22,7 +22,7 @@ class KnarrWorker extends Worker {
         this.c = c;
     }
 
-    public LinkedList<Expression> getConstraints(byte[] bytes, LinkedList<String[]>hints) throws IOException {
+    public LinkedList<Expression> getConstraints(byte[] bytes, LinkedList<Coordinator.StringHint[]>hints) throws IOException {
         // Send input to Knarr process
         oos.writeObject(bytes);
         oos.writeObject(hints);
@@ -40,7 +40,7 @@ class KnarrWorker extends Worker {
         return constraints;
     }
 
-    public void process(LinkedList<Coordinator.Branch> bs, HashMap<Integer, HashSet<String>> stringEqualsArgs, Expression e) {
+    public void process(LinkedList<Coordinator.Branch> bs, HashMap<Integer, HashSet<Coordinator.StringHint>> stringEqualsArgs, Expression e) {
         Coverage.BranchData b = (Coverage.BranchData) e.metadata;
 
         if (b == null)
@@ -55,8 +55,7 @@ class KnarrWorker extends Worker {
         bb.controllingBytes = new HashSet<>();
         bb.source = b.source;
 
-        HashSet<String> eq = new HashSet<>();
-        HashSet<String> io = new HashSet<>();
+        HashSet<Coordinator.StringHint> eq = new HashSet<>();
 
         findControllingBytes(e, bb.controllingBytes, eq);
 
@@ -64,7 +63,7 @@ class KnarrWorker extends Worker {
 
         if (!eq.isEmpty()) {
             for (Integer i : bb.controllingBytes) {
-                HashSet<String> cur = stringEqualsArgs.get(i);
+                HashSet<Coordinator.StringHint> cur = stringEqualsArgs.get(i);
                 if (cur == null) {
                     cur = new HashSet<>();
                     stringEqualsArgs.put(i, cur);
@@ -75,7 +74,7 @@ class KnarrWorker extends Worker {
 
     }
 
-    public static void findControllingBytes(Expression e, HashSet<Integer> bytes, HashSet<String> stringEqualsArgs) {
+    public static void findControllingBytes(Expression e, HashSet<Integer> bytes, HashSet<Coordinator.StringHint> stringEqualsArgs) {
         if (e instanceof Variable) {
             Variable v = (Variable) e;
             if (v.getName().startsWith("autoVar_")) {
@@ -90,7 +89,7 @@ class KnarrWorker extends Worker {
                     switch(cur.getFirst()) {
                         case "EQUALS":
                         case "INDEXOF":
-                            stringEqualsArgs.add(cur.getSecond());
+                            stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.EQUALS));
                             break;
                     }
 

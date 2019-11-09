@@ -20,7 +20,7 @@ public class KnarrClient extends Central {
         try {
             Coordinator.Input ret = new Coordinator.Input();
             ret.bytes = (byte[]) ois.readObject();
-            ret.hints = (LinkedList<String[]>) ois.readObject();
+            ret.hints = (LinkedList<Coordinator.StringHint[]>) ois.readObject();
             return ret;
         } catch (ClassNotFoundException e) {
             throw new Error(e);

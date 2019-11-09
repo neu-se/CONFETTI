@@ -15,10 +15,10 @@ class ZestWorker extends Worker {
     private ArrayList<LinkedList<byte[]>> inputs = new ArrayList<>();
     private ArrayList<Integer> fuzzing = new ArrayList<>();
     private ArrayList<TreeSet<Integer>> recommendations = new ArrayList<>();
-    private ArrayList<HashMap<Integer, HashSet<String>>> stringEqualsHints = new ArrayList<>();
+    private ArrayList<HashMap<Integer, HashSet<Coordinator.StringHint>>> stringEqualsHints = new ArrayList<>();
     private Coordinator c;
 
-    private final String[] EMPTY = new String[0];
+    private final Coordinator.StringHint[] EMPTY = new Coordinator.StringHint[0];
 
     private LinkedList<Coordinator.Input> fromZ3 = new LinkedList<>();
 
@@ -40,7 +40,7 @@ class ZestWorker extends Worker {
                 Result res = (Result) ois.readObject();
                 int id = ois.readInt();
 
-                LinkedList<String[]> hints = (LinkedList<String[]>) ois.readObject();
+                LinkedList<Coordinator.StringHint[]> hints = (LinkedList<Coordinator.StringHint[]>) ois.readObject();
 
                 // Receive coverage
 //                Coverage cov = (Coverage) ois.readObject();
@@ -77,13 +77,13 @@ class ZestWorker extends Worker {
                 int size = 0;
                 int toFuzz = fuzzing.get(selected);
                 LinkedList<int[]> instructionsToSend = new LinkedList<>();
-                LinkedList<String[]> stringsToSend = new LinkedList<>();
+                LinkedList<Coordinator.StringHint[]> stringsToSend = new LinkedList<>();
                 TreeSet<Integer> recs;
                 synchronized (recommendations) {
                     recs = recommendations.get(selected);
                 }
 
-                HashMap<Integer, HashSet<String>> inputStrings = stringEqualsHints.get(selected);
+                HashMap<Integer, HashSet<Coordinator.StringHint>> inputStrings = stringEqualsHints.get(selected);
 
                 for (byte[] b : inputs.get(selected)) {
                     if (!recs.isEmpty()) {
@@ -103,7 +103,7 @@ class ZestWorker extends Worker {
 
                         instructionsToSend.addLast(new int[]{offset, b.length});
                         if (inputStrings != null && inputStrings.containsKey(offset))
-                            stringsToSend.addLast(inputStrings.get(offset).toArray(new String[0]));
+                            stringsToSend.addLast(inputStrings.get(offset).toArray(new Coordinator.StringHint[0]));
                         else
                             stringsToSend.addLast(EMPTY);
                     }
@@ -128,31 +128,35 @@ class ZestWorker extends Worker {
                     next = (fromZ3.isEmpty() ? null : fromZ3.removeFirst());
                 }
 
+                if(next != null) {
+                    System.out.println("WIN");
+                }
+
                 oos.writeObject(next);
                 oos.reset();
             }
         }
     }
 
-    private void printSentStringHints(LinkedList<String[]> stringHintsSent) {
+    private void printSentStringHints(LinkedList<Coordinator.StringHint[]> stringHintsSent) {
         if (stringHintsSent.isEmpty())
             return;
 
         System.out.print("\tSent strings: ");
-        for (String[] s : stringHintsSent) {
+        for (Coordinator.StringHint[] s : stringHintsSent) {
             if (s.length == 0)
                 continue;
 
             System.out.print("[ ");
-            for (String ss : s)
-                System.out.print(ss + ",");
+            for (Coordinator.StringHint ss : s)
+                System.out.print(ss.getHint() + ", " + ss.getType().toString());
             System.out.print("] ");
         }
 
         System.out.println();
     }
 
-    public void recommend(int inputID, TreeSet<Integer> recommendation, HashMap<Integer, HashSet<String>> eqs) {
+    public void recommend(int inputID, TreeSet<Integer> recommendation, HashMap<Integer, HashSet<Coordinator.StringHint>> eqs) {
         synchronized (recommendations) {
             recommendations.set(inputID, recommendation);
             stringEqualsHints.set(inputID, eqs);
