@@ -43,6 +43,11 @@ public class Coordinator implements Runnable {
             System.out.println("HINTS FOUND! " + hints);
     }
 
+    protected final synchronized Input getInput(int index) {
+        return this.inputs.get(index);
+    }
+
+
     @Override
     public void run() {
         HashMap<Integer, TreeSet<Integer>> lastRecommendation = new HashMap<>();

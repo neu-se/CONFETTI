@@ -62,6 +62,8 @@ class ZestWorker extends Worker {
 
                 c.foundInput(id, bs, res != Result.INVALID, hints);
 
+
+
                 synchronized (recommendations) {
                     recommendations.add(new TreeSet<>());
                     stringEqualsHints.add(null);
@@ -111,9 +113,14 @@ class ZestWorker extends Worker {
                     offset += b.length;
                 }
 
+                // Get the Coordinator.Input object corrseponding to the selected so we can get any
+                // previously used hints
+                Coordinator.Input in  = c.getInput(selected);
+
                 // Send instructions
                 oos.writeObject(instructionsToSend);
-                oos.writeObject(stringsToSend);
+                oos.writeObject(stringsToSend);     // Strings that are new hints
+                oos.writeObject(in.hints);          // Strings that are previously used hints that must be replicated
                 oos.reset();
                 oos.flush();
 

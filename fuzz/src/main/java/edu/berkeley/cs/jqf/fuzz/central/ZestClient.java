@@ -50,6 +50,14 @@ public class ZestClient extends Central {
         }
     }
 
+    public LinkedList<Coordinator.StringHint[]> receivePreviouslyUsedStringEqualsHints() throws IOException {
+        try {
+            return (LinkedList<Coordinator.StringHint[]>) ois.readObject();
+        } catch (ClassNotFoundException e) {
+            throw new Error(e);
+        }
+    }
+
     public void sendCoverage(Coverage totalCoverage) {
         // TODO
     }

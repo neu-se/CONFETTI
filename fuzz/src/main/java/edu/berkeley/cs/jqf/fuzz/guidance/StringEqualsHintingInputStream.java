@@ -12,13 +12,16 @@ public class StringEqualsHintingInputStream extends InputStream {
     private final InputStream is;
     private final LinkedList<int[]> reqs;
     private final LinkedList<Coordinator.StringHint[]> hints;
+    private final LinkedList<Coordinator.StringHint[]> previouslyUsedHints;
 
     private int offset = 0;
     private int[] curReqs;
     private Coordinator.StringHint[] curHints;
 
+
     private static Coordinator.StringHint[] EMPTY = new Coordinator.StringHint[0];
     private static Coordinator.StringHint[] hintsForCurrentInput = EMPTY;
+    private Coordinator.StringHint[] curPreviouslyUsedHints = EMPTY;
 
     public static Boolean hintUsedInCurrentInput = false;
     public static Boolean z3HintsUsedInCurrentInput = false;
@@ -47,16 +50,18 @@ public class StringEqualsHintingInputStream extends InputStream {
     // This will only be called in the Knarr process - we use this class to hold the hints.
     public StringEqualsHintingInputStream(LinkedList<Coordinator.StringHint[]> hints) {
         this.hints = hints;
+        this.previouslyUsedHints = new LinkedList<>();
         this.is = null;
         this.reqs = null;
         globalHints = new LinkedList<>(hints);
         hintsCopy = new LinkedList<>(hints);
     }
 
-    public StringEqualsHintingInputStream(InputStream is, LinkedList<int[]> reqs, LinkedList<Coordinator.StringHint[]> hints) {
+    public StringEqualsHintingInputStream(InputStream is, LinkedList<int[]> reqs, LinkedList<Coordinator.StringHint[]> hints, LinkedList<Coordinator.StringHint[]> previouslyUsedHints) {
         this.is = is;
         this.reqs = reqs;
         this.hints = hints;
+        this.previouslyUsedHints = previouslyUsedHints;
 
         globalHints = new LinkedList<>(hints);
         hintsCopy = new LinkedList<>(hints);
@@ -82,7 +87,9 @@ public class StringEqualsHintingInputStream extends InputStream {
             return read;
 
         if (offset >= curReqs[0] && offset < curReqs[0] + curReqs[1]) {
-            if (curHints.length > 0)
+            if(curPreviouslyUsedHints.length > 0)
+                hintsForCurrentInput = curPreviouslyUsedHints;
+            else if (curHints.length > 0)
                 hintsForCurrentInput = curHints;
             else
                 hintsForCurrentInput = EMPTY;
@@ -92,6 +99,8 @@ public class StringEqualsHintingInputStream extends InputStream {
         } else if (offset >= curReqs[0] + curReqs[1] && !reqs.isEmpty()) {
             curReqs = reqs.removeFirst();
             curHints = hints.removeFirst();
+            if(!previouslyUsedHints.isEmpty())
+                curPreviouslyUsedHints = previouslyUsedHints.removeFirst();
             return setHints(read);
         } else {
             curReqs = null;

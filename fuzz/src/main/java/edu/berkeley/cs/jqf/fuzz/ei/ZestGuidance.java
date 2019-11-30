@@ -280,7 +280,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private RecordingInputStream ris;
     private LinkedList<int[]> instructions;
     public LinkedList<Coordinator.StringHint[]> stringEqualsHints;
-
+    public LinkedList<Coordinator.StringHint[]> previouslyUsedStringEqualsHints;
 
     /**
      * @param testName the name of test to display on the status screen
@@ -622,6 +622,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     central.selectInput(parent.id);
                     instructions = central.receiveInstructions();
                     stringEqualsHints = central.receiveStringEqualsHints();
+                    previouslyUsedStringEqualsHints = central.receivePreviouslyUsedStringEqualsHints();
+
                 } catch (IOException e) {
                     throw new Error(e);
                 }
@@ -686,8 +688,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             ris = new RecordingInputStream(is);
             is = ris;
 
-            if (stringEqualsHints != null)
-                is = new StringEqualsHintingInputStream(is, instructions, stringEqualsHints);
+            if (stringEqualsHints != null || previouslyUsedStringEqualsHints != null)
+                is = new StringEqualsHintingInputStream(is, instructions, stringEqualsHints != null ? stringEqualsHints : new LinkedList<>(), previouslyUsedStringEqualsHints != null ? previouslyUsedStringEqualsHints : new LinkedList<>());
         }
 
         return is;
