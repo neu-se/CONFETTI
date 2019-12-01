@@ -29,6 +29,8 @@ public class StringEqualsHintingInputStream extends InputStream {
     private static LinkedList<Coordinator.StringHint[]> globalHints;
     private static LinkedList<Coordinator.StringHint[]> hintsCopy;
 
+    private static LinkedList<Coordinator.StringHint[]> aggregatedHints =  new LinkedList<>();
+
 
     public static Coordinator.StringHint[] getHintsForCurrentInput() {
         Coordinator.StringHint[] ret = hintsForCurrentInput;
@@ -65,6 +67,7 @@ public class StringEqualsHintingInputStream extends InputStream {
 
         globalHints = new LinkedList<>(hints);
         hintsCopy = new LinkedList<>(hints);
+        aggregatedHints = new LinkedList<>();
 
 
         if (reqs.size() != hints.size())
@@ -78,7 +81,8 @@ public class StringEqualsHintingInputStream extends InputStream {
     }
 
     public static LinkedList<Coordinator.StringHint[]> getHints() {
-        return hintsCopy;
+        // return hintsCopy;
+        return aggregatedHints;
     }
 
     private int setHints(int read) {
@@ -93,6 +97,8 @@ public class StringEqualsHintingInputStream extends InputStream {
                 hintsForCurrentInput = curHints;
             else
                 hintsForCurrentInput = EMPTY;
+
+            aggregatedHints.addLast(hintsForCurrentInput);
             offset += read;
         } else if (offset < curReqs[0]) {
             offset += read;
