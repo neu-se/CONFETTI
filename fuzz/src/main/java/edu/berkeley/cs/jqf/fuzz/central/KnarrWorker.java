@@ -22,7 +22,7 @@ class KnarrWorker extends Worker {
         this.c = c;
     }
 
-    public LinkedList<Expression> getConstraints(byte[] bytes, LinkedList<Coordinator.StringHint[]>hints) throws IOException {
+    public synchronized LinkedList<Expression> getConstraints(byte[] bytes, LinkedList<Coordinator.StringHint[]>hints) throws IOException {
         // Send input to Knarr process
         oos.writeObject(bytes);
         oos.writeObject(hints);

@@ -1,22 +1,22 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
-import org.jgrapht.alg.util.Pair;
 import za.ac.sun.cs.green.expr.Expression;
 
 import java.io.*;
 import java.util.*;
-import java.util.stream.Collectors;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BinaryOperator;
 
 public class Coordinator implements Runnable {
     private LinkedList<Input> inputs = new LinkedList<>();
-    private HashMap<Branch, Branch> branches = new HashMap<>();
+    private ConcurrentHashMap<Branch, Branch> branches = new ConcurrentHashMap<>();
     private HashMap<Input, HashSet<StringHint>> perInputStringEqualsHints = new HashMap<>();
-    private HashMap<Input, HashMap<Integer, HashSet<StringHint>>> perByteStringEqualsHints = new HashMap<>();
+    private ConcurrentHashMap<Input, HashMap<Integer, HashSet<StringHint>>> perByteStringEqualsHints = new ConcurrentHashMap<>();
     private HashSet<StringHint> globalStringEqualsHints = new HashSet<>();
 
 
 
-    private HashMap<Input, ConstraintRepresentation> constraints = new HashMap<>();
+    private ConcurrentHashMap<Input, ConstraintRepresentation> constraints = new ConcurrentHashMap<>();
     private KnarrWorker knarr;
     private Z3Worker z3;
     private ZestWorker zest;
@@ -189,14 +189,16 @@ public class Coordinator implements Runnable {
                             existing = branches.get(b);
                         }
 
-                        if (b.result) {
-                            if (existing.trueExplored.isEmpty())
-                                System.out.println("\tInput " + input.id + " explores T on " + existing.takenID + " (" + existing.source + ")");
-                            existing.trueExplored.add(input);
-                        } else {
-                            if (existing.falseExplored.isEmpty())
-                                System.out.println("\tInput " + input.id + " explores F on " + existing.takenID + " (" + existing.source + ")");
-                            existing.falseExplored.add(input);
+                        synchronized (existing) {
+                            if (b.result) {
+                                if (existing.trueExplored.isEmpty())
+                                    System.out.println("\tInput " + input.id + " explores T on " + existing.takenID + " (" + existing.source + ")");
+                                existing.trueExplored.add(input);
+                            } else {
+                                if (existing.falseExplored.isEmpty())
+                                    System.out.println("\tInput " + input.id + " explores F on " + existing.takenID + " (" + existing.source + ")");
+                                existing.falseExplored.add(input);
+                            }
                         }
 
                         LinkedList<Integer> bytes = new LinkedList<>(b.controllingBytes);
@@ -206,7 +208,6 @@ public class Coordinator implements Runnable {
                     }
 
                     input.isNew = false;
-                    targetZ3(null, null);
                 }
             }
 
@@ -259,49 +260,101 @@ public class Coordinator implements Runnable {
         }
     }
 
-    private void targetZ3(Coordinator.Branch done, Optional<Pair<byte[], HashMap<Integer, HashSet<StringHint>>>> result) {
-        if (done != null) {
-            System.out.println("Looks like Z3 found an input for this branch");
-            throw new Error("Not implemented yet");
-        }
-
-        // Figure out what is the branch that needs the most attention
-        Object[] tops = (Object[]) (branches.values().stream()
-                .filter(b -> b.source != null)
-                .filter(b -> b.falseExplored.isEmpty() || b.trueExplored.isEmpty())
-                .sorted((b1,b2) -> Integer.compare(b2.trueExplored.size() + b2.falseExplored.size(), b1.trueExplored.size() + b1.falseExplored.size()))
-                .limit(1)
-                .toArray());
-
-        Branch top;
-        if (tops.length > 0)
-            top = (Branch) tops[0];
-        else
-            return;
-
-        // Create Z3 target
-        List<Input> inputToTarget = inputs.stream()
-                .filter(i -> top.trueExplored.contains(i) || top.falseExplored.contains(i))
-                .collect(Collectors.toList());
-
-        List<Z3Worker.Target>targets = new LinkedList<>();
-        for(Input i : inputToTarget) {
-            targets.add(new Z3Worker.Target(top, i.bytes, constraints.get(i).get(), perByteStringEqualsHints.get(i)));
-        }
-
-        // Set Z3 target
-        z3.exploreTarget(targets);
-
-    }
-
     public final synchronized  void setKnarrWorker(KnarrWorker knarr, ZestWorker zest) {
         this.knarr = knarr;
         this.zest = zest;
-        this.z3 = new Z3Worker(zest);
+        this.z3 = new Z3Worker(zest, knarr, config.filter);
 
         if(config.usez3Hints)
-            new Thread(z3).start();
+            new Thread() {
+                @Override
+                public void run() {
+                    z3Thread();
+                }
+            }.start();
         this.notifyAll();
+    }
+
+    private void z3Thread() {
+        HashMap<Branch, Set<Input>> z3tried = new HashMap<>();
+
+        out: while (true) {
+            // Figure out what is the branch that needs the most attention
+            HashSet<Branch> triedTops = new HashSet<>();
+            Branch top = null;
+            Input inputToTarget = null;
+            while (triedTops.size() < branches.size()) {
+                Set<Input> triedInputs;
+
+                {
+                    Optional<Branch> maybeTop = branches.values().stream()
+                            .filter(b -> b.source != null)
+                            .filter(b -> !triedTops.contains(b))
+                            .filter(b -> b.falseExplored.isEmpty() || b.trueExplored.isEmpty())
+                            .reduce(BinaryOperator.maxBy(Comparator.comparingInt(o -> o.trueExplored.size() + o.falseExplored.size())));
+
+                    if (!maybeTop.isPresent())
+                        continue out;
+                    else
+                        top = maybeTop.get();
+                }
+
+                triedInputs = z3tried.getOrDefault(top, new HashSet<>());
+                if (triedInputs.isEmpty())
+                    z3tried.put(top, triedInputs);
+
+                // Create Z3 target
+                {
+                    Branch stupidLambdasInJavaDontCaptureTheEnvironment = top;
+                    Optional<Input> maybeInputToTarget;
+                    synchronized (this) {
+                        maybeInputToTarget = inputs.stream()
+                                .filter(i -> triedInputs != null && !triedInputs.contains(i))
+                                .filter(i -> stupidLambdasInJavaDontCaptureTheEnvironment.trueExplored.contains(i) || stupidLambdasInJavaDontCaptureTheEnvironment.falseExplored.contains(i))
+                                .reduce(BinaryOperator.maxBy(Comparator.comparingInt(o -> o.bytes.length)));
+                    }
+
+                    if (!maybeInputToTarget.isPresent()) {
+                        triedTops.add(top);
+                        continue;
+                    } else {
+                        inputToTarget = maybeInputToTarget.get();
+                        break;
+                    }
+                }
+            }
+
+            // We have no input, try again until we do
+            if (inputToTarget == null)
+                continue;
+
+
+            // Set Z3 target
+            Z3Worker.Target target = new Z3Worker.Target(top, inputToTarget.bytes, constraints.get(inputToTarget).expr, perByteStringEqualsHints.get(inputToTarget));
+
+            // Send target to Z3
+            Optional<Coordinator.Input> newInput = z3.exploreTarget(target);
+
+            // Updated inputs/branches tried
+            z3tried.get(top).add(inputToTarget);
+
+            // Handle result
+            if (newInput.isPresent()) {
+                System.out.println("Z3 found new input for " + inputToTarget.id);
+//                try {
+//                    // Send input to knarr, check if we explore target
+//                    LinkedList<Expression> updatedConstraints = knarr.getConstraints(newInput.get().bytes, newInput.get().hints);
+//                    Optional<Expression> hit = updatedConstraints.stream().filter(e -> e.metadata instanceof Coverage.BranchData && ((Coverage.BranchData)e.metadata).source.equals(target.branch.source)).findFirst();
+//
+//                    if (hit.isPresent()) {
+//                        // This input hits the target, add it to JQF
+                        zest.addInputFromZ3(newInput.get());
+//                    }
+//                } catch (IOException e) {
+//
+//                }
+            }
+        }
     }
 
     public Config getConfig() {

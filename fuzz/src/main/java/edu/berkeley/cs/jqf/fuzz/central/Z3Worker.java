@@ -4,14 +4,11 @@ import com.microsoft.z3.Context;
 import com.microsoft.z3.Expr;
 import com.microsoft.z3.Sort;
 import com.microsoft.z3.Z3Exception;
-import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
 import edu.gmu.swe.knarr.runtime.Coverage;
 import edu.gmu.swe.knarr.server.ConstraintOptionGenerator;
 import edu.gmu.swe.knarr.server.HashMapStateStore;
 import edu.gmu.swe.knarr.server.StateStore;
-import java.util.regex.*;
 
-import javafx.util.Pair;
 import za.ac.sun.cs.green.Green;
 import za.ac.sun.cs.green.Instance;
 import za.ac.sun.cs.green.expr.*;
@@ -25,16 +22,15 @@ import za.ac.sun.cs.green.util.NotSatException;
 import java.io.*;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.stream.Collectors;
 
-public class Z3Worker extends Worker {
-    private LinkedList<Target> targets = new LinkedList<>();
+public class Z3Worker {
     private Data data;
-    private ZestWorker zest;
 
     private static final File Z3_OUTPUT_DIR;
 
     static {
-        String z3Dir = "/home/jamesk/Desktop/z3_out"; //System.getProperty("Z3_OUTPUT_DIR");
+        String z3Dir = System.getProperty("Z3_OUTPUT_DIR");
         if (z3Dir != null) {
             File f = new File(z3Dir);
             if (!f.exists())
@@ -49,8 +45,7 @@ public class Z3Worker extends Worker {
         }
     }
 
-    public Z3Worker(ZestWorker zest) {
-        super(null, null);
+    public Z3Worker(ZestWorker zest, KnarrWorker knarr, String[] filter) {
         data = new Data();
         data.green = new Green();
         Properties props = new Properties();
@@ -69,12 +64,176 @@ public class Z3Worker extends Worker {
         data.modeler = new ModelZ3JavaService(data.green, null);
         data.stateStore = new HashMapStateStore();
         data.optionGenerator = new ConstraintOptionGenerator();
-
-        this.zest = zest;
     }
 
-    @Override
-    protected void work() throws IOException, ClassNotFoundException {
+    private boolean isTargetFeasible(Target t) {
+        Map<String, Expression> res = new HashMap<>();
+
+        boolean found = false;
+        for (Expression e : t.constraints) {
+            res.put("c" + res.size(), e);
+            if (e.metadata != null && e.metadata instanceof Coverage.BranchData) {
+                Coverage.BranchData data = (Coverage.BranchData) e.metadata;
+                if (data.takenCode == t.branch.takenID && data.notTakenCode == t.branch.notTakenID) {
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        // We couldn't find the target constraint
+        if (!found)
+            return false;
+
+        ArrayList<AbstractMap.SimpleEntry<String, Object>> sat = new ArrayList<>();
+        HashSet<String> unsat = new HashSet<>();
+
+        solve(res, sat, unsat);
+
+        return (unsat.isEmpty());
+    }
+
+    private byte[] solutionToInput(ArrayList<AbstractMap.SimpleEntry<String, Object>> sat, Map<String, byte[]> funcs) {
+        // Get size of solution
+        int size = 0;
+        for (AbstractMap.SimpleEntry<String, Object> e : sat) {
+            if (e.getKey().startsWith("autoVar_")) {
+                try {
+                    int n = Integer.parseInt(e.getKey().replace("autoVar_", ""));
+                    size = Math.max(size, n);
+                } catch (NumberFormatException ex) {
+                    continue;
+                }
+            }
+        }
+
+        // Copy bytes from solution
+        byte ret[] = new byte[size+1];
+        for (AbstractMap.SimpleEntry<String, Object> e : sat) {
+            if (e.getKey().startsWith("autoVar_")) {
+                try {
+                    int n = Integer.parseInt(e.getKey().replace("autoVar_", ""));
+                    ret[n] = ((Integer) e.getValue()).byteValue();
+                } catch (NumberFormatException ex) {
+                    continue;
+                }
+            }
+        }
+
+        // Handle solutions to generator functions
+        sat.stream().filter(entry -> entry.getKey().startsWith("gen"))
+                .forEach(entry -> funcs.put(entry.getKey(), intArrToByteArr((int[])entry.getValue())));
+
+        return ret;
+    }
+
+    private static byte[] intArrToByteArr(int[] arr) {
+        byte[] ret = new byte[arr.length];
+        // This is slow, surely there's a better way...
+        for (int i = 0 ; i < ret.length ; i++)
+            ret[i] = (byte) arr[i];
+
+        return ret;
+    }
+
+    private Optional<Coordinator.Input> negateConstraint(Target t) {
+
+        Map<String, Expression> res = new HashMap<>();
+
+        Expression targetConstraint = null;
+
+        for (Expression e : t.constraints) {
+            if (e.metadata != null && e.metadata instanceof Coverage.BranchData) {
+                Coverage.BranchData data = (Coverage.BranchData) e.metadata;
+                if (data.takenCode == t.branch.takenID && data.notTakenCode == t.branch.notTakenID) {
+                    targetConstraint = e;
+                    break;
+                }
+            } else {
+                res.put("c" + res.size(), e);
+            }
+        }
+
+        if (targetConstraint == null)
+            throw new IllegalStateException();
+
+        // Negate the target constraint
+        Expression negatedTargetConstraint = new Operation(Operation.Operator.NOT, targetConstraint);
+
+        // Try to solve it
+        res.put("c" + res.size(), negatedTargetConstraint);
+        ArrayList<AbstractMap.SimpleEntry<String, Object>> sat = new ArrayList<>();
+        HashSet<String> unsat = new HashSet<>();
+        solve(res, sat, unsat);
+
+        if (unsat.isEmpty()) {
+            // Solution found, generate input
+            HashMap<String, byte[]> genFuncs = new HashMap<>();
+            Coordinator.Input ret = new Coordinator.Input();
+            ret.bytes = solutionToInput(sat, genFuncs);
+            ret.hints = generatorsToHints(res.values(), genFuncs);
+            return Optional.of(ret);
+        } else {
+            return Optional.empty();
+        }
+    }
+
+    private LinkedList<Coordinator.StringHint[]> generatorsToHints(Collection<Expression> exps, Map<String, byte[]> genFuncs) {
+        LinkedList<Coordinator.StringHint[]> ret = new LinkedList<>();
+
+        HashMap<Integer, Set<String>> hints = new HashMap<>();
+
+        // Luís:  I'm sure this code can be optimized
+        for (Map.Entry<String, byte[]> entry : genFuncs.entrySet()) {
+            for (Expression ex : exps) {
+                try {
+                    ex.accept(new Visitor() {
+                        @Override
+                        public void postVisit(FunctionCall function) throws VisitorException {
+                            if (function.getName().equals(entry.getKey())) {
+                                for (Expression arg : function.getArguments()) {
+                                    arg.accept(new Visitor() {
+                                        @Override
+                                        public void postVisit(BVVariable variable) throws VisitorException {
+                                            if (variable.getName().startsWith("autoVar_")) {
+                                                int idx = Integer.parseInt(variable.getName().replace("autoVar_", ""));
+                                                Set<String> hs = hints.get(idx);
+                                                if (hs == null) {
+                                                    hs = new HashSet<>();
+                                                    hints.put(idx, hs);
+                                                }
+                                                hs.add(new String(entry.getValue()));
+                                            }
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                    });
+                } catch (VisitorException e) {
+                    e.printStackTrace();
+                    continue;
+                }
+            }
+        }
+
+        for (int i = 0 ; !hints.isEmpty() ; i++) {
+            Set<String> strings = hints.remove(i);
+            Coordinator.StringHint[] empty = new Coordinator.StringHint[0];
+            if (strings == null) {
+                ret.addLast(empty);
+            } else {
+                ret.addLast(strings.stream()
+                        .map(s -> new Coordinator.StringHint(s, Coordinator.HintType.Z3))
+                        .collect(Collectors.toList())
+                        .toArray(empty));
+            }
+        }
+
+        return ret;
+    }
+
+    public Optional<Coordinator.Input> exploreTarget(Target t) {
         // Set timeout
         {
             String to;
@@ -84,114 +243,124 @@ public class Z3Worker extends Worker {
                 Z3JavaTranslator.timeoutMS = 3600 * 1000; // 1h
         }
 
-        int solved = -1;
-        Target t = null;
-        while (true) {
-            solved++;
+        try {
 
+//            if (!isTargetFeasible(t)) {
+//                // TODO tell the coordinator that this target is not feasible
+//                return Optional.empty();
+//            }
 
-            synchronized (targets) {
-                if (targets.isEmpty()) {
-                    try {
-                        targets.wait();
+            // TODO pass hints to Z3
+            Optional<Coordinator.Input> input = negateConstraint(t);
+            return input;
 
-                    } catch (InterruptedException _) {
-                    }
-                }
-                t = targets.removeFirst();
-
-            }
-            LinkedList<Expression> csToSolve = new LinkedList<>();
-            Map<String, Expression> res = new HashMap<>();
-
-            for (Expression e : t.constraints) {
-                csToSolve.add(e);
-                res.put("c" + res.size(), e);
-                if (e.metadata != null && e.metadata instanceof Coverage.BranchData) {
-                    Coverage.BranchData data = (Coverage.BranchData) e.metadata;
-                    if (data.takenCode == t.branch.takenID && data.notTakenCode == t.branch.notTakenID)
-                        break;
-                }
-            }
-
-            ArrayList<AbstractMap.SimpleEntry<String, Object>> sat = new ArrayList<>();
-            HashSet<String> unsat = new HashSet<>();
-
-            sat.clear();
-            unsat.clear();
-
-            if (Z3_OUTPUT_DIR != null)
-                dumpToTXTFile(Paths.get(Z3_OUTPUT_DIR.getAbsolutePath(), "constraints" + solved + ".txt").toFile(), res);
-
-            try {
-                solve(res, sat, unsat);
-
-                for (String s : unsat)
-                    System.out.println(res.get(s));
-
-                if (unsat.isEmpty()) {
-                    // Try negating constraints of branches
-                    res.clear();
-                    for (Expression cs : csToSolve) {
-                        sat.clear();
-                        unsat.clear();
-                        if (cs.metadata instanceof Coverage.BranchData ) {
-                            Coverage.BranchData data = (Coverage.BranchData) cs.metadata;
-                            res.put("c" + res.size(), new Operation(Operation.Operator.NOT, cs));
-                            solve(res, sat, unsat);
-
-                            if (Z3_OUTPUT_DIR != null)
-                                dumpToTXTFile(Paths.get(Z3_OUTPUT_DIR.getAbsolutePath(), "constraints" + solved + ".txt").toFile(), res);
-
-                            res.remove("c" + (res.size() - 1));
-
-                            if (!unsat.isEmpty()) {
-                                // Unsat, try different things to make it SAT
-
-                                // Is it UNSAT because of a String.equals?
-                                // Maybe it's because the lengths don't match perfectly
-                                // Turn that into startsWith
-                                LinkedList<Coordinator.StringHint> hints = new LinkedList<>();
-                                byte[] sol = replaceEqualsByStartsWith(res, cs, hints);
-                                if (sol != null) {
-                                    // Give solution and hint to JQF
-                                    HashSet<Integer> bytes = new HashSet<>();
-                                    KnarrWorker.findControllingBytes(cs, bytes, new HashSet<>());
-                                    for(Coordinator.StringHint hint : hints)
-                                        System.out.println("Equals hint: " + hint.getHint() + " on bytes " + bytes);
-                                    Coordinator.Input input = new Coordinator.Input();
-                                    input.bytes = sol;
-                                    input.hints = new LinkedList<>();
-                                    Coordinator.StringHint[] empty = new Coordinator.StringHint[0];
-                                    for (int i = 0 ; i < t.input.length ; i++)
-                                        input.hints.add(bytes.contains(i) ? hints.toArray(empty) : empty);
-                                    zest.addInputFromZ3(input);
-                                } else if ((sol = handleStringLength(res, cs, hints)) != null) {
-                                    // Give hint to JQF
-                                    System.out.println("String length hint: " + hints);
-                                } else {
-                                    // Failed, stop trying
-                                    for (String s : unsat)
-                                        System.out.println(res.get(s));
-                                }
-                            } // TODO It was SAT, generate input and send it to Zest
-                        }
-                    }
-                } else {
-                    // Constraints were SAT, generate hint
-                }
-            } catch (Z3Exception | ClassCastException e) {
-                System.err.println(e.getMessage());
-                e.printStackTrace();
-            } catch (Throwable e) {
-                System.err.println(e.getMessage());
-                e.printStackTrace();
-            }
-
-
-            continue;
+        } catch (Z3Exception | ClassCastException e) {
+            System.err.println(e.getMessage());
+            e.printStackTrace();
+        } catch (Throwable e) {
+            System.err.println(e.getMessage());
+            e.printStackTrace();
         }
+
+        return Optional.empty();
     }
+
+//        LinkedList<Expression> csToSolve = new LinkedList<>();
+//            Map<String, Expression> res = new HashMap<>();
+//
+//            for (Expression e : t.constraints) {
+//                csToSolve.add(e);
+//                res.put("c" + res.size(), e);
+//                if (e.metadata != null && e.metadata instanceof Coverage.BranchData) {
+//                    Coverage.BranchData data = (Coverage.BranchData) e.metadata;
+//                    if (data.takenCode == t.branch.takenID && data.notTakenCode == t.branch.notTakenID)
+//                        break;
+//                }
+//            }
+//
+//            ArrayList<AbstractMap.SimpleEntry<String, Object>> sat = new ArrayList<>();
+//            HashSet<String> unsat = new HashSet<>();
+//
+//            sat.clear();
+//            unsat.clear();
+//
+//            try {
+//                solve(res, sat, unsat);
+//
+//                for (String s : unsat)
+//                    System.out.println(res.get(s));
+//
+//                if (unsat.isEmpty()) {
+//                    // Try negating constraints of branches
+//                    res.clear();
+//                    for (Expression cs : csToSolve) {
+//                        sat.clear();
+//                        unsat.clear();
+//                        if (cs.metadata instanceof Coverage.BranchData) {
+//                            Coverage.BranchData data = (Coverage.BranchData) cs.metadata;
+//                            res.put("c" + res.size(), new Operation(Operation.Operator.NOT, cs));
+//                            solve(res, sat, unsat);
+//
+//                            if (Z3_OUTPUT_DIR != null)
+//                                dumpToTXTFile(Paths.get(Z3_OUTPUT_DIR.getAbsolutePath(), "constraints" + solved + ".txt").toFile(), res);
+//
+//                            res.remove("c" + (res.size() - 1));
+//
+//                            if (!unsat.isEmpty()) {
+//                                // Unsat, try different things to make it SAT
+//
+//                                // Is it UNSAT because of a String.equals?
+//                                // Maybe it's because the lengths don't match perfectly
+//                                // Turn that into startsWith
+//                                LinkedList<Coordinator.StringHint> hints = new LinkedList<>();
+//                                byte[] sol = replaceEqualsByStartsWith(res, cs, hints);
+//                                if (sol != null) {
+//                                    // Give solution and hint to JQF
+//                                    HashSet<Integer> bytes = new HashSet<>();
+//                                    KnarrWorker.findControllingBytes(cs, bytes, new HashSet<>());
+//                                    for (Coordinator.StringHint hint : hints)
+//                                        System.out.println("Equals hint: " + hint.getHint() + " on bytes " + bytes);
+//                                    Coordinator.Input input = new Coordinator.Input();
+//                                    input.bytes = new byte[t.input.length * 2];
+//                                    System.arraycopy(sol, 0, input.bytes, 0, Math.min(sol.length, t.input.length));
+//                                    if (t.input.length * 2 > sol.length) {
+//                                        System.arraycopy(t.input, sol.length, input.bytes, sol.length, t.input.length - sol.length);
+//                                        System.arraycopy(t.input, 0, input.bytes, t.input.length, t.input.length);
+//                                    }
+//                                    input.hints = new LinkedList<>();
+//                                    Coordinator.StringHint[] empty = new Coordinator.StringHint[0];
+//                                    for (int i = 0; i < t.input.length; i++)
+//                                        input.hints.add(bytes.contains(i) ? hints.toArray(empty) : empty);
+//
+//                                    // Send input to knarr, check if we explore target
+//                                    LinkedList<Expression> updatedConstraints = knarr.getConstraints(input.bytes, input.hints);
+//                                    List<Expression> lst = updatedConstraints.stream().filter(e -> e.metadata != null).collect(Collectors.toList());
+//                                    zest.addInputFromZ3(input);
+//                                } else if ((sol = handleStringLength(res, cs, hints)) != null) {
+//                                    // Give hint to JQF
+//                                    System.out.println("String length hint: " + hints);
+//                                } else {
+//                                    // Failed, stop trying
+//                                    for (String s : unsat)
+//                                        System.out.println(res.get(s));
+//                                }
+//                            } // TODO It was SAT, generate input and send it to Zest
+//                        } else {
+//                            // Constraints were SAT, generate hint
+//                        }
+//                    }
+//                }
+//            } catch (Z3Exception | ClassCastException e) {
+//                System.err.println(e.getMessage());
+//                e.printStackTrace();
+//            } catch (Throwable e) {
+//                System.err.println(e.getMessage());
+//                e.printStackTrace();
+//            }
+//
+//
+//            continue;
+//        }
 
     private byte[] handleStringLength(Map<String, Expression> res, Expression cs, LinkedList<Coordinator.StringHint> hints) {
         // Check if the constraint is LENGTH
@@ -416,7 +585,18 @@ public class Z3Worker extends Worker {
         }
     }
 
+    private int solved = 0;
     private void solve(Map<String, Expression> constraints, ArrayList<AbstractMap.SimpleEntry<String, Object>> sat, HashSet<String> unsat) {
+        solved += 1;
+
+        if (Z3_OUTPUT_DIR != null) {
+            try {
+                dumpToTXTFile(Paths.get(Z3_OUTPUT_DIR.getAbsolutePath(), "constraints" + solved + ".txt").toFile(), constraints);
+            } catch (IOException e) {
+                // That's ok, we tried
+                e.printStackTrace();
+            }
+        }
 
         // Initialize Z3 instance
         Instance in = new Instance(data.green, null, constraints);
@@ -474,6 +654,8 @@ public class Z3Worker extends Worker {
     }
 
     private void dumpToTXTFile(File file, Map<String, Expression> constraints) throws IOException {
+        Map<String, Expression> res = new HashMap<>();
+
         try (PrintStream ps = new PrintStream(new BufferedOutputStream(new FileOutputStream(file)))) {
             ps.println("(set-option :produce-unsat-cores true)");
 
@@ -528,16 +710,6 @@ public class Z3Worker extends Worker {
 
             ps.println("; uncomment below to get unsat core");
             ps.println(";(get-unsat-core)");
-        }
-    }
-
-    public void exploreTarget(List<Target> targets) {
-        synchronized (this.targets) {
-            if (!this.targets.isEmpty())
-                return;
-
-            this.targets.addAll(targets);
-            this.targets.notifyAll();
         }
     }
 
