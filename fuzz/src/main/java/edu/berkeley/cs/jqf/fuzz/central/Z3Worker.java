@@ -136,11 +136,14 @@ public class Z3Worker {
         return ret;
     }
 
-    private Optional<Coordinator.Input> negateConstraint(Target t) {
+    private Optional<Coordinator.Input> negateConstraint(Target t, Set<Expression> hints) {
 
         Map<String, Expression> res = new HashMap<>();
 
         Expression targetConstraint = null;
+
+        for (Expression e : hints)
+            res.put("c" + res.size(), e);
 
         for (Expression e : t.constraints) {
             if (e.metadata != null && e.metadata instanceof Coverage.BranchData) {
@@ -174,6 +177,8 @@ public class Z3Worker {
             ret.hints = generatorsToHints(res.values(), genFuncs);
             return Optional.of(ret);
         } else {
+            if (!hints.isEmpty())
+                return negateConstraint(t, new HashSet<>());
             return Optional.empty();
         }
     }
@@ -233,6 +238,87 @@ public class Z3Worker {
         return ret;
     }
 
+    private Set<Expression> hintsToConstraints(List<Expression> constraints, HashMap<Integer, HashSet<Coordinator.StringHint>> hints) {
+        HashSet<Expression> ret = new HashSet<>();
+        HashMap<String, FunctionCall> calls = new HashMap<>();
+
+        if (hints == null || hints.isEmpty())
+            return new HashSet<>();
+
+
+        // Find generator functions and arguments
+        for (Expression c : constraints) {
+            try {
+                c.accept(new Visitor() {
+                    @Override
+                    public void postVisit(FunctionCall function) throws VisitorException {
+                        if (function.getName().startsWith("gen"))
+                            // TODO ensure same arguments on collisions
+                            calls.put(function.getName(), function);
+                    }
+                });
+            } catch (VisitorException e) {
+                throw new Error(e);
+            }
+        }
+
+        for (Map.Entry<String, FunctionCall> entry : calls.entrySet()) {
+            // Match arguments with hints
+            HashSet<Integer> bytes = new HashSet<>();
+            for (Expression arg : entry.getValue().getArguments()) {
+                try {
+                    arg.accept(new Visitor() {
+                        @Override
+                        public void postVisit(BVVariable variable) throws VisitorException {
+                            if (variable.getName().startsWith("autoVar_")) {
+                                bytes.add(Integer.parseInt(variable.getName().replace("autoVar_", "")));
+                            }
+                        }
+                    });
+                } catch (VisitorException e) {
+                    throw new Error(e);
+                }
+            }
+
+            // Generate constraints based on hints
+            Expression hintsConstraint = new BoolConstant(false);
+            boolean foundHints = false;
+            for (int i : bytes) {
+                HashSet<Coordinator.StringHint> hs = hints.get(i);
+                if (hs != null) {
+                    for (Coordinator.StringHint h : hs) {
+                        foundHints = true;
+                        // funcHint goes char by char stating that they are ==
+                        Expression funcHint = new BoolConstant(true);
+                        for (int j = 0 ; j < h.hint.length() ; j++) {
+                            Expression[] args = new Expression[2];
+                            args[0] = new IntConstant(j);
+                            args[1] = entry.getValue().getArguments()[1];
+                            funcHint = new Operation(
+                                    Operation.Operator.AND,
+                                    funcHint,
+                                    new Operation(
+                                            Operation.Operator.EQ,
+                                            new FunctionCall(
+                                                    entry.getValue().getName(),
+                                                    args
+                                            ),
+                                            new IntConstant(h.hint.charAt(j))
+                                    )
+                            );
+                        }
+                        hintsConstraint = new Operation(Operation.Operator.OR, hintsConstraint, funcHint);
+                    }
+                }
+            }
+
+            if (foundHints)
+                ret.add(hintsConstraint);
+        }
+
+        return ret;
+    }
+
     public Optional<Coordinator.Input> exploreTarget(Target t) {
         // Set timeout
         {
@@ -250,8 +336,8 @@ public class Z3Worker {
 //                return Optional.empty();
 //            }
 
-            // TODO pass hints to Z3
-            Optional<Coordinator.Input> input = negateConstraint(t);
+            Set<Expression> stringHintConstraints = hintsToConstraints(t.constraints, t.hints);
+            Optional<Coordinator.Input> input = negateConstraint(t, stringHintConstraints);
             return input;
 
         } catch (Z3Exception | ClassCastException e) {
