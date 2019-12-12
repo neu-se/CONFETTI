@@ -399,6 +399,19 @@ public class Coordinator implements Runnable {
             return this.hint;
         }
 
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            StringHint that = (StringHint) o;
+            return hint.equals(that.hint) &&
+                    type == that.type;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(hint, type);
+        }
     }
     public enum HintType {
         EQUALS,
