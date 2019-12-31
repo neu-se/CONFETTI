@@ -1,6 +1,7 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
-import javafx.util.Pair;
+
+import com.pholser.junit.quickcheck.Pair;
 
 import java.util.ArrayList;
 
