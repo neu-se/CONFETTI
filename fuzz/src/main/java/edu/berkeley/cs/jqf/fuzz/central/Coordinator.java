@@ -330,7 +330,7 @@ public class Coordinator implements Runnable {
 
 
             // Set Z3 target
-            Z3Worker.Target target = new Z3Worker.Target(top, inputToTarget.bytes, constraints.get(inputToTarget).expr, perByteStringEqualsHints.get(inputToTarget));
+            Z3Worker.Target target = new Z3Worker.Target(top, inputToTarget.bytes, constraints.get(inputToTarget).getExpressions(), perByteStringEqualsHints.get(inputToTarget));
 
             // Send target to Z3
             Optional<Coordinator.Input> newInput = z3.exploreTarget(target);
@@ -513,7 +513,7 @@ public class Coordinator implements Runnable {
             }
         }
 
-        public LinkedList<Expression> get() {
+        public LinkedList<Expression> getExpressions() {
 
             return this.expr != null ? this.expr : readConstraintsFromFile();
         }
