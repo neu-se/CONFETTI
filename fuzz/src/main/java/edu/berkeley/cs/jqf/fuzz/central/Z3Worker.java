@@ -22,6 +22,7 @@ import za.ac.sun.cs.green.util.NotSatException;
 import java.io.*;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 public class Z3Worker {
@@ -142,8 +143,8 @@ public class Z3Worker {
 
         Expression targetConstraint = null;
 
-        for (Expression e : hints)
-            res.put("c" + res.size(), e);
+//        for (Expression e : hints)
+//            res.put("c" + res.size(), e);
 
         for (Expression e : t.constraints) {
             if (e.metadata != null && e.metadata instanceof Coverage.BranchData) {
@@ -177,13 +178,29 @@ public class Z3Worker {
             ret.hints = generatorsToHints(res.values(), genFuncs);
             return Optional.of(ret);
         } else {
+            if (unsat.size() == 1) {
+                // Try to fix single UNSAT expression
+
+                // Remove UNSAT expression
+                Expression ex = res.remove(unsat.stream().findFirst().get());
+
+                // Maybe it's a String.equals without enough size?
+                Optional<Coordinator.Input> sol = replaceEqualsByStartsWith(res, ex);
+
+                // Put the expression back
+                res.put(unsat.stream().findFirst().get(), ex);
+
+                // Did this work?
+                if (sol.isPresent())
+                    return sol;
+            }
             if (!hints.isEmpty())
                 return negateConstraint(t, new HashSet<>());
             return Optional.empty();
         }
     }
 
-    private LinkedList<Coordinator.StringHint[]> generatorsToHints(Collection<Expression> exps, Map<String, byte[]> genFuncs) {
+    public static LinkedList<Coordinator.StringHint[]> generatorsToHints(Collection<Expression> exps, Map<String, byte[]> genFuncs) {
         LinkedList<Coordinator.StringHint[]> ret = new LinkedList<>();
 
         HashMap<Integer, Set<String>> hints = new HashMap<>();
@@ -586,88 +603,114 @@ public class Z3Worker {
         }
     }
 
-    private byte[] replaceEqualsByStartsWith(Map<String, Expression> res, Expression cs, List<Coordinator.StringHint> hints) {
+    private Optional<Coordinator.Input> replaceEqualsByStartsWith(Map<String, Expression> res, Expression cs) {
         // Check if the constraint is EQUALS
 
-        if (!(cs instanceof Operation && ((Operation)cs).getOperand(1) instanceof Operation))
-            return null;
+        AtomicReference<String> hack = new AtomicReference<>();
 
-        Operation outer = (Operation) cs;
-        Operation inner = (Operation) outer.getOperand(1);
+        Expression newCS = cs.copy(new Copier() {
+            @Override
+            public Expression copy(Operation operation) {
+                if (operation.getOperator() != Operation.Operator.EQUALS)
+                    return super.copy(operation);
 
-        if (inner.getOperator() != Operation.Operator.EQUALS)
-            return null;
+                if (operation.getOperand(1) instanceof StringConstant)
+                    hack.set(((StringConstant)operation.getOperand(1)).getValue());
 
-        // The constraint is EQUALS
-        // Replace it by STARTSWITH and try again
+                return postCopy(operation, new Operation(Operation.Operator.STARTSWITH, operation.getOperand(0), operation.getOperand(1)));
+            }
+        });
 
-       Operation newInner = new Operation(Operation.Operator.STARTSWITH, inner.getOperand(0), inner.getOperand(1));
-       Operation newOuter = new Operation(outer.getOperator(), outer.getOperand(0), newInner);
-
-       Expression argumentToEquals = inner.getOperand(1);
+        // TODO try to find string
+        if (hack.get() == null)
+            return Optional.empty();
 
         ArrayList<AbstractMap.SimpleEntry<String, Object>> sat = new ArrayList<>();
         HashSet<String> unsat = new HashSet<>();
 
-        // Our new negated constraint
-        res.put("c" + res.size(), new Operation(Operation.Operator.NOT, newOuter));
+        // Our new modified constraint
+        res.put("special", newCS);
 
         Coordinator.StringHint hint = null;
 
-
-        if (argumentToEquals instanceof StringConstant) {
-            // We know what's the argument to equals
-           hint = new Coordinator.StringHint(((StringConstant)argumentToEquals).getValue(), Coordinator.HintType.Z3);
-        } else {
-            // TODO we need to ask Z3 to give us what is the argument to equals
-            // TODO the code below was a try but it doesn't quite work, it always gets UNSAT
-            // TODO probably some silly reason
-//            // A string variable that is large enough for us to read what we just compared against
-//            int n = 50;
-//            Expression auxStringVar = new StringVariable("aux");
-//            for (int i = 0 ; i < 50 ; i++) {
-//                auxStringVar = new Operation(Operation.Operator.CONCAT, auxStringVar, new BVVariable("aux"+i, 32));
-//            }
-//
-//            res.put("aux1", new Operation(Operation.Operator.STARTSWITH, auxStringVar, argumentToEquals));
-        }
+//        if (argumentToEquals instanceof StringConstant) {
+//            // We know what's the argument to equals
+//           hint = new Coordinator.StringHint(((StringConstant)argumentToEquals).getValue(), Coordinator.HintType.Z3);
+//        } else {
+//            // TODO we need to ask Z3 to give us what is the argument to equals
+//            // TODO the code below was a try but it doesn't quite work, it always gets UNSAT
+//            // TODO probably some silly reason
+////            // A string variable that is large enough for us to read what we just compared against
+////            int n = 50;
+////            Expression auxStringVar = new StringVariable("aux");
+////            for (int i = 0 ; i < 50 ; i++) {
+////                auxStringVar = new Operation(Operation.Operator.CONCAT, auxStringVar, new BVVariable("aux"+i, 32));
+////            }
+////
+////            res.put("aux1", new Operation(Operation.Operator.STARTSWITH, auxStringVar, argumentToEquals));
+//            return Optional.empty();
+//        }
 
         solve(res, sat, unsat);
 
+
         if (!unsat.isEmpty()) {
             // No good, didn't work
-            res.remove("c" + (res.size()-1));
-            return null;
+            res.remove("special");
+            return Optional.empty();
         } else {
-            // It worked, get the string and the solution
-            res.remove("c" + (res.size()-1));
+            HashMap<String, byte[]> genFuncs = new HashMap<>();
+            Coordinator.Input ret = new Coordinator.Input();
+            ret.bytes = solutionToInput(sat, genFuncs);
 
-            // Get size of solution
-            int size = 0;
-            for (AbstractMap.SimpleEntry<String, Object> e : sat) {
-                if (e.getKey().startsWith("autoVar_")) {
-                    try {
-                        int n = Integer.parseInt(e.getKey().replace("autoVar_", ""));
-                        size = Math.max(size, n);
-                    } catch (NumberFormatException ex) {
-                        continue;
-                    }
-                }
-            }
-            byte ret[] = new byte[size+1];
-            for (AbstractMap.SimpleEntry<String, Object> e : sat) {
-                if (e.getKey().startsWith("autoVar_")) {
-                    try {
-                        int n = Integer.parseInt(e.getKey().replace("autoVar_", ""));
-                        ret[n] = ((Integer) e.getValue()).byteValue();
-                    } catch (NumberFormatException ex) {
-                        continue;
-                    }
-                }
+            Map<String, Expression> resForHints = new HashMap<>();
+            resForHints.put("special", newCS);
+            ret.hints = generatorsToHints(res.values(), genFuncs);
+
+            for (Coordinator.StringHint[] h : ret.hints) {
+                if (h == null)
+                    continue;
+
+                for (int i = 0 ; i < h.length ; i++)
+                    h[i].hint = hack.get();
             }
 
-            hints.add(hint);
-            return ret;
+            res.remove("special");
+            LinkedList<Coordinator.StringHint[]> hs = generatorsToHints(res.values(), genFuncs);
+            for (int i = 0 ; i < ret.hints.size() ; i++) {
+                if (ret.hints.get(i) == null)
+                    ret.hints.set(i, hs.get(i));
+            }
+            return Optional.of(ret);
+//            // It worked, get the string and the solution
+//            res.remove("c" + (res.size()-1));
+//
+//            // Get size of solution
+//            int size = 0;
+//            for (AbstractMap.SimpleEntry<String, Object> e : sat) {
+//                if (e.getKey().startsWith("autoVar_")) {
+//                    try {
+//                        int n = Integer.parseInt(e.getKey().replace("autoVar_", ""));
+//                        size = Math.max(size, n);
+//                    } catch (NumberFormatException ex) {
+//                        continue;
+//                    }
+//                }
+//            }
+//            byte ret[] = new byte[size+1];
+//            for (AbstractMap.SimpleEntry<String, Object> e : sat) {
+//                if (e.getKey().startsWith("autoVar_")) {
+//                    try {
+//                        int n = Integer.parseInt(e.getKey().replace("autoVar_", ""));
+//                        ret[n] = ((Integer) e.getValue()).byteValue();
+//                    } catch (NumberFormatException ex) {
+//                        continue;
+//                    }
+//                }
+//            }
+//
+//            hints.add(hint);
+//            return Optional.of(ret);
         }
     }
 
