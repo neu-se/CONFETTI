@@ -137,7 +137,9 @@ class ZestWorker extends Worker {
 
                 if(next != null) {
                     System.out.println("WIN");
+                    printSentStringHints(next.hints);
                 }
+
 
                 oos.writeObject(next);
                 oos.reset();

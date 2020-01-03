@@ -122,7 +122,7 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
     private static int currentFunctionNumber = 0;
 
     private static String applyTaints(String result, Object taint) {
-        if (result.length() == 0 || !(taint instanceof TaintedObjectWithObjTag))
+        if (result == null || result.length() == 0 || !(taint instanceof TaintedObjectWithObjTag))
             return result;
 
 

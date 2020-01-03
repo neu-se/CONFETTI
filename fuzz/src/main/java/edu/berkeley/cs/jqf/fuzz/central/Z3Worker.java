@@ -617,7 +617,7 @@ public class Z3Worker {
                 if (operation.getOperand(1) instanceof StringConstant)
                     hack.set(((StringConstant)operation.getOperand(1)).getValue());
 
-                return postCopy(operation, new Operation(Operation.Operator.STARTSWITH, operation.getOperand(0), operation.getOperand(1)));
+                return postCopy(operation, new Operation(Operation.Operator.STARTSWITH, operation.getOperand(1), operation.getOperand(0)));
             }
         });
 
