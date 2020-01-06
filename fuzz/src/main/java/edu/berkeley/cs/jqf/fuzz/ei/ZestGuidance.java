@@ -767,10 +767,12 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
             if(StringEqualsHintingInputStream.hintUsedInCurrentInput) {
                 // TODO: Do we want to save all inputs that use hints??
-                toSave = true;
+                //toSave = true;
                // StringEqualsHintingInputStream.hintUsedInCurrentInput = false;
                 if(StringEqualsHintingInputStream.z3HintsUsedInCurrentInput) {
                     why= why + "+z3hint";
+                    // always save z3 inputs 
+                    toSave = true;
                     StringEqualsHintingInputStream.z3HintsUsedInCurrentInput = false;
                 }
                 else
