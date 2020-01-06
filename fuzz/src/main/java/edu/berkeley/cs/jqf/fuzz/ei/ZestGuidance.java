@@ -40,22 +40,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
 import java.time.Duration;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Date;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -127,6 +112,21 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     /** Set of saved inputs to fuzz. */
     private ArrayList<Input> savedInputs = new ArrayList<>();
+
+    private PriorityQueue<Input> savedInputsAccess = new PriorityQueue<Input>(new InputComparator());
+
+
+    private class InputComparator implements Comparator<Input> {
+        public int compare(Input i1, Input i2)
+        {
+            if(i1.desc == i2.desc && i1.desc == "hint") {
+                return 0;
+            }
+            else if(i1.desc == "hint") return 1;
+
+            else return -1;
+        }
+    }
 
     /** Queue of seeds to fuzz. */
     private Deque<SeedInput> seedInputs = new ArrayDeque<>();
@@ -509,6 +509,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         int sumResponsibilities = 0;
         numFavoredLastCycle = 0;
         for (Input input : savedInputs) {
+
+            // refill the priority queue
+            savedInputsAccess.add(input);
+
             if (input.isFavored()) {
                 int responsibleFor = input.responsibilities.size();
                 infoLog("Input %d is responsible for %d branches", input.id, responsibleFor);
@@ -605,10 +609,11 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             boolean newParent = false;
             if (numChildrenGeneratedForCurrentParentInput >= targetNumChildren) {
                 // Select the next saved input to fuzz
-                currentParentInputIdx = (currentParentInputIdx + 1) % savedInputs.size();
+                currentParentInputIdx = savedInputsAccess.remove().id; //(currentParentInputIdx + 1) % savedInputs.size();
 
                 // Count cycles
-                if (currentParentInputIdx == 0) {
+               // if (currentParentInputIdx == 0) {
+                if (savedInputsAccess.isEmpty()) {
                     completeCycle();
                 }
 
@@ -771,7 +776,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                // StringEqualsHintingInputStream.hintUsedInCurrentInput = false;
                 if(StringEqualsHintingInputStream.z3HintsUsedInCurrentInput) {
                     why= why + "+z3hint";
-                    // always save z3 inputs 
+                    // always save z3 inputs
                     toSave = true;
                     StringEqualsHintingInputStream.z3HintsUsedInCurrentInput = false;
                 }
@@ -1008,15 +1013,19 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             return;
         }
 
-        // Second, save to queue
-        savedInputs.add(currentInput);
 
         // begin fuzzing z3 hints immediately...
-//        if(why.contains("z3hint")) {
-//
-//            currentParentInputIdx = savedInputs.size()-2;
-//
-//        }
+        if(why.contains("hint")) {
+
+            //currentParentInputIdx = savedInputs.size()-2;
+
+            currentInput.desc = "hint";
+
+        }
+
+        // Second, save to queue
+        savedInputs.add(currentInput);
+        savedInputsAccess.add(currentInput);
 
         // Third, store basic book-keeping data
         currentInput.id = newInputIdx;
@@ -1215,7 +1224,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
          * @return
          */
         private boolean isFavored() {
-            return responsibilities.size() > 0;
+            return responsibilities != null && responsibilities.size() > 0;
         }
 
 

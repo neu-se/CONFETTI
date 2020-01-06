@@ -350,6 +350,10 @@ public class Coordinator implements Runnable {
 //                        // This input hits the target, add it to JQF
                         zest.addInputFromZ3(newInput.get());
 //                    }
+
+                    for(StringHint[] hint : newInput.get().hints) {
+                        System.out.println(hint);
+                    }
 //                } catch (IOException e) {
 //
 //                }
