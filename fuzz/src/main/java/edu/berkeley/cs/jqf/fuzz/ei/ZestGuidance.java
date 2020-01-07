@@ -115,6 +115,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     private PriorityQueue<Input> savedInputsAccess = new PriorityQueue<Input>(new InputComparator());
 
+    private Boolean usePriorityQueue = Boolean.getBoolean("usePriorityQueue");
+
 
     private class InputComparator implements Comparator<Input> {
         public int compare(Input i1, Input i2)
@@ -511,7 +513,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         for (Input input : savedInputs) {
 
             // refill the priority queue
-            savedInputsAccess.add(input);
+            if(usePriorityQueue) {
+                savedInputsAccess.add(input);
+            }
 
             if (input.isFavored()) {
                 int responsibleFor = input.responsibilities.size();
@@ -609,11 +613,14 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             boolean newParent = false;
             if (numChildrenGeneratedForCurrentParentInput >= targetNumChildren) {
                 // Select the next saved input to fuzz
-                currentParentInputIdx = savedInputsAccess.remove().id; //(currentParentInputIdx + 1) % savedInputs.size();
+                if (usePriorityQueue)
+                    currentParentInputIdx = savedInputsAccess.remove().id;
+                else
+                    currentParentInputIdx = (currentParentInputIdx + 1) % savedInputs.size();
 
                 // Count cycles
                // if (currentParentInputIdx == 0) {
-                if (savedInputsAccess.isEmpty()) {
+                if ((usePriorityQueue  && savedInputsAccess.isEmpty()) || (!usePriorityQueue && currentParentInputIdx == 0)) {
                     completeCycle();
                 }
 
@@ -1025,7 +1032,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
         // Second, save to queue
         savedInputs.add(currentInput);
-        savedInputsAccess.add(currentInput);
+
+        if (usePriorityQueue)
+            savedInputsAccess.add(currentInput);
 
         // Third, store basic book-keeping data
         currentInput.id = newInputIdx;
