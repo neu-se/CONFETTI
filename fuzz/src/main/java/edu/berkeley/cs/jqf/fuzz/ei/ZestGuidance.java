@@ -121,10 +121,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private class InputComparator implements Comparator<Input> {
         public int compare(Input i1, Input i2)
         {
-            if(i1.desc == i2.desc && i1.desc == "hint") {
+            if(i1.desc.equals(i2.desc) && i1.desc.equals("hint")) {
                 return 0;
             }
-            else if(i1.desc == "hint") return 1;
+            else if(i1.desc.equals("hint")) return 1;
 
             else return -1;
         }
