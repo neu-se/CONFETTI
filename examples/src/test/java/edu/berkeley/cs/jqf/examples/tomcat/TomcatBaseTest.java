@@ -381,6 +381,8 @@ public abstract class TomcatBaseTest  {
 
         } catch(Exception e) {
              throw e;
+        } finally{
+            client.close();
         }
 
         return result;
