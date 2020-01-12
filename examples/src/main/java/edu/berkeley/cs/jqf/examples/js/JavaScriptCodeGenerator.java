@@ -128,7 +128,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         }
         statementDepth--; // Reset statement depth when going up the recursive tree
 
-        result = applyTaints(result, choice);
+//        result = applyTaints(result, choice);
 
         return result;
     }
@@ -228,7 +228,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         }
         expressionDepth--;
 
-        result = applyTaints(result, choice);
+//        result = applyTaints(result, choice);
 
         return "(" + result + ")";
     }
@@ -240,7 +240,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         String lhs = generateExpression(random);
         String rhs = generateExpression(random);
 
-        token = applyTaints(token, choice);
+//        token = applyTaints(token, choice);
 
         return lhs + " " + token + " " + rhs;
     }
@@ -323,7 +323,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
             result = params + " => " + generateExpression(random);
         }
 
-        result = applyTaints(result, choice);
+//        result = applyTaints(result, choice);
 
         return result;
 
@@ -356,7 +356,6 @@ public class JavaScriptCodeGenerator extends Generator<String> {
             choice = choice % identifiers.size();
             identifier = new String(identifiersList.get(choice));
         }
-
 
         identifier = applyTaints(identifier, choice);
 
@@ -391,7 +390,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
                 result = "{" + String.join(", ", generateItems(this::generateObjectProperty, random, 3)) + "}";
             }
 
-            result = applyTaints(result, choice);
+//            result = applyTaints(result, choice);
 
             return result;
         } else {
@@ -419,7 +418,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
                     break;
             }
 
-            result = applyTaints(result, choice);
+//            result = applyTaints(result, choice);
 
             return result;
         }
@@ -460,7 +459,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         int choice = random.nextInt(UNARY_TOKENS.length);
         String token = new String(UNARY_TOKENS[choice]);
 
-        token = applyTaints(token, choice);
+//        token = applyTaints(token, choice);
 
         return token + " " + generateExpression(random);
     }
