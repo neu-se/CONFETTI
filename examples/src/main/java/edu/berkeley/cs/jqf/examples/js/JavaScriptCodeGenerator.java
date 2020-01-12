@@ -29,6 +29,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     private static final int MAX_STATEMENT_DEPTH = 6;
     private static Set<String> identifiers; // Stores generated IDs, to promote re-use
     private static List<String> identifiersList;
+    private static Set<String> knownHints = new HashSet<>();
     private int statementDepth; // Keeps track of how deep the AST is at any point
     private int expressionDepth; // Keeps track of how nested an expression is at any point
 
@@ -50,6 +51,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         this.status = status; // we save this so that we can pass it on to other generators
         this.identifiers = new HashSet<>();
         this.identifiersList = new ArrayList<>();
+        this.identifiersList.addAll(knownHints);
         this.statementDepth = 0;
         this.expressionDepth = 0;
         return generateStatement(random).toString();
@@ -60,8 +62,27 @@ public class JavaScriptCodeGenerator extends Generator<String> {
                                              int mean) {
         int len = random.nextInt(mean*2); // Generate random number in [0, mean*2) 
         List<String> items = new ArrayList<>(len);
+
         for (int i = 0; i < len; i++) {
-            items.add(genMethod.apply(random));
+            int choice = random.nextInt(0, Integer.MAX_VALUE);
+
+            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+            String item;
+
+            if (hints != null && hints.length > 0) {
+
+                //random.nextInt(0, Integer.MAX_VALUE);
+                choice = choice % hints.length;
+
+                item = new String(hints[choice].getHint());
+                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+            } else {
+                item = genMethod.apply(random);
+            }
+
+            item = applyTaints(item, choice);
+
+            items.add(item);
         }
         return items;
     }
@@ -157,7 +178,6 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         if (result == null || result.length() == 0 || !(taint instanceof TaintedObjectWithObjTag))
             return result;
 
-
         // New string to avoid adding taints to the dictionary itself
         String ret = new String(result);
 
@@ -165,6 +185,10 @@ public class JavaScriptCodeGenerator extends Generator<String> {
 
         if (Symbolicator.getTaints(result) instanceof LazyCharArrayObjTags) {
             LazyCharArrayObjTags taints = (LazyCharArrayObjTags) Symbolicator.getTaints(result);
+            // Don't taint what's already tainted
+            if (taints.taints != null)
+                return result;
+
             taints.taints = new Taint[result.length()];
             for (int i = 0 ; i< taints.taints.length ; i++) {
                 taints.taints[i] = new ExpressionTaint(new FunctionCall(
@@ -255,7 +279,23 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     }
 
     private String generateCallNode(SourceOfRandomness random) {
-        String func = generateExpression(random);
+        String func;
+
+        int choice = random.nextInt(0, Integer.MAX_VALUE);
+        Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+
+        if (hints != null && hints.length > 0) {
+            //random.nextInt(0, Integer.MAX_VALUE);
+            choice = choice % hints.length;
+
+            func = new String(hints[choice].getHint());
+            StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+        } else {
+            func = generateExpression(random);
+        }
+
+        func = applyTaints(func, choice);
+
         String args = String.join(",", generateItems(this::generateExpression, random, 3));
 
         String call = func + "(" + args + ")";
@@ -332,7 +372,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     private String generateIdentNode(SourceOfRandomness random) {
         // Either generate a new identifier or use an existing one
         String identifier;
-        if (identifiers.isEmpty() || (identifiers.size() < MAX_IDENTIFIERS && random.nextBoolean())) {
+        if (identifiers.isEmpty() || (identifiers.size() - knownHints.size() < MAX_IDENTIFIERS && random.nextBoolean())) {
             identifier = random.nextChar('a', 'z') + "_" + identifiers.size();
             identifiers.add(identifier);
             identifiersList.add(identifier);
@@ -346,6 +386,14 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         if (hints != null && hints.length > 0) {
 
             identifier = "";
+
+            // This seems to work:  add all hints to a set that we use later to choose new identifiers from
+            // This way, all hints that we found end up being used, even if at random places
+            // It seems to improve coverage
+            for (Coordinator.StringHint h : hints) {
+                if (!knownHints.contains(h.getHint()))
+                    knownHints.add(new String(h.getHint()));
+            }
 
             //random.nextInt(0, Integer.MAX_VALUE);
             choice = choice % hints.length;
