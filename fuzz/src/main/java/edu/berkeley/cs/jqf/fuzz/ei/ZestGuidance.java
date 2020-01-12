@@ -121,12 +121,11 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private class InputComparator implements Comparator<Input> {
         public int compare(Input i1, Input i2)
         {
-            if(i1.desc.equals(i2.desc) && i1.desc.equals("hint")) {
-                return 0;
-            }
-            else if(i1.desc.equals("hint")) return 1;
-
-            else return -1;
+            if (i1.score < i2.score)
+                return 1;
+            else if (i1.score > i1.score)
+                return -1;
+            return 0;
         }
     }
 
@@ -1033,8 +1032,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         // Second, save to queue
         savedInputs.add(currentInput);
 
-        if (usePriorityQueue)
-            savedInputsAccess.add(currentInput);
+
 
         // Third, store basic book-keeping data
         currentInput.id = newInputIdx;
@@ -1060,9 +1058,15 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             responsibleInputs.put(b, currentInput);
         }
 
+
         // Fifth, map executions to input locations for splicing
         mapEcToInputLoc(currentInput);
 
+
+        if (usePriorityQueue) {
+            currentInput.calculateScore(StringEqualsHintingInputStream.getHints());
+            savedInputsAccess.add(currentInput);
+        }
     }
 
     private void mapEcToInputLoc(Input input) {
@@ -1202,6 +1206,14 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
 
         /**
+         * A tunable "score" of how "interesting" the input is
+         */
+        Integer score = 0;
+
+
+
+
+        /**
          * Create an empty input.
          */
         public Input() {
@@ -1223,7 +1235,23 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         public abstract void gc();
 
 
-
+        private void calculateScore(LinkedList<Coordinator.StringHint[]> hints) {
+            Integer temp_score = 0;
+            if(this.valid)
+                temp_score += 100000;
+            if(this.isFavored())
+                temp_score += 1000;
+            for(Coordinator.StringHint[] stringHints : hints ) {
+                for(int i = 0; i < stringHints.length; i++) {
+                    if(stringHints[i].getType() == Coordinator.HintType.Z3) {
+                        temp_score += 10000;
+                    }
+                    else
+                        temp_score += 100000;
+                }
+            }
+            this.score = temp_score;
+        }
         /**
          * Returns whether this input should be favored for fuzzing.
          *
