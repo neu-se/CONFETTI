@@ -574,8 +574,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
 
 
-            byte[] newInputBytes  = new byte[inputFromCentral.hints.size()];
-            for(int i = 0; i < inputFromCentral.hints.size(); i++) {
+            byte[] newInputBytes  = new byte[Math.max(inputFromCentral.hints.size(), inputFromCentral.bytes.length)];
+            for(int i = 0; i < newInputBytes.length ; i++) {
                 if( i < inputFromCentral.bytes.length) {
                     newInputBytes[i] = inputFromCentral.bytes[i];
                 }
