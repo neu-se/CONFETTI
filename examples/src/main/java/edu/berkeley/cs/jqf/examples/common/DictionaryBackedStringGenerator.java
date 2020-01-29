@@ -89,20 +89,25 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
 
             //if (hints != null && hints.length > 0 && (coin < 90)) {
 
+
+
             if (hints != null && hints.length > 0 ) {
 
-                for(Coordinator.StringHint hint : hints) {
-                    if(hint.getType() == Coordinator.HintType.Z3) {
-                        word = hint.getHint();
-                        StringEqualsHintingInputStream.z3HintsUsedInCurrentInput = true;
-                        break;
 
-                    }
-                }
-                if(word == "") {
-                    choice = choice % hints.length;
-                    word = hints[choice].getHint();
-                }
+                choice = choice % hints.length;
+                word = hints[choice].getHint();
+//                for(Coordinator.StringHint hint : hints) {
+//                    if(hint.getType() == Coordinator.HintType.Z3) {
+//                        word = hint.getHint();
+//                        StringEqualsHintingInputStream.z3HintsUsedInCurrentInput = true;
+//                        break;
+//
+//                    }
+//                }
+//                if(word == "") {
+//                    choice = choice % hints.length;
+//                    word = hints[choice].getHint();
+//                }
 
                 StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
             } else {

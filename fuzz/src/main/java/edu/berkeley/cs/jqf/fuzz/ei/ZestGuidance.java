@@ -57,6 +57,7 @@ import edu.berkeley.cs.jqf.instrument.tracing.events.CallEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.ReturnEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEventVisitor;
+import javafx.util.Pair;
 import org.w3c.dom.Document;
 
 import javax.xml.transform.*;
@@ -137,6 +138,11 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     /** Index of currentInput in the savedInputs -- valid after seeds are processed (OK if this is inaccurate). */
     private int currentParentInputIdx = 0;
+
+
+    /** Keep track of whether or not we have exhausted hints for the current input **/
+    private boolean currentParentExhaustedHints = false;
+
 
     /** Number of mutated inputs generated from currentInput. */
     private int numChildrenGeneratedForCurrentParentInput = 0;
@@ -282,6 +288,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private LinkedList<int[]> instructions;
     public LinkedList<Coordinator.StringHint[]> stringEqualsHints;
     public LinkedList<Coordinator.StringHint[]> previouslyUsedStringEqualsHints;
+
+
+    public LinkedList<LinkedList<Coordinator.StringHint[]>> allStringEqualsHintsCombinations = new LinkedList<>();
+
 
     /**
      * @param testName the name of test to display on the status screen
@@ -500,6 +510,57 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         return target;
     }
 
+    private void generateAllCombinationsOfStringEqualsHints() {
+
+        int totalCombinations = 1;
+
+       HashMap<Integer,  Integer> indexes = new HashMap<>();
+
+        for(int i = 0; i < stringEqualsHints.size(); i++) {
+            Coordinator.StringHint[] ref = stringEqualsHints.get(i);
+            if (ref.length == 0) {
+               // indexes.put(i, null);
+                continue;
+            }
+            totalCombinations *= ref.length;
+            indexes.put(i, 0);
+        }
+
+        int carry = 0;
+
+        while(totalCombinations != 0) {
+
+            // reset carry
+            carry = 1;
+            LinkedList<Coordinator.StringHint[]> newEntry = new LinkedList<>();
+            for(int i = 0; i < stringEqualsHints.size(); i++) {
+                if(indexes.get(i) == null)
+                    newEntry.addLast(stringEqualsHints.get(i));
+                else
+                {
+                    Coordinator.StringHint hintArr[] = new Coordinator.StringHint[1];
+                    Coordinator.StringHint[] ref = stringEqualsHints.get(i);
+                    int curIndex = indexes.get(i);
+                    hintArr[0] = ref[curIndex];
+                    newEntry.addLast(hintArr);
+                    curIndex += carry;
+                    if(curIndex == ref.length) {
+                        curIndex = 0;
+                        carry = 1;
+                    } else {
+                        carry = 0;
+                    }
+                    indexes.put(i, curIndex);
+                }
+
+            }
+            allStringEqualsHintsCombinations.add(newEntry);
+            totalCombinations--;
+        }
+
+        return;
+    }
+
     private void completeCycle() {
         // Increment cycle count
         cyclesCompleted++;
@@ -610,6 +671,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             Input currentParentInput = savedInputs.get(currentParentInputIdx);
             int targetNumChildren = getTargetChildrenForParent(currentParentInput);
             boolean newParent = false;
+
+
+
             if (numChildrenGeneratedForCurrentParentInput >= targetNumChildren) {
                 // Select the next saved input to fuzz
                 if (usePriorityQueue)
@@ -628,22 +692,42 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             }
             Input parent = savedInputs.get(currentParentInputIdx);
 
+
             if (newParent && central != null) {
                 try {
                     central.selectInput(parent.id);
                     instructions = central.receiveInstructions();
                     stringEqualsHints = central.receiveStringEqualsHints();
                     previouslyUsedStringEqualsHints = central.receivePreviouslyUsedStringEqualsHints();
+                    generateAllCombinationsOfStringEqualsHints();
+
 
                 } catch (IOException e) {
                     throw new Error(e);
                 }
             }
 
-            // Fuzz it to get a new input
-            infoLog("Mutating input: %s", parent.desc);
-            currentInput = parent.fuzz(random);
-            numChildrenGeneratedForCurrentParentInput++;
+
+            if(!allStringEqualsHintsCombinations.isEmpty()) {
+                stringEqualsHints = allStringEqualsHintsCombinations.removeFirst();
+
+                if(instructions.size() != stringEqualsHints.size()) {
+                    instructions = new LinkedList<>();
+                    // I BELIEVE this should only happen on input 0...
+                    for (int i = 0; i < stringEqualsHints.size(); i++)
+                        // This input came from the central, so we don't know how the Random requests bytes
+                        // Treat each byte as a single request
+                        instructions.addLast(new int[]{i, 1});
+                }
+
+                currentInput = new LinearInput((LinearInput)parent);
+            }
+            else {
+                // Fuzz it to get a new input
+                infoLog("Mutating input: %s", parent.desc);
+                currentInput = parent.fuzz(random);
+                numChildrenGeneratedForCurrentParentInput++;
+            }
 
             // Write it to disk for debugging
             try {
@@ -699,7 +783,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             ris = new RecordingInputStream(is);
             is = ris;
 
-            if (stringEqualsHints != null || previouslyUsedStringEqualsHints != null)
+            if ((stringEqualsHints != null) || previouslyUsedStringEqualsHints != null)
                 is = new StringEqualsHintingInputStream(is, instructions, stringEqualsHints != null ? stringEqualsHints : new LinkedList<>(), previouslyUsedStringEqualsHints != null ? previouslyUsedStringEqualsHints : new LinkedList<>());
         }
 
@@ -783,11 +867,13 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 if(StringEqualsHintingInputStream.z3HintsUsedInCurrentInput) {
                     why= why + "+z3hint";
                     // always save z3 inputs
-                    toSave = true;
+                    //toSave = true;
                     StringEqualsHintingInputStream.z3HintsUsedInCurrentInput = false;
                 }
                 else
                     why= why + "+hint";
+
+               // toSave = true;
             }
 
             if (SAVE_NEW_COUNTS && coverageBitsUpdated) {
@@ -1238,16 +1324,16 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         private void calculateScore(LinkedList<Coordinator.StringHint[]> hints) {
             Integer temp_score = 0;
             if(this.valid)
-                temp_score += 100000;
+                temp_score += 20500;
             if(this.isFavored())
-                temp_score += 1000;
+                temp_score += 20000;
             for(Coordinator.StringHint[] stringHints : hints ) {
                 for(int i = 0; i < stringHints.length; i++) {
                     if(stringHints[i].getType() == Coordinator.HintType.Z3) {
-                        temp_score += 10000;
+                        temp_score += 1000;
                     }
                     else
-                        temp_score += 100000;
+                        temp_score += 1000;
                 }
             }
             this.score = temp_score;
