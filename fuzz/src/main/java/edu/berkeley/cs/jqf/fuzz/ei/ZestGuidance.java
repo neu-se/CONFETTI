@@ -39,13 +39,13 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
+import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
-import edu.berkeley.cs.jqf.fuzz.central.Z3InputHints;
 import edu.berkeley.cs.jqf.fuzz.central.ZestClient;
 import edu.berkeley.cs.jqf.fuzz.ei.ExecutionIndex.Prefix;
 import edu.berkeley.cs.jqf.fuzz.ei.ExecutionIndex.Suffix;
@@ -57,7 +57,6 @@ import edu.berkeley.cs.jqf.instrument.tracing.events.CallEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.ReturnEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEventVisitor;
-import javafx.util.Pair;
 import org.w3c.dom.Document;
 
 import javax.xml.transform.*;
@@ -823,6 +822,21 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         assert(currentInput.size() > 0) : String.format("Empty input: %s", currentInput.desc);
 
         boolean valid = result == Result.SUCCESS;
+
+
+        // jacoco coverage
+        try {
+            // Get exec data by dynamically calling RT.getAgent().getExecutionData()
+            Class RT = Class.forName("org.jacoco.agent.rt.RT");
+            Method getAgent = RT.getMethod("getAgent");
+            Object agent = getAgent.invoke(null);
+            Method dump = agent.getClass().getMethod("getExecutionData", boolean.class);
+            byte[] execData = (byte[]) dump.invoke(agent, false);
+        }
+        catch (Exception e) {
+                //System.err.println(e);
+        }
+
 
         if (valid) {
             // Increment valid counter
