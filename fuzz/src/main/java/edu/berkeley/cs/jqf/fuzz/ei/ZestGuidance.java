@@ -115,7 +115,6 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     private PriorityQueue<Input> savedInputsAccess = new PriorityQueue<Input>(new InputComparator());
 
-    private Boolean usePriorityQueue = Boolean.getBoolean("usePriorityQueue");
 
 
     private class InputComparator implements Comparator<Input> {
@@ -128,6 +127,100 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             return 0;
         }
     }
+
+    public static PriorityQueueConfig priorityQueueConfig;
+
+    static {
+        try {
+
+            Properties p = new Properties();
+           p.load(ZestDriver.class.getResourceAsStream("/PriorityQueue.properties"));
+            priorityQueueConfig = new PriorityQueueConfig(p);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static class PriorityQueueConfig {
+
+        public interface Arithmetic {
+            int operation(int a, int b);
+        }
+
+        public final boolean usePriorityQueue;
+
+        public  HashMap<String, Arithmetic> operations  = new HashMap<>();
+
+
+        public final int validInputScoreValue;
+
+        public final Arithmetic validInputScoreOperation;
+
+        public final int  favoredInputScoreValue;
+
+        public final Arithmetic favoredInputScoreOperation;
+
+        public final int z3HintScoreValue;
+
+        public final Arithmetic z3HintScoreOperation;
+
+        public final int equalsHintScoreValue;
+
+        public final Arithmetic equalsHintScoreOperation;
+
+
+        public  PriorityQueueConfig(Properties p) {
+
+            operations.put("+", (int a, int b) -> (a + b));
+            operations.put("-", (int a, int b) -> (a - b));
+            operations.put("/", (int a, int b) -> (a / b));
+            operations.put("*", (int a, int b) -> (a * b));
+
+
+            usePriorityQueue = (p.getProperty("usePriorityQueue") != null);
+
+
+            String validInputScoreCalculation = p.getProperty("validInputScoreCalculation");
+            if(validInputScoreCalculation != null) {
+                validInputScoreValue = Integer.parseInt(validInputScoreCalculation.split(",")[1]);
+                validInputScoreOperation = operations.get(validInputScoreCalculation.split(",")[0]);
+            } else {
+                validInputScoreValue = 0;
+                validInputScoreOperation = operations.get("+");
+            }
+
+            String favoredInputScoreCalculation = p.getProperty("favoredInputScoreCalculation");
+            if(validInputScoreCalculation != null) {
+                favoredInputScoreValue = Integer.parseInt(favoredInputScoreCalculation.split(",")[1]);
+                favoredInputScoreOperation = operations.get(favoredInputScoreCalculation.split(",")[0]);
+            } else {
+                favoredInputScoreValue = 0;
+                favoredInputScoreOperation = operations.get("+");
+            }
+
+
+            String z3HintScoreCalculation = p.getProperty("z3HintScoreCalculation");
+            if(validInputScoreCalculation != null) {
+                z3HintScoreValue = Integer.parseInt(z3HintScoreCalculation.split(",")[1]);
+                z3HintScoreOperation = operations.get(z3HintScoreCalculation.split(",")[0]);
+            } else {
+                z3HintScoreValue = 0;
+                z3HintScoreOperation = operations.get("+");
+            }
+
+
+            String equalsHintScoreCalculation = p.getProperty("equalsHintScoreCalculation");
+            if(validInputScoreCalculation != null) {
+                equalsHintScoreValue = Integer.parseInt(equalsHintScoreCalculation.split(",")[1]);
+                equalsHintScoreOperation = operations.get(z3HintScoreCalculation.split(",")[0]);
+            } else {
+                equalsHintScoreValue = 0;
+                equalsHintScoreOperation = operations.get("+");
+            }
+        }
+    }
+
+
 
     /** Queue of seeds to fuzz. */
     private Deque<SeedInput> seedInputs = new ArrayDeque<>();
@@ -236,6 +329,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     /** Number of conditional jumps since last run was started. */
     private long branchCount;
 
+
+
+
     // ------------- FUZZING HEURISTICS ------------
 
     /** Turn this on to disable all guidance (i.e. no mutations, only random fuzzing) */
@@ -323,6 +419,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         } catch (IOException e) {
             this.central = null;
         }
+
+
     }
 
     /**
@@ -572,7 +670,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         for (Input input : savedInputs) {
 
             // refill the priority queue
-            if(usePriorityQueue) {
+            if(priorityQueueConfig.usePriorityQueue) {
                 savedInputsAccess.add(input);
             }
 
@@ -675,14 +773,14 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
             if (numChildrenGeneratedForCurrentParentInput >= targetNumChildren) {
                 // Select the next saved input to fuzz
-                if (usePriorityQueue)
+                if (priorityQueueConfig.usePriorityQueue)
                     currentParentInputIdx = savedInputsAccess.remove().id;
                 else
                     currentParentInputIdx = (currentParentInputIdx + 1) % savedInputs.size();
 
                 // Count cycles
                // if (currentParentInputIdx == 0) {
-                if ((usePriorityQueue  && savedInputsAccess.isEmpty()) || (!usePriorityQueue && currentParentInputIdx == 0)) {
+                if ((priorityQueueConfig.usePriorityQueue  && savedInputsAccess.isEmpty()) || (!priorityQueueConfig.usePriorityQueue && currentParentInputIdx == 0)) {
                     completeCycle();
                 }
 
@@ -1163,7 +1261,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         mapEcToInputLoc(currentInput);
 
 
-        if (usePriorityQueue) {
+        if (priorityQueueConfig.usePriorityQueue) {
             currentInput.calculateScore(StringEqualsHintingInputStream.getHints());
             savedInputsAccess.add(currentInput);
         }
@@ -1338,16 +1436,16 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         private void calculateScore(LinkedList<Coordinator.StringHint[]> hints) {
             Integer temp_score = 0;
             if(this.valid)
-                temp_score += 20500;
+                temp_score = ZestGuidance.priorityQueueConfig.validInputScoreOperation.operation(temp_score,ZestGuidance.priorityQueueConfig.validInputScoreValue);
             if(this.isFavored())
-                temp_score += 20000;
+                temp_score = ZestGuidance.priorityQueueConfig.favoredInputScoreOperation.operation(temp_score, ZestGuidance.priorityQueueConfig.favoredInputScoreValue);
             for(Coordinator.StringHint[] stringHints : hints ) {
                 for(int i = 0; i < stringHints.length; i++) {
                     if(stringHints[i].getType() == Coordinator.HintType.Z3) {
-                        temp_score += 1000;
+                        temp_score = ZestGuidance.priorityQueueConfig.z3HintScoreOperation.operation(temp_score, ZestGuidance.priorityQueueConfig.z3HintScoreValue);
                     }
                     else
-                        temp_score += 1000;
+                        temp_score = ZestGuidance.priorityQueueConfig.equalsHintScoreOperation.operation(temp_score, ZestGuidance.priorityQueueConfig.equalsHintScoreValue);
                 }
             }
             this.score = temp_score;
