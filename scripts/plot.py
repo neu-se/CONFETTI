@@ -108,7 +108,7 @@ with PdfPages('fig.pdf') as pdf:
                             t0 = int(line['# unix_time'])
                         t = int(line['# unix_time']) - t0
                     else:
-                        t = int(line[c['x']])
+                        t = float(line[c['x']])
                     x_number_values.append(t)
 
             ymax = max(ymax, y_number_values[-1])
