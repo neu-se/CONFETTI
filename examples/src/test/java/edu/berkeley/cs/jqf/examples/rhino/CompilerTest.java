@@ -29,10 +29,12 @@
 package edu.berkeley.cs.jqf.examples.rhino;
 
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 
 import com.pholser.junit.quickcheck.From;
 import edu.berkeley.cs.jqf.examples.common.AsciiStringGenerator;
@@ -112,6 +114,12 @@ public class CompilerTest {
         debugWithString(code);
     }
 
+
+    public static void main(String[] args) throws IOException {
+        CompilerTest t = new CompilerTest();
+        t.initContext();
+        t.testWithString(new String(Files.readAllBytes(new File(args[0]).toPath())));
+    }
 
 
 }
