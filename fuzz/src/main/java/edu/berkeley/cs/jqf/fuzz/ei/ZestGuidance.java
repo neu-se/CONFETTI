@@ -30,11 +30,13 @@ package edu.berkeley.cs.jqf.fuzz.ei;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.Console;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
@@ -139,10 +141,15 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         try {
 
             Properties p = new Properties();
-           p.load(ZestDriver.class.getResourceAsStream("/PriorityQueue.properties"));
+            String priorityFile = System.getProperty("priority");
+            if (priorityFile != null) {
+                p.load(new BufferedReader(new FileReader(new File(System.getProperty("priority")))));
+            } else {
+                p.load(ZestDriver.class.getResourceAsStream("/PriorityQueue.properties"));
+            }
             priorityQueueConfig = new PriorityQueueConfig(p);
         } catch (IOException e) {
-            e.printStackTrace();
+            throw new Error(e);
         }
     }
 

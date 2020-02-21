@@ -29,7 +29,23 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     private static final int MAX_STATEMENT_DEPTH = 6;
     private static Set<String> identifiers; // Stores generated IDs, to promote re-use
     private static List<String> identifiersList;
-    private static Set<String> knownHints = new HashSet<>();
+    private static Set<String> knownHints;
+    static {
+        if (System.getProperty("JSgeneratorReuseHints") != null)
+            knownHints = new HashSet<>();
+        else
+            knownHints = new HashSet<String>(){
+                @Override
+                public boolean add(String s) {
+                    return false;
+                }
+
+                @Override
+                public boolean contains(Object o) {
+                    return false;
+                }
+            };
+    }
     private int statementDepth; // Keeps track of how deep the AST is at any point
     private int expressionDepth; // Keeps track of how nested an expression is at any point
 
