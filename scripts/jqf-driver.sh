@@ -44,7 +44,7 @@ fi
 "$java" -ea \
   -Xbootclasspath/a:"$INST_CLASSPATH" \
   ${JAVAAGENT} \
-  -javaagent:${JACOCO_AGENT_JAR}=classdumpdir=${ROOT_DIR}/instrument/jacoco_dumped_classes \
+  -DhintCombinations=200 \
   -Djanala.conf="${SCRIPT_DIR}/janala.conf" \
   -cp "${FUZZ_CLASSPATH}:${CLASSPATH}" \
   ${JVM_OPTS} \

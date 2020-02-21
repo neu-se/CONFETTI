@@ -92,6 +92,11 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     // ------------ ALGORITHM BOOKKEEPING ------------
 
+
+    private int combinationsLimit = Integer.MAX_VALUE;
+
+    private int combinationsTried = 0;
+
     /** The max amount of time to run for, in milli-seconds */
     private final long maxDurationMillis;
 
@@ -413,6 +418,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 throw new IllegalArgumentException("Invalid timeout duration: " + timeout);
             }
         }
+
+        String combinationsLimitProperty = System.getProperty("hintCombinations");
+        if (combinationsLimitProperty != null) this.combinationsLimit = Integer.parseInt(combinationsLimitProperty);
 
         try {
             this.central = new ZestClient();
@@ -805,8 +813,11 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             }
 
 
-            if(!allStringEqualsHintsCombinations.isEmpty()) {
-                stringEqualsHints = allStringEqualsHintsCombinations.removeFirst();
+            if(!allStringEqualsHintsCombinations.isEmpty() && combinationsTried < combinationsLimit) {
+
+                // remove a random element
+                Random random = new Random();
+                stringEqualsHints = allStringEqualsHintsCombinations.remove(random.nextInt(allStringEqualsHintsCombinations.size()));
 
                 if(instructions.size() != stringEqualsHints.size()) {
                     instructions = new LinkedList<>();
@@ -818,6 +829,16 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 }
 
                 currentInput = new LinearInput((LinearInput)parent);
+
+                // Once we hit the limit, clear the list
+                if(++combinationsTried == combinationsLimit) {
+                    allStringEqualsHintsCombinations.clear();
+                    combinationsTried = 0;
+                }
+                // haven't hit the limit, but exhausted all combinations
+                else if(allStringEqualsHintsCombinations.isEmpty()) {
+                    combinationsTried = 0;
+                }
             }
             else {
                 // Fuzz it to get a new input
