@@ -102,13 +102,19 @@ with PdfPages('fig.pdf') as pdf:
             with open(arg) as csvfile:
                 reader = csv.DictReader(csvfile, delimiter=',')
                 for line in reader:
-                    y_number_values.append(float(line[c['col']].replace('%','')))
+                    if c['col'] in line:
+                        y_number_values.append(float(line[c['col']].replace('%','')))
+                    else:
+                        y_number_values.append(0.0)
+
                     if 'x' not in c:
                         if t0 is None:
                             t0 = int(line['# unix_time'])
                         t = int(line['# unix_time']) - t0
-                    else:
+                    elif c['x'] in line:
                         t = float(line[c['x']])
+                    else:
+                        t = 0
                     x_number_values.append(t)
 
             ymax = max(ymax, y_number_values[-1])
