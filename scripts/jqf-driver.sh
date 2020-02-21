@@ -19,6 +19,7 @@ FUZZ_JAR="${FUZZ_DIR}/$project-fuzz-$version.jar"
 INST_JAR="${INST_DIR}/$project-instrument-$version.jar"
 
 JACOCO_AGENT_JAR="${JACOCO_DIR}/jacocoagent.jar"
+#JACOCO_JVM_OPTS="-javaagent:${JACOCO_AGENT_JAR}=classdumpdir=${ROOT_DIR}/instrument/jacoco_dumped_classes"
 
 # Compute classpaths (the /classes are only for development; 
 #   if empty the JARs will have whatever is needed)
@@ -44,7 +45,7 @@ fi
 "$java" -ea \
   -Xbootclasspath/a:"$INST_CLASSPATH" \
   ${JAVAAGENT} \
-  -DhintCombinations=200 \
+  ${JACOCO_JVM_OPTS} \
   -Djanala.conf="${SCRIPT_DIR}/janala.conf" \
   -cp "${FUZZ_CLASSPATH}:${CLASSPATH}" \
   ${JVM_OPTS} \
