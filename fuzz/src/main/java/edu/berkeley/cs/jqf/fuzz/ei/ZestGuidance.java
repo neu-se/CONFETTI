@@ -811,7 +811,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     instructions = central.receiveInstructions();
                     stringEqualsHints = central.receiveStringEqualsHints();
                     previouslyUsedStringEqualsHints = central.receivePreviouslyUsedStringEqualsHints();
-                    generateAllCombinationsOfStringEqualsHints();
+                    //generateAllCombinationsOfStringEqualsHints();
 
 
                 } catch (IOException e) {
