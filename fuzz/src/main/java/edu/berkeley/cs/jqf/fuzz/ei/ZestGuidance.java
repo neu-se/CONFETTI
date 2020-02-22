@@ -97,7 +97,6 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     private int combinationsLimit = Integer.MAX_VALUE;
 
-    private int combinationsTried = 0;
 
     /** The max amount of time to run for, in milli-seconds */
     private final long maxDurationMillis;
@@ -628,14 +627,22 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
        HashMap<Integer,  Integer> indexes = new HashMap<>();
 
+
         for(int i = 0; i < stringEqualsHints.size(); i++) {
             Coordinator.StringHint[] ref = stringEqualsHints.get(i);
             if (ref.length == 0) {
                // indexes.put(i, null);
                 continue;
             }
+            else {
+                stringEqualsHints.set(i, shuffleHints(ref));
+            }
             totalCombinations *= ref.length;
             indexes.put(i, 0);
+        }
+
+        if(totalCombinations > combinationsLimit) {
+            totalCombinations = combinationsLimit;
         }
 
         int carry = 0;
@@ -673,6 +680,20 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         return;
     }
 
+
+    private Coordinator.StringHint[] shuffleHints(Coordinator.StringHint[] array){
+        Random random = new Random();
+
+        // Simple random swap algorithm
+        for (int i=0; i<array.length; i++) {
+            int randomPosition = random.nextInt(array.length);
+            Coordinator.StringHint temp = array[i];
+            array[i] = array[randomPosition];
+            array[randomPosition] = temp;
+        }
+
+        return array;
+    }
     private void completeCycle() {
         // Increment cycle count
         cyclesCompleted++;
@@ -811,7 +832,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     instructions = central.receiveInstructions();
                     stringEqualsHints = central.receiveStringEqualsHints();
                     previouslyUsedStringEqualsHints = central.receivePreviouslyUsedStringEqualsHints();
-                    //generateAllCombinationsOfStringEqualsHints();
+                    generateAllCombinationsOfStringEqualsHints();
 
 
                 } catch (IOException e) {
@@ -820,7 +841,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             }
 
 
-            if(!allStringEqualsHintsCombinations.isEmpty() && combinationsTried < combinationsLimit) {
+            if(!allStringEqualsHintsCombinations.isEmpty()) {
 
                 // remove a random element
                 Random random = new Random();
@@ -837,15 +858,6 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
                 currentInput = new LinearInput((LinearInput)parent);
 
-                // Once we hit the limit, clear the list
-                if(++combinationsTried == combinationsLimit) {
-                    allStringEqualsHintsCombinations.clear();
-                    combinationsTried = 0;
-                }
-                // haven't hit the limit, but exhausted all combinations
-                else if(allStringEqualsHintsCombinations.isEmpty()) {
-                    combinationsTried = 0;
-                }
             }
             else {
                 // Fuzz it to get a new input
