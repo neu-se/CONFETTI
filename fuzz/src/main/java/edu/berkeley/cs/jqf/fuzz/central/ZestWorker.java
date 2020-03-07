@@ -42,6 +42,8 @@ class ZestWorker extends Worker {
 
                 LinkedList<Coordinator.StringHint[]> hints = (LinkedList<Coordinator.StringHint[]>) ois.readObject();
 
+                Double coveragePercentage = ois.readDouble();
+
                 // Receive coverage
 //                Coverage cov = (Coverage) ois.readObject();
 
@@ -60,7 +62,7 @@ class ZestWorker extends Worker {
                     i += b.length;
                 }
 
-                c.foundInput(id, bs, res != Result.INVALID, hints);
+                c.foundInput(id, bs, res != Result.INVALID, hints, coveragePercentage);
 
 
 

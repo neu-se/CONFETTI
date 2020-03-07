@@ -196,7 +196,7 @@ public class ReproGuidance implements Guidance {
                     System.out.println("HINTS WERE USED IN CURRENT INPUT - SHOULD SEND THEM");
                 }
                 // TODO also replay String hints
-                central.sendInput(ris.getRequests(), result, 0, new LinkedList<>() );
+                central.sendInput(ris.getRequests(), result, 0, new LinkedList<>(), 0.0);
                 StringEqualsHintingInputStream.hintUsedInCurrentInput = false;
 
                 // Send updated coverage

@@ -21,18 +21,24 @@ public class Coordinator implements Runnable {
     private Z3Worker z3;
     private ZestWorker zest;
 
+    private Boolean startZ3;
+    private Boolean z3Started = false;
+
+
     private final Config config;
 
     public Coordinator(Config config) {
         this.config = config;
+        this.startZ3 = config.triggerZ3 ? false : true;
     }
 
-    protected final synchronized void foundInput(int id, byte[] bytes, boolean valid, LinkedList<StringHint[]>hints) {
+    protected final synchronized void foundInput(int id, byte[] bytes, boolean valid, LinkedList<StringHint[]>hints, Double coveragePercentage) {
         Input in = new Input();
         in.bytes = bytes;
         in.id = id;
         in.isNew = (config.useInvalid ? true : valid);
         in.hints = hints;
+        in.coveragePercentage = coveragePercentage;
 
         this.inputs.addLast(in);
         //this.inputs.addFirst(in);
@@ -58,14 +64,19 @@ public class Coordinator implements Runnable {
             synchronized (this) {
                 boolean newInputs = false;
 
-                if (this.knarr != null)
+                if (this.knarr != null) {
+                    if (!z3Started && startZ3) {
+                        startZ3Thread();
+                    }
                     for (Input i : inputs) {
                         if (i.isNew) {
+                            if (!z3Started && i.coveragePercentage >= config.triggerZ3SampleThreshold)
+                                startZ3 = true;
                             newInputs = true;
                             break;
                         }
                     }
-
+                }
                 if (!newInputs) {
                     try {
                         this.wait();
@@ -265,14 +276,21 @@ public class Coordinator implements Runnable {
         this.zest = zest;
         this.z3 = new Z3Worker(zest, knarr, config.filter);
 
-        if(config.usez3Hints)
-            new Thread() {
-                @Override
-                public void run() {
-                    z3Thread();
-                }
-            }.start();
+        if(config.usez3Hints && startZ3)
+            startZ3Thread();
+
+    }
+
+    public final synchronized void startZ3Thread() {
+        this.z3Started = true;
+        new Thread() {
+            @Override
+            public void run() {
+                z3Thread();
+            }
+        }.start();
         this.notifyAll();
+
     }
 
     private void z3Thread() {
@@ -369,6 +387,7 @@ public class Coordinator implements Runnable {
         int id;
         public byte[] bytes;
         boolean isNew;
+        public double coveragePercentage;
         public LinkedList<StringHint[]> hints;
 
         @Override
@@ -459,6 +478,12 @@ public class Coordinator implements Runnable {
 
         public final String constraintsPath;
 
+        public final boolean triggerZ3;
+
+        public final int triggerZ3SampleWindow;
+
+        public final double triggerZ3SampleThreshold;
+
         public Config(Properties p) {
             {
                 String f = p.getProperty("path.filter");
@@ -479,6 +504,18 @@ public class Coordinator implements Runnable {
                 constraintsPath = p.getProperty("constraintsPath");
                 useConstraints = (p.getProperty("useConstraints") != null);
                 usez3Hints = (p.getProperty("usez3Hints") != null);
+
+                triggerZ3 = (p.getProperty("triggerZ3") != null);
+
+                String sampleWindow;
+                if((sampleWindow = p.getProperty("triggerZ3SampleWindow")) != null) {
+                    triggerZ3SampleWindow = Integer.parseInt(sampleWindow);
+                } else triggerZ3SampleWindow = -1;
+
+                String sampleThreshold;
+                if((sampleThreshold = p.getProperty("triggerZ3SampleThreshold")) != null) {
+                    triggerZ3SampleThreshold = Double.parseDouble(sampleThreshold);
+                } else triggerZ3SampleThreshold = Double.MAX_VALUE;
 
             }
         }

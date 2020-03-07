@@ -1074,7 +1074,11 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                         if (hintsUsed) {
                             System.out.println("HINTS WERE USED IN CURRENT INPUT - SHOULD SEND THEM");
                         }
-                        central.sendInput(ris.getRequests(), result, currentInput.id, hintsUsed ? StringEqualsHintingInputStream.getHints() : new LinkedList<>() );
+
+                        Double coveragePercentage = totalCoverage.getNonZeroCount() * 100.0 / totalCoverage.size();
+                        central.sendInput(ris.getRequests(), result, currentInput.id,
+                                hintsUsed ? StringEqualsHintingInputStream.getHints() : new LinkedList<>(),
+                                coveragePercentage );
                         StringEqualsHintingInputStream.hintUsedInCurrentInput = false;
 
                         // Send updated coverage
