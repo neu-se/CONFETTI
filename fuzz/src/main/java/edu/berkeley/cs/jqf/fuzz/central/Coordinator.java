@@ -25,6 +25,10 @@ public class Coordinator implements Runnable {
     private Boolean z3Started = false;
 
 
+    private Input windowStartInput = null;
+    private Double maxCoveragePercentageInWindow = 0.0;
+
+
     private final Config config;
 
     public Coordinator(Config config) {
@@ -32,15 +36,54 @@ public class Coordinator implements Runnable {
         this.startZ3 = config.triggerZ3 ? false : true;
     }
 
-    protected final synchronized void foundInput(int id, byte[] bytes, boolean valid, LinkedList<StringHint[]>hints, Double coveragePercentage) {
+    protected final synchronized void foundInput(int id, byte[] bytes, boolean valid, LinkedList<StringHint[]>hints, Double coveragePercentage, long numExecutions) {
         Input in = new Input();
         in.bytes = bytes;
         in.id = id;
         in.isNew = (config.useInvalid ? true : valid);
         in.hints = hints;
         in.coveragePercentage = coveragePercentage;
+        in.numExecutions = numExecutions;
+
 
         this.inputs.addLast(in);
+
+        // sliding window - determine if we start z3 or not
+
+        if (!z3Started && this.windowStartInput == null) {
+            this.windowStartInput = in;
+            this.maxCoveragePercentageInWindow = in.coveragePercentage;
+        }
+        else if(this.windowStartInput != null && (in.numExecutions - this.windowStartInput.numExecutions) < this.config.triggerZ3SampleWindow) {
+            if(in.coveragePercentage > this.maxCoveragePercentageInWindow) {
+                if((in.coveragePercentage - this.maxCoveragePercentageInWindow) > this.config.triggerZ3SampleThreshold)
+                    this.windowStartInput = in;
+                this.maxCoveragePercentageInWindow = in.coveragePercentage;
+            }
+        } else if(this.windowStartInput != null && (in.numExecutions - this.windowStartInput.numExecutions) >= this.config.triggerZ3SampleWindow) {
+            if((maxCoveragePercentageInWindow - windowStartInput.coveragePercentage) < this.config.triggerZ3SampleThreshold) {
+                System.out.println("STARTING Z3 THREAD NOW!!!!!");
+                startZ3Thread();
+                windowStartInput = null;
+                maxCoveragePercentageInWindow = 0.0;
+            } else {
+                this.windowStartInput = in;
+                this.maxCoveragePercentageInWindow = in.coveragePercentage;
+            }
+        }
+//        } else if (this.windowStartInput != null && ((in.id - this.windowStartInput.id) < this.config.triggerZ3SampleWindow)) {
+//            this.maxCoveragePercentageInWindow = Double.max(this.maxCoveragePercentageInWindow, in.coveragePercentage);
+//        } else if (this.windowStartInput != null && ((in.id - this.windowStartInput.id) == this.config.triggerZ3SampleWindow) ) {
+//            if((maxCoveragePercentageInWindow - windowStartInput.coveragePercentage) > this.config.triggerZ3SampleThreshold) {
+//                startZ3Thread();
+//                windowStartInput = null;
+//                maxCoveragePercentageInWindow = 0.0;
+//            } else {
+//                this.windowStartInput = in;
+//                this.maxCoveragePercentageInWindow = in.coveragePercentage;
+//            }
+//        }
+
         //this.inputs.addFirst(in);
         this.notifyAll();
 
@@ -70,8 +113,8 @@ public class Coordinator implements Runnable {
                     }
                     for (Input i : inputs) {
                         if (i.isNew) {
-                            if (!z3Started && i.coveragePercentage >= config.triggerZ3SampleThreshold)
-                                startZ3 = true;
+//                            if (!z3Started && i.coveragePercentage >= config.triggerZ3SampleThreshold)
+//                                startZ3 = true;
                             newInputs = true;
                             break;
                         }
@@ -388,6 +431,7 @@ public class Coordinator implements Runnable {
         public byte[] bytes;
         boolean isNew;
         public double coveragePercentage;
+        public long numExecutions;
         public LinkedList<StringHint[]> hints;
 
         @Override

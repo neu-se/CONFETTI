@@ -21,12 +21,13 @@ public class ZestClient extends Central {
      * 3. Select input
      * 3. Receive instructions
      */
-    public void sendInput(LinkedList<byte[]> inputRequests, Result result, int id, LinkedList<Coordinator.StringHint[]> hints, Double coveragePercentage) throws IOException {
+    public void sendInput(LinkedList<byte[]> inputRequests, Result result, int id, LinkedList<Coordinator.StringHint[]> hints, Double coveragePercentage, Long totalExecutions) throws IOException {
         oos.writeObject(inputRequests);
         oos.writeObject(result);
         oos.writeInt(id);
         oos.writeObject(hints);
         oos.writeDouble(coveragePercentage);
+        oos.writeLong(totalExecutions);
         oos.reset();
         oos.flush();
     }
