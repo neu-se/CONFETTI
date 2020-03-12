@@ -32,120 +32,130 @@ class ZestWorker extends Worker {
 
         while (true) {
             // Receive input or select new input
-            Object o = ois.readObject();
-
-            if (o instanceof LinkedList) {
-                // Receive input
-                LinkedList<byte[]> inputRequests = (LinkedList<byte[]>) o;
-                Result res = (Result) ois.readObject();
-                int id = ois.readInt();
-
-                LinkedList<Coordinator.StringHint[]> hints = (LinkedList<Coordinator.StringHint[]>) ois.readObject();
-
-                Double coveragePercentage = ois.readDouble();
-                Long numExecutions = ois.readLong();
-
-                // Receive coverage
-//                Coverage cov = (Coverage) ois.readObject();
-
-                // Save input
-                inputs.add(id, inputRequests);
-                fuzzing.add(id, 0);
-
-                // Let coordinator thread know
-                int size = 0;
-                for (byte[] b : inputRequests)
-                    size += b.length;
-                byte[] bs = new byte[size];
-                int i = 0;
-                for (byte[] b : inputRequests) {
-                    System.arraycopy(b, 0, bs, i, b.length);
-                    i += b.length;
-                }
-
-                c.foundInput(id, bs, res != Result.INVALID, hints, coveragePercentage, numExecutions);
 
 
+            ZestMessageType messageType = (ZestMessageType) ois.readObject();
+            if (messageType == null) continue;
 
-                synchronized (recommendations) {
-                    recommendations.add(new TreeSet<>());
-                    stringEqualsHints.add(null);
-                }
+            switch(messageType) {
 
-            } else if (o instanceof Integer) {
-                // Select input
-                int selected = (Integer)o;
+                case HEARTBEAT:
+                    break;
 
-                // Select part of the input to fuzz
-                int i = 0;
-                int offset = 0;
-                int size = 0;
-                int toFuzz = fuzzing.get(selected);
-                LinkedList<int[]> instructionsToSend = new LinkedList<>();
-                LinkedList<Coordinator.StringHint[]> stringsToSend = new LinkedList<>();
-                TreeSet<Integer> recs;
-                synchronized (recommendations) {
-                    recs = recommendations.get(selected);
-                }
+                case SENDINPUT:
+                    // Receive input
+                    LinkedList<byte[]> inputRequests = (LinkedList<byte[]>) ois.readObject();
+                    Result res = (Result) ois.readObject();
+                    int id = ois.readInt();
 
-                HashMap<Integer, HashSet<Coordinator.StringHint>> inputStrings = stringEqualsHints.get(selected);
+                    LinkedList<Coordinator.StringHint[]> hints = (LinkedList<Coordinator.StringHint[]>) ois.readObject();
 
-                for (byte[] b : inputs.get(selected)) {
-                    if (!recs.isEmpty()) {
-                        boolean addThis = false;
+                    Double coveragePercentage = ois.readDouble();
+                    Long numExecutions = ois.readLong();
 
-                        for (int j = offset ; j < offset+b.length ; j++) {
-                            addThis =recs.contains(j);
+                    // Receive coverage
+                    //                Coverage cov = (Coverage) ois.readObject();
 
-                            if (addThis)
-                                break;
-                        }
+                    // Save input
+                    inputs.add(id, inputRequests);
+                    fuzzing.add(id, 0);
 
-                        if (!addThis) {
-                            offset += b.length;
-                            continue;
-                        }
-
-                        instructionsToSend.addLast(new int[]{offset, b.length});
-                        if (inputStrings != null && inputStrings.containsKey(offset))
-                            stringsToSend.addLast(inputStrings.get(offset).toArray(new Coordinator.StringHint[0]));
-                        else
-                            stringsToSend.addLast(EMPTY);
+                    // Let coordinator thread know
+                    int size_sendinput = 0;
+                    for (byte[] b : inputRequests)
+                        size_sendinput += b.length;
+                    byte[] bs = new byte[size_sendinput];
+                    int i = 0;
+                    for (byte[] b : inputRequests) {
+                        System.arraycopy(b, 0, bs, i, b.length);
+                        i += b.length;
                     }
 
-                    offset += b.length;
-                }
-
-                // Get the Coordinator.Input object corrseponding to the selected so we can get any
-                // previously used hints
-                Coordinator.Input in  = c.getInput(selected);
-
-                // Send instructions
-                oos.writeObject(instructionsToSend);
-                oos.writeObject(stringsToSend);     // Strings that are new hints
-                oos.writeObject(in.hints);          // Strings that are previously used hints that must be replicated
-                oos.reset();
-                oos.flush();
-
-                printSentStringHints(stringsToSend);
-
-                // Update state
-                fuzzing.set(selected, (toFuzz + 1) % inputs.get(selected).size());
-            } else if (o instanceof Boolean) {
-                // Zest is asking if there's an input we'd like to explore now
-                Coordinator.Input next;
-                synchronized (fromZ3) {
-                    next = (fromZ3.isEmpty() ? null : fromZ3.removeFirst());
-                }
-
-                if(next != null) {
-                    System.out.println("WIN");
-                    printSentStringHints(next.hints);
-                }
+                    c.foundInput(id, bs, res != Result.INVALID, hints, coveragePercentage, numExecutions);
 
 
-                oos.writeObject(next);
-                oos.reset();
+                    synchronized (recommendations) {
+                        recommendations.add(new TreeSet<>());
+                        stringEqualsHints.add(null);
+                    }
+                    break;
+
+                case SELECTINPUT:
+                    // Select input
+                    int selected = (Integer) ois.readObject();
+
+                    // Select part of the input to fuzz
+                    int offset = 0;
+                    int toFuzz = fuzzing.get(selected);
+                    LinkedList<int[]> instructionsToSend = new LinkedList<>();
+                    LinkedList<Coordinator.StringHint[]> stringsToSend = new LinkedList<>();
+                    TreeSet<Integer> recs;
+                    synchronized (recommendations) {
+                        recs = recommendations.get(selected);
+                    }
+
+                    HashMap<Integer, HashSet<Coordinator.StringHint>> inputStrings = stringEqualsHints.get(selected);
+
+                    for (byte[] b : inputs.get(selected)) {
+                        if (!recs.isEmpty()) {
+                            boolean addThis = false;
+
+                            for (int j = offset; j < offset + b.length; j++) {
+                                addThis = recs.contains(j);
+
+                                if (addThis)
+                                    break;
+                            }
+
+                            if (!addThis) {
+                                offset += b.length;
+                                continue;
+                            }
+
+                            instructionsToSend.addLast(new int[]{offset, b.length});
+                            if (inputStrings != null && inputStrings.containsKey(offset))
+                                stringsToSend.addLast(inputStrings.get(offset).toArray(new Coordinator.StringHint[0]));
+                            else
+                                stringsToSend.addLast(EMPTY);
+                        }
+
+                        offset += b.length;
+                    }
+
+                    // Get the Coordinator.Input object corrseponding to the selected so we can get any
+                    // previously used hints
+                    Coordinator.Input in = c.getInput(selected);
+
+                    // Send instructions
+                    oos.writeObject(instructionsToSend);
+                    oos.writeObject(stringsToSend);     // Strings that are new hints
+                    oos.writeObject(in.hints);          // Strings that are previously used hints that must be replicated
+                    oos.reset();
+                    oos.flush();
+
+                    printSentStringHints(stringsToSend);
+
+                    // Update state
+                    fuzzing.set(selected, (toFuzz + 1) % inputs.get(selected).size());
+                    break;
+
+                case GETZ3INPUT:
+                    // Zest is asking if there's an input we'd like to explore now
+                    Coordinator.Input next;
+                    synchronized (fromZ3) {
+                        next = (fromZ3.isEmpty() ? null : fromZ3.removeFirst());
+                    }
+                    if (next != null) {
+                        System.out.println("WIN");
+                        printSentStringHints(next.hints);
+                    }
+
+                    oos.writeObject(next);
+                    oos.reset();
+                    break;
+
+                default:
+                    break;
             }
         }
     }

@@ -22,6 +22,7 @@ public class ZestClient extends Central {
      * 3. Receive instructions
      */
     public void sendInput(LinkedList<byte[]> inputRequests, Result result, int id, LinkedList<Coordinator.StringHint[]> hints, Double coveragePercentage, Long totalExecutions) throws IOException {
+        oos.writeObject(ZestMessageType.SENDINPUT);
         oos.writeObject(inputRequests);
         oos.writeObject(result);
         oos.writeInt(id);
@@ -33,6 +34,7 @@ public class ZestClient extends Central {
     }
 
     public void selectInput(int id) throws IOException {
+        oos.writeObject(ZestMessageType.SELECTINPUT);
         oos.writeObject(new Integer(id));
     }
 
@@ -66,7 +68,7 @@ public class ZestClient extends Central {
 
     public Coordinator.Input getInput() {
         try {
-            oos.writeObject(Boolean.TRUE);
+            oos.writeObject(ZestMessageType.GETZ3INPUT);
             return (Coordinator.Input) ois.readObject();
         } catch (ClassNotFoundException e) {
             throw new Error(e);
