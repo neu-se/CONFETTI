@@ -71,7 +71,7 @@ public class ZestGuidanceTest {
 
     @Before
     public void createGuidanceInstance() throws IOException {
-       g = new ZestGuidance("test", null, Files.createTempDirectory("fuzz-out").toFile());
+       g = new ZestGuidance("test", null, 1000, Files.createTempDirectory("fuzz-out").toFile());
     }
 
     @Test

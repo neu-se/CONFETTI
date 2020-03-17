@@ -65,9 +65,13 @@ public class ZestDriver {
             Duration d = null;
             if (System.getProperty("time") != null)
                 d = Duration.ofSeconds(Long.parseLong(System.getProperty("time")));
+
+            Integer heartbeatDuration = 1000;
+            if(System.getProperty("heartbeatDuration") != null)
+                heartbeatDuration = Integer.parseInt(System.getProperty("heartbeatDuration"));
             ZestGuidance guidance = seedFiles != null ?
-                    new ZestGuidance(title, d, outputDirectory, seedFiles) :
-                    new ZestGuidance(title, d, outputDirectory);
+                    new ZestGuidance(title, d, heartbeatDuration, outputDirectory, seedFiles) :
+                    new ZestGuidance(title, d, heartbeatDuration, outputDirectory);
 
             // Ensure that generators are being traced
             if (!ZestGuidance.DISABLE_EXECUTION_INDEXING) {

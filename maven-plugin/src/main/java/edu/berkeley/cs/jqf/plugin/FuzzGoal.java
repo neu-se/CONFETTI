@@ -184,7 +184,7 @@ public class FuzzGoal extends AbstractMojo {
         try {
             File resultsDir = new File(target, outputDirectory);
             String targetName = testClassName + "#" + testMethod;
-            guidance = new ZestGuidance(targetName, duration, resultsDir);
+            guidance = new ZestGuidance(targetName, duration, 1000, resultsDir);
         } catch (IOException e) {
             throw new MojoExecutionException("Could not create output directory", e);
         }

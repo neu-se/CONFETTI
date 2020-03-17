@@ -40,7 +40,12 @@ class ZestWorker extends Worker {
             switch(messageType) {
 
                 case HEARTBEAT:
+                    // Receive total executions
+                    Long heartbeatNumExecutions = ois.readLong();
+                    Double heartbeatCoveragePercentage = ois.readDouble();
+                    c.handleHeartbeat(heartbeatNumExecutions, heartbeatCoveragePercentage);
                     break;
+
 
                 case SENDINPUT:
                     // Receive input

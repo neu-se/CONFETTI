@@ -25,7 +25,8 @@ public class Coordinator implements Runnable {
     private Boolean z3Started = false;
 
 
-    private Input windowStartInput = null;
+    private Long windowStartExecs = 0L;
+    private Double windowStartCoverage = 0.0;
     private Double maxCoveragePercentageInWindow = 0.0;
 
 
@@ -34,6 +35,35 @@ public class Coordinator implements Runnable {
     public Coordinator(Config config) {
         this.config = config;
         this.startZ3 = config.triggerZ3 ? false : true;
+    }
+
+    protected final synchronized void handleHeartbeat(Long numExecs, Double coveragePercentage) {
+        if (!z3Started && this.windowStartExecs == 0) {
+            this.windowStartExecs = numExecs;
+            this.windowStartCoverage = coveragePercentage;
+            this.maxCoveragePercentageInWindow = coveragePercentage;
+        }
+        else if(this.windowStartExecs > 0 && (numExecs - this.windowStartExecs) < this.config.triggerZ3SampleWindow) {
+            if(coveragePercentage > this.maxCoveragePercentageInWindow) {
+                if((coveragePercentage - this.maxCoveragePercentageInWindow) > this.config.triggerZ3SampleThreshold){
+                    this.windowStartExecs = numExecs;
+                    this.windowStartCoverage = coveragePercentage;
+                }
+                this.maxCoveragePercentageInWindow = coveragePercentage;
+            }
+        } else if(this.windowStartExecs != 0 && (numExecs - this.windowStartExecs) >= this.config.triggerZ3SampleWindow) {
+            if((maxCoveragePercentageInWindow - this.windowStartCoverage) < this.config.triggerZ3SampleThreshold) {
+                System.out.println("STARTING Z3 THREAD NOW!!!!!");
+                startZ3Thread();
+                windowStartExecs = 0L;
+                maxCoveragePercentageInWindow = 0.0;
+            } else {
+                this.windowStartExecs = numExecs;
+                this.windowStartCoverage = coveragePercentage;
+                this.maxCoveragePercentageInWindow = coveragePercentage;
+            }
+        }
+
     }
 
     protected final synchronized void foundInput(int id, byte[] bytes, boolean valid, LinkedList<StringHint[]>hints, Double coveragePercentage, long numExecutions) {
@@ -47,44 +77,6 @@ public class Coordinator implements Runnable {
 
 
         this.inputs.addLast(in);
-
-        // sliding window - determine if we start z3 or not
-
-        if (!z3Started && this.windowStartInput == null) {
-            this.windowStartInput = in;
-            this.maxCoveragePercentageInWindow = in.coveragePercentage;
-        }
-        else if(this.windowStartInput != null && (in.numExecutions - this.windowStartInput.numExecutions) < this.config.triggerZ3SampleWindow) {
-            if(in.coveragePercentage > this.maxCoveragePercentageInWindow) {
-                if((in.coveragePercentage - this.maxCoveragePercentageInWindow) > this.config.triggerZ3SampleThreshold)
-                    this.windowStartInput = in;
-                this.maxCoveragePercentageInWindow = in.coveragePercentage;
-            }
-        } else if(this.windowStartInput != null && (in.numExecutions - this.windowStartInput.numExecutions) >= this.config.triggerZ3SampleWindow) {
-            if((maxCoveragePercentageInWindow - windowStartInput.coveragePercentage) < this.config.triggerZ3SampleThreshold) {
-                System.out.println("STARTING Z3 THREAD NOW!!!!!");
-                startZ3Thread();
-                windowStartInput = null;
-                maxCoveragePercentageInWindow = 0.0;
-            } else {
-                this.windowStartInput = in;
-                this.maxCoveragePercentageInWindow = in.coveragePercentage;
-            }
-        }
-//        } else if (this.windowStartInput != null && ((in.id - this.windowStartInput.id) < this.config.triggerZ3SampleWindow)) {
-//            this.maxCoveragePercentageInWindow = Double.max(this.maxCoveragePercentageInWindow, in.coveragePercentage);
-//        } else if (this.windowStartInput != null && ((in.id - this.windowStartInput.id) == this.config.triggerZ3SampleWindow) ) {
-//            if((maxCoveragePercentageInWindow - windowStartInput.coveragePercentage) > this.config.triggerZ3SampleThreshold) {
-//                startZ3Thread();
-//                windowStartInput = null;
-//                maxCoveragePercentageInWindow = 0.0;
-//            } else {
-//                this.windowStartInput = in;
-//                this.maxCoveragePercentageInWindow = in.coveragePercentage;
-//            }
-//        }
-
-        //this.inputs.addFirst(in);
         this.notifyAll();
 
         System.out.println("Input added " + id);

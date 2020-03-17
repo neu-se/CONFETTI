@@ -15,6 +15,14 @@ public class ZestClient extends Central {
         oos.flush();
     }
 
+    public void sendHeartBeat(Long numExecutions, Double currentCoverage) throws IOException {
+        oos.writeObject(ZestMessageType.HEARTBEAT);
+        oos.writeLong(numExecutions);
+        oos.writeDouble(currentCoverage);
+        oos.reset();
+        oos.flush();
+    }
+
     /* Client:
      * 1. Send input
      * 2. Send coverage

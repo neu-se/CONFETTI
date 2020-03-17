@@ -275,6 +275,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     /** The maximum number of keys covered by any single input found so far. */
     private int maxCoverage = 0;
 
+
+    private int heartbeatInterval = 1000;
+
     /** A mapping of coverage keys to inputs that are responsible for them. */
     private Map<Object, Input> responsibleInputs = new HashMap<>(totalCoverage.size());
 
@@ -408,10 +411,11 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
      * @param outputDirectory the directory where fuzzing results will be written
      * @throws IOException if the output directory could not be prepared
      */
-    public ZestGuidance(String testName, Duration duration, File outputDirectory) throws IOException {
+    public ZestGuidance(String testName, Duration duration,Integer heartbeatDuration, File outputDirectory) throws IOException {
         this.testName = testName;
         this.maxDurationMillis = duration != null ? duration.toMillis() : Long.MAX_VALUE;
         this.outputDirectory = outputDirectory;
+        this.heartbeatInterval = heartbeatDuration;
         prepareOutputDirectory();
 
         // Try to parse the single-run timeout
@@ -445,8 +449,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
      * @param seedInputFiles one or more input files to be used as initial inputs
      * @throws IOException if the output directory could not be prepared
      */
-    public ZestGuidance(String testName, Duration duration, File outputDirectory, File... seedInputFiles) throws IOException {
-        this(testName, duration, outputDirectory);
+    public ZestGuidance(String testName, Duration duration, Integer heartbeatDuration, File outputDirectory, File... seedInputFiles) throws IOException {
+        this(testName, duration, heartbeatDuration, outputDirectory);
         for (File seedInputFile : seedInputFiles) {
             seedInputs.add(new SeedInput(seedInputFile));
         }
@@ -961,6 +965,15 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
         boolean valid = result == Result.SUCCESS;
 
+        // send a
+        if(central != null && ((numTrials % heartbeatInterval ) == 0)) {
+            Double coveragePercentage = totalCoverage.getNonZeroCount() * 100.0 / totalCoverage.size();
+            try {
+                central.sendHeartBeat(numTrials, coveragePercentage);
+            } catch(IOException e ) {
+                throw new Error(e);
+            }
+        }
 
         // jacoco coverage
         try {
