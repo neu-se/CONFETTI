@@ -22,7 +22,9 @@ public class Coordinator implements Runnable {
     private ZestWorker zest;
 
     private Boolean startZ3;
-    private Boolean z3Started = false;
+    protected Boolean z3Started = false;
+
+    protected Long z3StartedInputCount = -1L;
 
 
     private Long windowStartExecs = 0L;
@@ -55,6 +57,7 @@ public class Coordinator implements Runnable {
             if((maxCoveragePercentageInWindow - this.windowStartCoverage) < this.config.triggerZ3SampleThreshold) {
                 System.out.println("STARTING Z3 THREAD NOW!!!!!");
                 startZ3Thread();
+                z3StartedInputCount = numExecs;
                 windowStartExecs = 0L;
                 maxCoveragePercentageInWindow = 0.0;
             } else {

@@ -23,6 +23,17 @@ public class ZestClient extends Central {
         oos.flush();
     }
 
+    public Long receiveZ3Started() throws IOException {
+        try {
+            return (Long)ois.readObject();
+
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
     /* Client:
      * 1. Send input
      * 2. Send coverage
@@ -53,6 +64,7 @@ public class ZestClient extends Central {
             throw new Error(e);
         }
     }
+
 
     public LinkedList<Coordinator.StringHint[]> receiveStringEqualsHints() throws IOException {
         try {

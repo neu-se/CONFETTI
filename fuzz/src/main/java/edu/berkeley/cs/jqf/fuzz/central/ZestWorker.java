@@ -40,10 +40,14 @@ class ZestWorker extends Worker {
             switch(messageType) {
 
                 case HEARTBEAT:
-                    // Receive total executions
+                    // Receive total executions and send whether z3 thread has started
                     Long heartbeatNumExecutions = ois.readLong();
                     Double heartbeatCoveragePercentage = ois.readDouble();
                     c.handleHeartbeat(heartbeatNumExecutions, heartbeatCoveragePercentage);
+                    if(c.z3Started)
+                        oos.writeObject(c.z3StartedInputCount);
+                    else
+                        oos.writeObject(null);
                     break;
 
 

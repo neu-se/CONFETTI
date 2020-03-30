@@ -247,6 +247,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private boolean currentParentExhaustedHints = false;
 
 
+    private Long z3ThreadStartedInputNum = -1L;
+
     /** Number of mutated inputs generated from currentInput. */
     private int numChildrenGeneratedForCurrentParentInput = 0;
 
@@ -496,7 +498,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         }
 
         appendLineToFile(statsFile,"# unix_time, cycles_done, cur_path, paths_total, pending_total, " +
-                "pending_favs, map_size, unique_crashes, unique_hangs, max_depth, execs_per_sec, total_inputs, mutated_bytes, valid_inputs, invalid_inputs, valid_cov");
+                "pending_favs, map_size, unique_crashes, unique_hangs, max_depth, execs_per_sec, total_inputs, mutated_bytes, valid_inputs, invalid_inputs, valid_cov, z3");
 
 
     }
@@ -600,10 +602,11 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         console.printf("Total coverage:       %,d (%.2f%% of map)\n", nonZeroCount, nonZeroFraction);
         console.printf("Valid coverage:       %,d (%.2f%% of map)\n", nonZeroValidCount, nonZeroValidFraction);
 
-        String plotData = String.format("%d, %d, %d, %d, %d, %d, %.2f%%, %d, %d, %d, %.2f, %d, %d, %d, %d, %.2f%%",
+        String plotData = String.format("%d, %d, %d, %d, %d, %d, %.2f%%, %d, %d, %d, %.2f, %d, %d, %d, %d, %.2f%%, %d",
                 TimeUnit.MILLISECONDS.toSeconds(now.getTime()), cyclesCompleted, currentParentInputIdx,
                 savedInputs.size(), 0, 0, nonZeroFraction, uniqueFailures.size(), 0, 0, intervalExecsPerSecDouble,
-                numTrials, mutatedBytes/numTrials, numValid, numTrials-numValid, nonZeroValidFraction);
+                numTrials, mutatedBytes/numTrials, numValid, numTrials-numValid, nonZeroValidFraction,
+                (z3ThreadStartedInputNum != -1) && (numTrials >= z3ThreadStartedInputNum) ? 1: 0);
         appendLineToFile(statsFile, plotData);
 
     }
@@ -970,6 +973,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             Double coveragePercentage = totalCoverage.getNonZeroCount() * 100.0 / totalCoverage.size();
             try {
                 central.sendHeartBeat(numTrials, coveragePercentage);
+                Long z3StartedInput = central.receiveZ3Started();
+                if(z3StartedInput != null){
+                    this.z3ThreadStartedInputNum = z3StartedInput;
+                }
             } catch(IOException e ) {
                 throw new Error(e);
             }
