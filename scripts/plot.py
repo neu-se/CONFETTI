@@ -108,10 +108,11 @@ with PdfPages('fig.pdf') as pdf:
                 for line in reader:
                     if c['col'] in line:
                         y_number_values.append(float(line[c['col']].replace('%','')))
-
-                        if(line[' z3'] == ' 1' and len( y_z3_start) == 0 ):
-
-                            y_z3_start.append(float(line[c['col']].replace('%','')))
+                        try:
+                            if(line[' z3'] == ' 1' and len( y_z3_start) == 0 ):
+                                y_z3_start.append(float(line[c['col']].replace('%','')))
+                        except:
+                            pass
                     else:
                         y_number_values.append(0.0)
 
@@ -125,15 +126,19 @@ with PdfPages('fig.pdf') as pdf:
                     else:
                         t = 0
                     x_number_values.append(t)
-                    if(line[' z3'] == ' 1' and len( x_z3_start) == 0 ):
-                        x_z3_start.append(t)
+                    try:
+                        if(line[' z3'] == ' 1' and len( x_z3_start) == 0 ):
+                            x_z3_start.append(t)
+                    except:
+                        pass
 
             ymax = max(ymax, y_number_values[-1])
             # Plot the number in the list and set the line thickness.
             plt.plot(x_number_values, y_number_values, label=split(arg)[-1])
 
-            # Mark where z3 started
-            plt.plot(x_z3_start, y_z3_start, marker='o', markersize=3, color="red")
+            if(len(x_z3_start) > 0 and len(y_z3_start) > 0):
+                # Mark where z3 started
+                plt.plot(x_z3_start, y_z3_start, marker='o', markersize=3, color="red")
 
         # Set the line chart title and the text font size.
         plt.title(c['title'], fontsize=19)
