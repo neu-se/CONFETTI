@@ -162,7 +162,7 @@ public class Z3Worker {
             throw new IllegalStateException();
 
         // Negate the target constraint
-        Expression negatedTargetConstraint = new Operation(Operation.Operator.NOT, targetConstraint);
+        Expression negatedTargetConstraint = new UnaryOperation(Operation.Operator.NOT, targetConstraint);
 
         // Try to solve it
         res.put("c" + res.size(), negatedTargetConstraint);
@@ -311,10 +311,10 @@ public class Z3Worker {
                             Expression[] args = new Expression[2];
                             args[0] = new IntConstant(j);
                             args[1] = entry.getValue().getArguments()[1];
-                            funcHint = new Operation(
+                            funcHint = new BinaryOperation(
                                     Operation.Operator.AND,
                                     funcHint,
-                                    new Operation(
+                                    new BinaryOperation(
                                             Operation.Operator.EQ,
                                             new FunctionCall(
                                                     entry.getValue().getName(),
@@ -324,7 +324,7 @@ public class Z3Worker {
                                     )
                             );
                         }
-                        hintsConstraint = new Operation(Operation.Operator.OR, hintsConstraint, funcHint);
+                        hintsConstraint = new BinaryOperation(Operation.Operator.OR, hintsConstraint, funcHint);
                     }
                 }
             }
@@ -343,7 +343,8 @@ public class Z3Worker {
             if ((to = System.getProperty("Z3_TIMEOUT")) != null)
                 Z3JavaTranslator.timeoutMS = Integer.parseInt(to);
             else
-                Z3JavaTranslator.timeoutMS = 3600 * 1000; // 1h
+//                Z3JavaTranslator.timeoutMS = 3600 * 1000; // 1h
+                Z3JavaTranslator.timeoutMS = 10 * 1000; // 10s
         }
 
         try {
@@ -487,7 +488,7 @@ public class Z3Worker {
         // 1st figure out what length are we looking for
         BVVariable bv = new BVVariable("expectedLength", 32);
 
-        res.put("expectedLength", new Operation(Operation.Operator.EQUALS, new Operation(Operation.Operator.I2BV, 32, comparison.getOperand(0)), bv));
+        res.put("expectedLength", new BinaryOperation(Operation.Operator.EQUALS, new UnaryOperation(Operation.Operator.I2BV, 32, comparison.getOperand(0)), bv));
 
         ArrayList<AbstractMap.SimpleEntry<String, Object>> sat = new ArrayList<>();
         HashSet<String> unsat = new HashSet<>();
@@ -609,15 +610,16 @@ public class Z3Worker {
         AtomicReference<String> hack = new AtomicReference<>();
 
         Expression newCS = cs.copy(new Copier() {
+
             @Override
-            public Expression copy(Operation operation) {
+            public Expression copy(BinaryOperation operation) {
                 if (operation.getOperator() != Operation.Operator.EQUALS)
                     return super.copy(operation);
 
                 if (operation.getOperand(1) instanceof StringConstant)
                     hack.set(((StringConstant)operation.getOperand(1)).getValue());
 
-                return postCopy(operation, new Operation(Operation.Operator.STARTSWITH, operation.getOperand(1), operation.getOperand(0)));
+                return postCopy(operation, new BinaryOperation(Operation.Operator.STARTSWITH, operation.getOperand(1), operation.getOperand(0)));
             }
         });
 
