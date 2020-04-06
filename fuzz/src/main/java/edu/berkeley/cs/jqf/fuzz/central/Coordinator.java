@@ -47,14 +47,14 @@ public class Coordinator implements Runnable {
         }
         else if(this.windowStartExecs > 0 && (numExecs - this.windowStartExecs) < this.config.triggerZ3SampleWindow) {
             if(coveragePercentage > this.maxCoveragePercentageInWindow) {
-                if((coveragePercentage - this.maxCoveragePercentageInWindow) > this.config.triggerZ3SampleThreshold){
+                if( ((coveragePercentage - this.maxCoveragePercentageInWindow) / this.windowStartCoverage) * 100.0  > this.config.triggerZ3SampleThreshold){
                     this.windowStartExecs = numExecs;
                     this.windowStartCoverage = coveragePercentage;
                 }
                 this.maxCoveragePercentageInWindow = coveragePercentage;
             }
         } else if(this.windowStartExecs != 0 && (numExecs - this.windowStartExecs) >= this.config.triggerZ3SampleWindow) {
-            if((maxCoveragePercentageInWindow - this.windowStartCoverage) < this.config.triggerZ3SampleThreshold) {
+            if( ((maxCoveragePercentageInWindow - this.windowStartCoverage) / this.windowStartCoverage) * 100.0  < this.config.triggerZ3SampleThreshold) {
                 System.out.println("STARTING Z3 THREAD NOW!!!!!");
                 startZ3Thread();
                 z3StartedInputCount = numExecs;
