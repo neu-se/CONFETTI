@@ -454,7 +454,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
 
     protected final synchronized void handleHeartbeat(Long numExecs, Double coveragePercentage) {
-        if (this.windowStartExecs == 0) {
+        if (!startedCentral && this.windowStartExecs == 0) {
             this.windowStartExecs = numExecs;
             this.windowStartCoverage = coveragePercentage;
             this.maxCoveragePercentageInWindow = coveragePercentage;
