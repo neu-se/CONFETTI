@@ -9,10 +9,18 @@ import java.util.LinkedList;
 
 public class ZestClient extends Central {
 
-    public ZestClient() throws IOException {
+       public int triggerZ3SampleWindow;
+       public double triggerZ3SampleThreshold;
+    public ZestClient() throws IOException  {
         super();
-        oos.writeObject(Type.Zest);
+        oos.writeObject(Type.Zest_Initial);
         oos.flush();
+        try {
+            triggerZ3SampleWindow = (Integer) ois.readObject();
+            triggerZ3SampleThreshold = (Double) ois.readObject();
+        } catch(Exception e) {}
+
+
     }
 
     public void sendHeartBeat(Long numExecutions, Double currentCoverage) throws IOException {
@@ -32,6 +40,12 @@ public class ZestClient extends Central {
         }
 
         return null;
+    }
+
+    public void activate() throws IOException {
+        oos.writeObject(Type.Zest);
+        oos.flush();
+
     }
 
     /* Client:

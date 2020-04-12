@@ -22,7 +22,7 @@ public class Central {
         oos = new ObjectOutputStream(s.getOutputStream());
     }
 
-    protected enum Type { Zest, Knarr };
+    protected enum Type { Zest_Initial, Zest, Knarr };
 
     /* Server:
      * 1. Receive input
@@ -46,8 +46,8 @@ public class Central {
                 System.out.println(props);
             }
         }
-
-        Coordinator c = new Coordinator(new Coordinator.Config(props));
+        Coordinator.Config config  = new Coordinator.Config(props);
+        Coordinator c = new Coordinator(config);
 
         new Thread(c).start();
 
@@ -58,22 +58,33 @@ public class Central {
             ObjectInputStream ois = new ObjectInputStream(s.getInputStream());
 
             Type t = (Type) ois.readObject();
-
             switch (t) {
-                case Zest:
-                    if (zest != null) {
-                        s.close();
-                    } else {
-                        zest = new ZestWorker(ois, oos, c);
-                        new Thread(zest).start();
-                    }
-                    break;
+
                 case Knarr:
                     if (knarr != null) {
                         s.close();
                     } else {
                         knarr = new KnarrWorker(ois, oos, c);
                         c.setKnarrWorker(knarr, zest);
+                    }
+                    break;
+                case Zest_Initial:
+                    if (zest != null) {
+                        s.close();
+                    }
+                    else {
+                        if (config.triggerZ3) {
+                            oos.writeObject(config.triggerZ3SampleWindow);
+                            oos.writeObject(config.triggerZ3SampleThreshold);
+                            oos.flush();
+                            zest = new ZestWorker(ois, oos, c);
+                            new Thread(zest).start();
+
+                        } else {
+                            oos.writeObject(null);
+                            oos.writeObject(null);
+                            oos.flush();
+                        }
                     }
                     break;
                 default:

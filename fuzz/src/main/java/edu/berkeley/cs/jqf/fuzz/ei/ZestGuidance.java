@@ -395,6 +395,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     static final int UNIQUE_SENSITIVITY = Integer.getInteger("jqf.ei.UNIQUE_SENSITIVITY", Integer.MAX_VALUE);
 
     private ZestClient central;
+    private ZestClient triggerClient;
     private RecordingInputStream ris;
     private LinkedList<int[]> instructions;
     public LinkedList<Coordinator.StringHint[]> stringEqualsHints;
@@ -402,6 +403,13 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
 
     public LinkedList<LinkedList<Coordinator.StringHint[]>> allStringEqualsHintsCombinations = new LinkedList<>();
+
+
+    private Long windowStartExecs = 0L;
+    private Double windowStartCoverage = 0.0;
+    private Double maxCoveragePercentageInWindow = 0.0;
+    private Boolean startedCentral = false;
+    private Boolean startCentral = false;
 
 
     /**
@@ -435,11 +443,43 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         if (combinationsLimitProperty != null) this.combinationsLimit = Integer.parseInt(combinationsLimitProperty);
 
         try {
-            this.central = new ZestClient();
+            this.triggerClient = new ZestClient();
         } catch (IOException e) {
-            this.central = null;
+            this.triggerClient = null;
         }
 
+
+    }
+
+
+
+    protected final synchronized void handleHeartbeat(Long numExecs, Double coveragePercentage) {
+        if (this.windowStartExecs == 0) {
+            this.windowStartExecs = numExecs;
+            this.windowStartCoverage = coveragePercentage;
+            this.maxCoveragePercentageInWindow = coveragePercentage;
+        }
+        else if(this.windowStartExecs > 0 && (numExecs - this.windowStartExecs) < this.triggerClient.triggerZ3SampleWindow) {
+            if(coveragePercentage > this.maxCoveragePercentageInWindow) {
+                if( ((coveragePercentage - this.maxCoveragePercentageInWindow) / this.windowStartCoverage) * 100.0  > this.triggerClient.triggerZ3SampleThreshold){
+                    this.windowStartExecs = numExecs;
+                    this.windowStartCoverage = coveragePercentage;
+                }
+                this.maxCoveragePercentageInWindow = coveragePercentage;
+            }
+        } else if(this.windowStartExecs != 0 && (numExecs - this.windowStartExecs) >= this.triggerClient.triggerZ3SampleWindow) {
+            if( ((maxCoveragePercentageInWindow - this.windowStartCoverage) / this.windowStartCoverage) * 100.0  < this.triggerClient.triggerZ3SampleThreshold) {
+                System.out.println("STARTING CENTRAL NOW!!!!!");
+                this.startCentral = true;
+                this.z3ThreadStartedInputNum = numExecs;
+                windowStartExecs = 0L;
+                maxCoveragePercentageInWindow = 0.0;
+            } else {
+                this.windowStartExecs = numExecs;
+                this.windowStartCoverage = coveragePercentage;
+                this.maxCoveragePercentageInWindow = coveragePercentage;
+            }
+        }
 
     }
 
@@ -744,6 +784,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     @Override
     public InputStream getInput() throws GuidanceException {
+
+
         // Clear coverage stats for this run
         runCoverage.clear();
 
@@ -923,7 +965,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             }
         };
 
-        if (central != null) {
+        if (central != null || triggerClient != null) {
             ris = new RecordingInputStream(is);
             is = ris;
 
@@ -950,6 +992,24 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     @Override
     public void handleResult(Result result, Throwable error) throws GuidanceException {
+
+        if(!this.startedCentral && this.startCentral) {
+            this.startedCentral = true;
+
+            // send all the inputs...
+            for(Input i: this.savedInputs) {
+                try {
+                    triggerClient.sendInput(i.bytes, i.result, i.id,
+                            new LinkedList<>(),
+                            0.0, 0L  );
+                } catch (IOException e) {
+                }
+            }
+            this.central = triggerClient;
+
+        }
+
+
         // Stop timeout handling
         this.runStart = null;
 
@@ -969,31 +1029,24 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         boolean valid = result == Result.SUCCESS;
 
         // send a
-        if(central != null && ((numTrials % heartbeatInterval ) == 0)) {
+        if( ((numTrials > 0 )&& (numTrials % heartbeatInterval ) == 0)) {
             Double coveragePercentage = totalCoverage.getNonZeroCount() * 100.0 / totalCoverage.size();
-            try {
-                central.sendHeartBeat(numTrials, coveragePercentage);
-                Long z3StartedInput = central.receiveZ3Started();
-                if(z3StartedInput != null){
-                    this.z3ThreadStartedInputNum = z3StartedInput;
-                }
-            } catch(IOException e ) {
-                throw new Error(e);
-            }
+            handleHeartbeat(numTrials, coveragePercentage);
+
         }
 
-        // jacoco coverage
-        try {
-            // Get exec data by dynamically calling RT.getAgent().getExecutionData()
-            Class RT = Class.forName("org.jacoco.agent.rt.RT");
-            Method getAgent = RT.getMethod("getAgent");
-            Object agent = getAgent.invoke(null);
-            Method dump = agent.getClass().getMethod("getExecutionData", boolean.class);
-            byte[] execData = (byte[]) dump.invoke(agent, false);
-        }
-        catch (Exception e) {
-                //System.err.println(e);
-        }
+//        // jacoco coverage
+//        try {
+//            // Get exec data by dynamically calling RT.getAgent().getExecutionData()
+//            Class RT = Class.forName("org.jacoco.agent.rt.RT");
+//            Method getAgent = RT.getMethod("getAgent");
+//            Object agent = getAgent.invoke(null);
+//            Method dump = agent.getClass().getMethod("getExecutionData", boolean.class);
+//            byte[] execData = (byte[]) dump.invoke(agent, false);
+//        }
+//        catch (Exception e) {
+//                //System.err.println(e);
+//        }
 
 
         if (valid) {
@@ -1080,12 +1133,16 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                         currentInput.size(),
                         nonZeroAfter);
 
+                currentInput.bytes = ris.getRequests();
+                currentInput.result = result;
                 // Save input to queue and to disk
                 try {
                     saveCurrentInput(responsibilities, why);
                 } catch (IOException e) {
                     throw new GuidanceException(e);
                 }
+
+
 
                 if (central != null) {
                     try {
@@ -1291,6 +1348,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
         }
 
+
         // Second, save to queue
         savedInputs.add(currentInput);
 
@@ -1471,6 +1529,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
          * A tunable "score" of how "interesting" the input is
          */
         Integer score = 0;
+
+        LinkedList<byte[]> bytes = new LinkedList<>();
+        Result result;
 
 
 

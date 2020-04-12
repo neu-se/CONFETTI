@@ -18,6 +18,7 @@ public class Coordinator implements Runnable {
 
     private ConcurrentHashMap<Input, ConstraintRepresentation> constraints = new ConcurrentHashMap<>();
     private KnarrWorker knarr;
+    private Boolean startKnarr = false;
     private Z3Worker z3;
     private ZestWorker zest;
 
@@ -27,11 +28,6 @@ public class Coordinator implements Runnable {
     protected Long z3StartedInputCount = -1L;
 
 
-    private Long windowStartExecs = 0L;
-    private Double windowStartCoverage = 0.0;
-    private Double maxCoveragePercentageInWindow = 0.0;
-
-
     private final Config config;
 
     public Coordinator(Config config) {
@@ -39,35 +35,6 @@ public class Coordinator implements Runnable {
         this.startZ3 = config.triggerZ3 ? false : true;
     }
 
-    protected final synchronized void handleHeartbeat(Long numExecs, Double coveragePercentage) {
-        if (!z3Started && this.windowStartExecs == 0) {
-            this.windowStartExecs = numExecs;
-            this.windowStartCoverage = coveragePercentage;
-            this.maxCoveragePercentageInWindow = coveragePercentage;
-        }
-        else if(this.windowStartExecs > 0 && (numExecs - this.windowStartExecs) < this.config.triggerZ3SampleWindow) {
-            if(coveragePercentage > this.maxCoveragePercentageInWindow) {
-                if( ((coveragePercentage - this.maxCoveragePercentageInWindow) / this.windowStartCoverage) * 100.0  > this.config.triggerZ3SampleThreshold){
-                    this.windowStartExecs = numExecs;
-                    this.windowStartCoverage = coveragePercentage;
-                }
-                this.maxCoveragePercentageInWindow = coveragePercentage;
-            }
-        } else if(this.windowStartExecs != 0 && (numExecs - this.windowStartExecs) >= this.config.triggerZ3SampleWindow) {
-            if( ((maxCoveragePercentageInWindow - this.windowStartCoverage) / this.windowStartCoverage) * 100.0  < this.config.triggerZ3SampleThreshold) {
-                System.out.println("STARTING Z3 THREAD NOW!!!!!");
-                startZ3Thread();
-                z3StartedInputCount = numExecs;
-                windowStartExecs = 0L;
-                maxCoveragePercentageInWindow = 0.0;
-            } else {
-                this.windowStartExecs = numExecs;
-                this.windowStartCoverage = coveragePercentage;
-                this.maxCoveragePercentageInWindow = coveragePercentage;
-            }
-        }
-
-    }
 
     protected final synchronized void foundInput(int id, byte[] bytes, boolean valid, LinkedList<StringHint[]>hints, Double coveragePercentage, long numExecutions) {
         Input in = new Input();
@@ -88,7 +55,13 @@ public class Coordinator implements Runnable {
     }
 
     protected final synchronized Input getInput(int index) {
-        return this.inputs.get(index);
+
+        for(int i = 0; i < this.inputs.size(); i++) {
+
+            if (this.inputs.get(i).id == index)
+                return this.inputs.get(i) ;
+        }
+        return null;
     }
 
 
@@ -103,7 +76,7 @@ public class Coordinator implements Runnable {
                 boolean newInputs = false;
 
                 if (this.knarr != null) {
-                    if (!z3Started && startZ3) {
+                    if (!z3Started) {
                         startZ3Thread();
                     }
                     for (Input i : inputs) {
@@ -314,7 +287,7 @@ public class Coordinator implements Runnable {
         this.zest = zest;
         this.z3 = new Z3Worker(zest, knarr, config.filter);
 
-        if(config.usez3Hints && startZ3)
+        if(config.usez3Hints)
             startZ3Thread();
 
     }
