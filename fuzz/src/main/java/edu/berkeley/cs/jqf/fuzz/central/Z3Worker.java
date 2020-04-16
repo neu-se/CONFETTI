@@ -1,8 +1,18 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
+import com.microsoft.z3.BitVecNum;
+import com.microsoft.z3.BoolExpr;
 import com.microsoft.z3.Context;
 import com.microsoft.z3.Expr;
+import com.microsoft.z3.FuncDecl;
+import com.microsoft.z3.FuncInterp;
+import com.microsoft.z3.IntNum;
+import com.microsoft.z3.Model;
+import com.microsoft.z3.Params;
+import com.microsoft.z3.RatNum;
+import com.microsoft.z3.Solver;
 import com.microsoft.z3.Sort;
+import com.microsoft.z3.Status;
 import com.microsoft.z3.Z3Exception;
 import edu.gmu.swe.knarr.runtime.Coverage;
 import edu.gmu.swe.knarr.server.ConstraintOptionGenerator;
@@ -10,19 +20,20 @@ import edu.gmu.swe.knarr.server.HashMapStateStore;
 import edu.gmu.swe.knarr.server.StateStore;
 
 import za.ac.sun.cs.green.Green;
-import za.ac.sun.cs.green.Instance;
 import za.ac.sun.cs.green.expr.*;
 import za.ac.sun.cs.green.service.canonizer.ModelCanonizerService;
 import za.ac.sun.cs.green.service.factorizer.ModelFactorizerService;
 import za.ac.sun.cs.green.service.z3.ModelZ3JavaService;
 import za.ac.sun.cs.green.service.z3.Z3JavaTranslator;
 import za.ac.sun.cs.green.util.Configuration;
-import za.ac.sun.cs.green.util.NotSatException;
 
 import java.io.*;
+import java.math.BigInteger;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class Z3Worker {
@@ -153,9 +164,8 @@ public class Z3Worker {
                     targetConstraint = e;
                     break;
                 }
-            } else {
-                res.put("c" + res.size(), e);
             }
+            res.put("c" + res.size(), e);
         }
 
         if (targetConstraint == null)
@@ -716,6 +726,21 @@ public class Z3Worker {
         }
     }
 
+    private Map<String, BoolExpr> translate(Map<String, Expression> constraints, HashSet<Expr> variables, HashSet<FuncDecl> functions, Context ctx) throws VisitorException {
+        Z3JavaTranslator translator = new Z3JavaTranslator(ctx);
+        Map<String, BoolExpr> ret = new HashMap<>();
+
+        for (Map.Entry<String, Expression> e : constraints.entrySet()) {
+            e.getValue().accept(translator);
+            ret.put(e.getKey(), (BoolExpr) translator.getTranslation());
+        }
+
+        variables.addAll(translator.getVariableMap().values());
+        functions.addAll(translator.getFunctions().values());
+
+        return ret;
+    }
+
     private int solved = 0;
     private void solve(Map<String, Expression> constraints, ArrayList<AbstractMap.SimpleEntry<String, Object>> sat, HashSet<String> unsat) {
         solved += 1;
@@ -729,59 +754,112 @@ public class Z3Worker {
             }
         }
 
-        // Initialize Z3 instance
-        Instance in = new Instance(data.green, null, constraints);
-        for (Z3JavaTranslator.Z3GreenBridge e : data.optionGenerator.generateOptions(data.modeler.getUnderlyingExpr(in)))
-            data.stateStore.addOption(e);
+        // Create a fresh Z3 Context
+        try (Context ctx = new Context()) {
 
-        Z3JavaTranslator.Z3GreenBridge newExp = data.stateStore.getNewOption();
-        boolean issat = false;
-        final String prefix = "autoVar_";
-        while (newExp != null && !issat) {
-            issat = true;
-//					System.out.println("Trying out new version: " + newExp);
-            try{
-                @SuppressWarnings("unchecked")
-                long start = System.currentTimeMillis();
+            // Translate from Green to Z3
+            HashSet<Expr> vars = new HashSet<>();
+            HashSet<FuncDecl> functions = new HashSet<>();
+            Map<String, BoolExpr> constraintsInZ3 = translate(constraints, vars, functions, ctx);
 
+            // Get a fresh solver
+            Solver solver = ctx.mkSolver();
 
-                ModelZ3JavaService.Solution sol = data.modeler.solve(newExp);
-
-                if (sol.sat) {
-//					System.out.println("SAT");
-//								System.out.println("SAT: " + sol);
-                    for(String v : sol.data.keySet())
-                    {
-                        sat.add(new AbstractMap.SimpleEntry<>(v, sol.data.get(v)));
-                    }
-                } else {
-//					System.out.println("NOT SAT");
-                    for (String k : sol.data.keySet()) {
-                        unsat.add(k);
-                    }
-                    issat = false;
-                }
-            }
-            catch(NotSatException ex)
+            // Set the timeout
             {
-                issat = false;
-                System.out.println("Not sat");
+                Params p = ctx.mkParams();
+                p.add("timeout", Z3JavaTranslator.timeoutMS);
+                solver.setParameters(p);
             }
-            newExp = data.stateStore.getNewOption();
-        }
 
-        Collections.sort(sat, new Comparator<AbstractMap.SimpleEntry<String, Object>>() {
-            @Override
-            public int compare(AbstractMap.SimpleEntry<String, Object> o1, AbstractMap.SimpleEntry<String, Object> o2) {
-                if (o1.getKey().startsWith(prefix) && o2.getKey().startsWith(prefix)) {
-                    Integer i1 = Integer.valueOf(o1.getKey().substring(prefix.length()));
-                    Integer i2 = Integer.valueOf(o2.getKey().substring(prefix.length()));
-                    return i1.compareTo(i2);
+            // Add all the constraints to the current context
+            for (Map.Entry<String, BoolExpr> e : constraintsInZ3.entrySet())
+                solver.assertAndTrack(e.getValue(), ctx.mkBoolConst(e.getKey()));
+
+            // Solve the constraints
+            Status result = solver.check();
+
+            if (Status.SATISFIABLE == result) {
+                // SAT
+//				System.out.println("SAT: " + data.constraints);
+                Model model = solver.getModel();
+                for (FuncDecl decl : functions) {
+                    boolean present = false;
+                    for (FuncDecl dd : model.getFuncDecls())
+                        if (dd.equals(decl)) {
+                            present = true;
+                            break;
+                        }
+
+                    if (!present)
+                        break;
+
+                    FuncInterp z3Val = model.getFuncInterp(decl);
+                    // TODO Look at the arguments past first
+                    // TODO Support more than BV arguments and BV results
+                    // TODO Support more than sequential first arguments
+                    int[] funcRes = new int[z3Val.getNumEntries()];
+                    for (FuncInterp.Entry e : z3Val.getEntries()) {
+                        if (!e.getArgs()[0].isIntNum() || !e.getValue().isBV())
+                            throw new Error("Non BV arguments not supported");
+                        Long arg = ((IntNum) e.getArgs()[0]).getInt64();
+                        Long res = ((BitVecNum) e.getValue()).getLong();
+                        if (arg.intValue() >= 0 && arg.intValue() < funcRes.length)
+                            funcRes[arg.intValue()] = res.intValue();
+                    }
+
+                    sat.add(new AbstractMap.SimpleEntry<>(decl.getName().toString(), funcRes));
                 }
+                for (Expr z3Var : vars) {
+                    Expr z3Val = model.evaluate(z3Var, true);
+                    Object val = null;
+                    if (z3Val.isIntNum()) {
+                        val = Long.parseLong(z3Val.toString());
+                    } else if (z3Val.isBV()) {
+                        BitVecNum bv = (BitVecNum) z3Val;
+                        if (bv.getSortSize() == 64) {
+                            // Long
+                            BigInteger bi = bv.getBigInteger();
+                            val = bi.longValue();
+                        } else {
+                            // Int
+                            Long l = bv.getLong();
+                            val = l.intValue();
+                        }
+                    } else if (z3Val.isRatNum()) {
+                        RatNum rt = (RatNum) z3Val;
+                        val = ((double) rt.getNumerator().getInt64()) / ((double) rt.getDenominator().getInt64());
+                    } else {
+                        //Must be string?
+                        String sval = z3Val.toString();
+                        //Need to clean up string
+                        java.util.regex.Pattern p = Pattern.compile("\\\\x(\\d\\d)");
+                        Matcher m = p.matcher(sval);
+                        while (m.find()) {
+                            int i = Long.decode("0x" + m.group(1)).intValue();
+                            sval = sval.replace(m.group(0), String.valueOf((char) i));
+                        }
+                        val = sval;
+                    }
+                    sat.add(new AbstractMap.SimpleEntry<>(z3Var.toString(), val));
+//					String logMessage = "" + greenVar + " has value " + val;
+//					log.log(Level.INFO,logMessage);
+                }
+            } else {
+                // UNSAT or Timeout
+                BoolExpr[] unsatCore = solver.getUnsatCore();
+                for (BoolExpr e : unsatCore) {
+                    String key = e.toString();
 
-                return o1.getKey().compareTo(o2.getKey());
+                    if (key.startsWith("|") && key.endsWith("|"))
+                        key = key.substring(1, key.length() - 1);
+
+                    unsat.add(key);
+                }
             }
-        });
+        } catch (VisitorException e) {
+            e.printStackTrace();
+        }
     }
 
     private void dumpToTXTFile(File file, Map<String, Expression> constraints) throws IOException {
