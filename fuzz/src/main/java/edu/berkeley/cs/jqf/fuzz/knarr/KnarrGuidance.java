@@ -66,10 +66,10 @@ public class KnarrGuidance implements Guidance {
                 exp = op.getOperand(0);
                 Expression e = op.getOperand(1);
 
-                constraints.addLast(e);
+                constraints.addFirst(e);
             }
 
-            constraints.addLast(exp);
+            constraints.addFirst(exp);
         }
 
         // Send constraints
