@@ -9,8 +9,8 @@ import java.util.LinkedList;
 
 public class ZestClient extends Central {
 
-       public int triggerZ3SampleWindow;
-       public double triggerZ3SampleThreshold;
+       public Integer triggerZ3SampleWindow;
+       public Double triggerZ3SampleThreshold;
     public ZestClient() throws IOException  {
         super();
         oos.writeObject(Type.Zest_Initial);
@@ -22,31 +22,31 @@ public class ZestClient extends Central {
 
 
     }
-
-    public void sendHeartBeat(Long numExecutions, Double currentCoverage) throws IOException {
-        oos.writeObject(ZestMessageType.HEARTBEAT);
-        oos.writeLong(numExecutions);
-        oos.writeDouble(currentCoverage);
-        oos.reset();
-        oos.flush();
-    }
-
-    public Long receiveZ3Started() throws IOException {
-        try {
-            return (Long)ois.readObject();
-
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-
-        return null;
-    }
-
-    public void activate() throws IOException {
-        oos.writeObject(Type.Zest);
-        oos.flush();
-
-    }
+//
+//    public void sendHeartBeat(Long numExecutions, Double currentCoverage) throws IOException {
+//        oos.writeObject(ZestMessageType.HEARTBEAT);
+//        oos.writeLong(numExecutions);
+//        oos.writeDouble(currentCoverage);
+//        oos.reset();
+//        oos.flush();
+//    }
+//
+//    public Long receiveZ3Started() throws IOException {
+//        try {
+//            return (Long)ois.readObject();
+//
+//        } catch (ClassNotFoundException e) {
+//            e.printStackTrace();
+//        }
+//
+//        return null;
+//    }
+//
+//    public void activate() throws IOException {
+//        oos.writeObject(Type.Zest);
+//        oos.flush();
+//
+//    }
 
     /* Client:
      * 1. Send input

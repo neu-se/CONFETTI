@@ -77,14 +77,15 @@ public class Central {
                             oos.writeObject(config.triggerZ3SampleWindow);
                             oos.writeObject(config.triggerZ3SampleThreshold);
                             oos.flush();
-                            zest = new ZestWorker(ois, oos, c);
-                            new Thread(zest).start();
 
                         } else {
                             oos.writeObject(null);
                             oos.writeObject(null);
                             oos.flush();
                         }
+
+                        zest = new ZestWorker(ois, oos, c);
+                        new Thread(zest).start();
                     }
                     break;
                 default:

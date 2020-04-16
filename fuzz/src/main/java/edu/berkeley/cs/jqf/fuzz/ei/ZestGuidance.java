@@ -444,6 +444,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
         try {
             this.triggerClient = new ZestClient();
+            if(this.triggerClient.triggerZ3SampleThreshold == null && this.triggerClient.triggerZ3SampleWindow == null) {
+                this.central = triggerClient;
+                startedCentral = true;
+            }
         } catch (IOException e) {
             this.triggerClient = null;
         }
@@ -1029,7 +1033,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         boolean valid = result == Result.SUCCESS;
 
         // send a
-        if( ((numTrials > 0 )&& (numTrials % heartbeatInterval ) == 0)) {
+        if( !startedCentral &&  ((numTrials > 0 )&& (numTrials % heartbeatInterval ) == 0)) {
             Double coveragePercentage = totalCoverage.getNonZeroCount() * 100.0 / totalCoverage.size();
             handleHeartbeat(numTrials, coveragePercentage);
 

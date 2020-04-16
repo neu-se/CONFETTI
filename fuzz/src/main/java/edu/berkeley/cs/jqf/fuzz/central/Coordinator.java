@@ -14,25 +14,17 @@ public class Coordinator implements Runnable {
     private ConcurrentHashMap<Input, HashMap<Integer, HashSet<StringHint>>> perByteStringEqualsHints = new ConcurrentHashMap<>();
     private HashSet<StringHint> globalStringEqualsHints = new HashSet<>();
 
-
-
     private ConcurrentHashMap<Input, ConstraintRepresentation> constraints = new ConcurrentHashMap<>();
     private KnarrWorker knarr;
-    private Boolean startKnarr = false;
     private Z3Worker z3;
     private ZestWorker zest;
 
-    private Boolean startZ3;
     protected Boolean z3Started = false;
-
-    protected Long z3StartedInputCount = -1L;
-
 
     private final Config config;
 
     public Coordinator(Config config) {
         this.config = config;
-        this.startZ3 = config.triggerZ3 ? false : true;
     }
 
 
@@ -76,13 +68,15 @@ public class Coordinator implements Runnable {
                 boolean newInputs = false;
 
                 if (this.knarr != null) {
-                    if (!z3Started) {
+
+                    // if for some reason z3 isn't started, start it here
+                    if (config.usez3Hints && !z3Started) {
+                        if (this.z3 == null)
+                            this.z3 = new Z3Worker(zest, knarr, config.filter);
                         startZ3Thread();
                     }
                     for (Input i : inputs) {
                         if (i.isNew) {
-//                            if (!z3Started && i.coveragePercentage >= config.triggerZ3SampleThreshold)
-//                                startZ3 = true;
                             newInputs = true;
                             break;
                         }
@@ -285,10 +279,11 @@ public class Coordinator implements Runnable {
     public final synchronized  void setKnarrWorker(KnarrWorker knarr, ZestWorker zest) {
         this.knarr = knarr;
         this.zest = zest;
-        this.z3 = new Z3Worker(zest, knarr, config.filter);
 
-        if(config.usez3Hints)
+        if(config.usez3Hints) {
+            this.z3 = new Z3Worker(zest, knarr, config.filter);
             startZ3Thread();
+        }
 
     }
 
