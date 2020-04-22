@@ -28,10 +28,7 @@
  */
 package edu.berkeley.cs.jqf.examples.bcel;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 
 import com.pholser.junit.quickcheck.From;
 import edu.berkeley.cs.jqf.fuzz.Fuzz;
@@ -55,9 +52,10 @@ public class ParserTest {
     @Fuzz
     public void testWithInputStream(InputStream inputStream) throws IOException {
         JavaClass clazz;
+
         try {
-            clazz = new ClassParser(inputStream, "Hello.class").parse();
-        } catch (ClassFormatException e) {
+            clazz = new ClassParser(new DataInputStream(inputStream), "Hello.class").parse();
+        } catch (ClassFormatError | ClassFormatException e) {
             // ClassFormatException thrown by the parser is just invalid input
             Assume.assumeNoException(e);
             return;
@@ -78,8 +76,8 @@ public class ParserTest {
 
             ByteArrayInputStream in = new ByteArrayInputStream(out.toByteArray());
             testWithInputStream(in);
-        } catch (ClassFormatException e) {
-            throw e;
+        } catch (ClassFormatError | ClassFormatException e) {
+            return;
         }
     }
 
