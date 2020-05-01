@@ -96,14 +96,13 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
 
                 choice = choice % hints.length;
                 word = hints[choice].getHint();
-//                for(Coordinator.StringHint hint : hints) {
-//                    if(hint.getType() == Coordinator.HintType.Z3) {
-//                        word = hint.getHint();
-//                        StringEqualsHintingInputStream.z3HintsUsedInCurrentInput = true;
-//                        break;
-//
-//                    }
-//                }
+
+                // Add hint to the global dictionary...
+                for(Coordinator.StringHint hint : hints) {
+                    if (!dictionary.contains(hint.getHint())){
+                        dictionary.add(hint.getHint());
+                    }
+                }
 //                if(word == "") {
 //                    choice = choice % hints.length;
 //                    word = hints[choice].getHint();
