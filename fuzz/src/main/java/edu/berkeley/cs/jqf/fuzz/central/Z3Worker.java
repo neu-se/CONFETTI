@@ -57,6 +57,8 @@ public class Z3Worker {
         }
     }
 
+    private static final int EXTRA_ZEROES_FOR_Z3 = Integer.parseInt(System.getProperty("extraZeroesForZ3", "0"));
+
     public Z3Worker(ZestWorker zest, KnarrWorker knarr, String[] filter) {
         data = new Data();
         data.green = new Green();
@@ -186,6 +188,14 @@ public class Z3Worker {
             Coordinator.Input ret = new Coordinator.Input();
             ret.bytes = solutionToInput(sat, genFuncs);
             ret.hints = generatorsToHints(res.values(), genFuncs);
+
+            // Add more bytes to maybe explore new paths
+            if (EXTRA_ZEROES_FOR_Z3 > 0) {
+                byte[] bytes = new byte[ret.bytes.length + EXTRA_ZEROES_FOR_Z3];
+                System.arraycopy(ret.bytes, 0, bytes, 0, ret.bytes.length);
+                ret.bytes = bytes;
+            }
+
             return Optional.of(ret);
         } else {
             if (unsat.size() == 1) {
@@ -366,6 +376,7 @@ public class Z3Worker {
 
             Set<Expression> stringHintConstraints = hintsToConstraints(t.constraints, t.hints);
             Optional<Coordinator.Input> input = negateConstraint(t, stringHintConstraints);
+            System.out.println("Z3 found new input for " + t.branch.source);
             return input;
 
         } catch (Z3Exception | ClassCastException e) {
