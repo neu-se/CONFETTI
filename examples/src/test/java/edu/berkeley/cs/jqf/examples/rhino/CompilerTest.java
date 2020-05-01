@@ -118,7 +118,8 @@ public class CompilerTest {
     public static void main(String[] args) throws IOException {
         CompilerTest t = new CompilerTest();
         t.initContext();
-        t.testWithString(new String(Files.readAllBytes(new File(args[0]).toPath())));
+        String test = new String(Files.readAllBytes(new File(args[0]).toPath()));
+        Script script = t.context.compileString(test, "input", 0, null);
     }
 
 

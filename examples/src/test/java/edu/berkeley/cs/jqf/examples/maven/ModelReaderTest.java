@@ -68,6 +68,17 @@ public class ModelReaderTest {
     }
 
     @Fuzz
+    public void testWithGeneratorEmptyDictionary(@From(XmlDocumentGenerator.class)
+                                  @Dictionary("dictionaries/empty.dict") Document dom) {
+        testWithInputStream(XMLDocumentUtils.documentToInputStream(dom));
+    }
+
+    @Fuzz
+    public void testWithGeneratorNoDictionary(@From(XmlDocumentGenerator.class) Document dom) {
+        testWithInputStream(XMLDocumentUtils.documentToInputStream(dom));
+    }
+
+    @Fuzz
     public void debugWithGenerator(@From(XmlDocumentGenerator.class)
                                        @Dictionary("dictionaries/maven-model.dict") Document dom) {
         System.out.println(XMLDocumentUtils.documentToString(dom));

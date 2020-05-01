@@ -92,6 +92,17 @@ public class ProjectBuilderTest {
         testWithInputStream(XMLDocumentUtils.documentToInputStream(dom));
     }
 
+
+    @Fuzz
+    public void testWithGeneratorEmptyDictionary(@From(XmlDocumentGenerator.class)
+                                  @Dictionary("dictionaries/empty.dict") Document dom) {
+        testWithInputStream(XMLDocumentUtils.documentToInputStream(dom));
+    }
+    @Fuzz
+    public void testWithGeneratorNoDictionary(@From(XmlDocumentGenerator.class) Document dom) {
+        testWithInputStream(XMLDocumentUtils.documentToInputStream(dom));
+    }
+
     @Fuzz
     public void debugWithGenerator(@From(XmlDocumentGenerator.class)
                                        @Dictionary("dictionaries/ant-project.dict") Document dom) {
