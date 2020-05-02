@@ -458,7 +458,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
 
     protected final synchronized void handleHeartbeat(Long numExecs, Double coveragePercentage) {
-        if (this.central == null)
+        if (this.central == null && this.triggerClient == null )
             return;
 
         if (!startedCentral && this.windowStartExecs == 0) {
@@ -1142,7 +1142,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
 
 
-                if (central != null) {
+                if (central != null || triggerClient != null) {
                     currentInput.bytes = ris.getRequests();
                     currentInput.result = result;
                     // Save input to queue and to disk
@@ -1151,6 +1151,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     } catch (IOException e) {
                         throw new GuidanceException(e);
                     }
+                }
+
+                if(central != null) {
 
                     try {
                         // Send new input / random requests used
