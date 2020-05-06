@@ -84,8 +84,8 @@ public class JavaScriptCodeGenerator extends Generator<String> {
 
             Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
             String item;
-            Boolean coinflip = random.nextBoolean();
-            if (hints != null && hints.length > 0 && coinflip) {
+            //Boolean coinflip = random.nextBoolean();
+            if (hints != null && hints.length > 0 ) {
 
                 //random.nextInt(0, Integer.MAX_VALUE);
                 choice = choice % hints.length;
@@ -301,8 +301,8 @@ public class JavaScriptCodeGenerator extends Generator<String> {
 
 
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
-        Boolean coinflip = random.nextBoolean();
-        if (hints != null && hints.length > 0 && coinflip ) {
+       // Boolean coinflip = random.nextBoolean();
+        if (hints != null && hints.length > 0 ) { //&& coinflip ) {
             //random.nextInt(0, Integer.MAX_VALUE);
             choice = choice % hints.length;
 
@@ -400,8 +400,8 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         int choice = random.nextInt(0, Integer.MAX_VALUE);
 
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
-        Boolean coinflip = random.nextBoolean();
-        if (hints != null && hints.length > 0 && coinflip) {
+       // Boolean coinflip = random.nextBoolean();
+        if (hints != null && hints.length > 0 ) { //&& coinflip) {
 
             identifier = "";
 
