@@ -47,6 +47,7 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
+import org.apache.bcel.classfile.JavaClass;
 import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
 import edu.berkeley.cs.jqf.fuzz.central.ZestClient;
 import edu.berkeley.cs.jqf.fuzz.ei.ExecutionIndex.Prefix;
@@ -1209,10 +1210,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                         error.printStackTrace(pw);
                     }
                     File argsFile = new File(savedFailuresDirectory, saveFileName + ".input");
-                    try (PrintWriter pw = new PrintWriter(new FileWriter(argsFile))) {
-                        for (Object o : args)
-                            saveInputToDisk(pw, o);
-                    }
+                    for (Object o : args)
+                        saveInputToDisk(argsFile, o);
                     infoLog("%s","Found crash: " + error.getClass() + " - " + (msg != null ? msg : ""));
                     String how = currentInput.desc;
                     String why = result == Result.FAILURE ? "+crash" : "+hang";
@@ -1303,7 +1302,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     }
 
-    private void saveInputToDisk(PrintWriter pw, Object o) {
+    private void saveInputToDisk(File f, Object o) throws IOException {
         if (o instanceof Document) {
             try {
                 TransformerFactory tf = TransformerFactory.newInstance();
@@ -1315,12 +1314,19 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 transformer.setOutputProperty(OutputKeys.ENCODING, "UTF-8");
                 transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "4");
 
-                transformer.transform(new DOMSource((Document)o), new StreamResult(pw));
+                try (PrintWriter pw = new PrintWriter(new FileWriter(f))) {
+                    transformer.transform(new DOMSource((Document) o), new StreamResult(pw));
+                }
             } catch (TransformerException e) {
                 e.printStackTrace();
             }
+        } else if (o instanceof JavaClass) {
+            JavaClass jc = (JavaClass) o;
+            jc.dump(f);
         } else {
-            pw.println(o.toString());
+            try (PrintWriter pw = new PrintWriter(new FileWriter(f))) {
+                pw.println(o.toString());
+            }
         }
     }
 
@@ -1337,11 +1343,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         }
 
         File argsFile = new File(savedInputsDirectory, saveFileName + ".input");
-        try (PrintWriter pw = new PrintWriter(new FileWriter(argsFile))) {
-            for (Object o : args) {
-                saveInputToDisk(pw, o);
-            }
-        }
+        for (Object o : args)
+            saveInputToDisk(argsFile, o);
 
         // If not using guidance, do nothing else
         if (TOTALLY_RANDOM) {
