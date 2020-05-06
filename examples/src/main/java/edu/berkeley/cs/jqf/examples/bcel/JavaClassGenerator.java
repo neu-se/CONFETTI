@@ -33,6 +33,13 @@ import com.pholser.junit.quickcheck.generator.GenerationStatus;
 import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.internal.GeometricDistribution;
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
+import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
+import edu.berkeley.cs.jqf.fuzz.guidance.StringEqualsHintingInputStream;
+import edu.columbia.cs.psl.phosphor.runtime.Taint;
+import edu.columbia.cs.psl.phosphor.struct.LazyCharArrayObjTags;
+import edu.columbia.cs.psl.phosphor.struct.TaintedObjectWithObjTag;
+import edu.gmu.swe.knarr.runtime.ExpressionTaint;
+import edu.gmu.swe.knarr.runtime.Symbolicator;
 import org.apache.bcel.Const;
 import org.apache.bcel.classfile.Field;
 import org.apache.bcel.classfile.JavaClass;
@@ -40,6 +47,9 @@ import org.apache.bcel.classfile.Method;
 import org.apache.bcel.generic.*;
 import org.junit.Assume;
 import org.junit.AssumptionViolatedException;
+import za.ac.sun.cs.green.expr.Expression;
+import za.ac.sun.cs.green.expr.FunctionCall;
+import za.ac.sun.cs.green.expr.IntConstant;
 
 /**
  * @author Rohan Padhye
@@ -90,14 +100,74 @@ public class JavaClassGenerator extends Generator<JavaClass> {
         constants = new ConstantPoolGen();
 
         // Generate a class with its meta-data
-        String className = "example.A";
-        String superName = r.nextBoolean() ? "example.B" : "java.lang.Object";
-        String fileName = "A.class";
+        String className;
+        {
+//            int choice = r.nextInt();
+//            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+            className = r.nextBoolean() ? "example.A" : "example.A";
+//            if (hints != null && hints.length > 0 ) {
+//
+//                //random.nextInt(0, Integer.MAX_VALUE);
+//                choice = choice % hints.length;
+//
+//                className = new String(hints[choice].getHint());
+//                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+//            }
+//
+//            className = applyTaints(className, choice);
+        }
+        String superName;
+        {
+//            int choice = r.nextInt();
+//            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+            superName = r.nextBoolean() ? "example.B" : "java.lang.Object";
+//            if (hints != null && hints.length > 0 ) {
+//
+//                //random.nextInt(0, Integer.MAX_VALUE);
+//                choice = choice % hints.length;
+//
+//                superName = new String(hints[choice].getHint());
+//                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+//            }
+//
+//            superName = applyTaints(superName, choice);
+        }
+        String fileName;
+        {
+//            int choice = r.nextInt();
+//            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+            fileName = r.nextBoolean() ? "A.class" : "A.class";
+//            if (hints != null && hints.length > 0 ) {
+//
+//                //random.nextInt(0, Integer.MAX_VALUE);
+//                choice = choice % hints.length;
+//
+//                fileName = new String(hints[choice].getHint());
+//                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+//            }
+//
+//            fileName = applyTaints(fileName, choice);
+        }
         int flags = r.nextInt(0, Short.MAX_VALUE);
         int numInterfaces = r.nextBoolean() ? 0 : geom.sampleWithMean(MEAN_INTERFACE_COUNT, r);
         String[] interfaces = new String[numInterfaces];
         for (int i = 0; i < numInterfaces; i++) {
-            interfaces[i] = "example.I"+i;
+//            int choice = r.nextInt();
+//            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+
+            interfaces[i] = r.nextBoolean() ? "example.I"+i : "example.I"+i;
+
+//            if (hints != null && hints.length > 0 ) {
+//
+//                //random.nextInt(0, Integer.MAX_VALUE);
+//                choice = choice % hints.length;
+//
+//                interfaces[i] = new String(hints[choice].getHint());
+//                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+//            }
+//
+//            interfaces[i] = applyTaints(interfaces[i], choice);
+
         }
         ClassGen classGen =  new ClassGen(className, superName, fileName, flags, interfaces, constants);
 
@@ -145,14 +215,32 @@ public class JavaClassGenerator extends Generator<JavaClass> {
     }
 
     private String generateMemberName(SourceOfRandomness r) {
+        int choice = r.nextInt();
+        Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+
         if (r.nextBoolean()) {
             return r.choose(memberDictionary);
         }
-        return r.nextChar('a', 'z') + "_" + r.nextInt(10);
+        String ret = r.nextChar('a', 'z') + "_" + r.nextInt(10);
+
+        if (hints != null && hints.length > 0 ) {
+
+            //random.nextInt(0, Integer.MAX_VALUE);
+            choice = choice % hints.length;
+
+            ret = new String(hints[choice].getHint());
+            StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+        }
+
+        return applyTaints(ret, choice);
     }
 
     private String generateTypeSignature(SourceOfRandomness r, boolean arraysAllowed) {
         String typeSig;
+        int choice = r.nextInt();
+
+        Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+
         if (r.nextBoolean()) {
             // Primitive
             typeSig = r.choose(primitiveTypes);
@@ -167,7 +255,17 @@ public class JavaClassGenerator extends Generator<JavaClass> {
                 typeSig = "[" + typeSig;
             }
         }
-        return typeSig;
+
+        if (hints != null && hints.length > 0 ) {
+
+            //random.nextInt(0, Integer.MAX_VALUE);
+            choice = choice % hints.length;
+
+            typeSig = new String(hints[choice].getHint());
+            StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+        }
+
+        return applyTaints(typeSig, choice);
     }
 
     private Type generateType(SourceOfRandomness r, boolean arraysAllowed) {
@@ -497,6 +595,9 @@ public class JavaClassGenerator extends Generator<JavaClass> {
 
     String generateClassName(SourceOfRandomness r)
     {
+        int choice = r.nextInt();
+        Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+
         if (r.nextBoolean()) {
             return r.choose(interestingClasses);
         }
@@ -505,7 +606,18 @@ public class JavaClassGenerator extends Generator<JavaClass> {
         for (int i = 0; i < numParts; i++) {
             parts[i] = generateMemberName(r);
         }
-        return String.join("/", parts);
+
+        String ret = String.join("/", parts);
+
+        if (hints != null && hints.length > 0 ) {
+            //random.nextInt(0, Integer.MAX_VALUE);
+            choice = choice % hints.length;
+
+            ret = new String(hints[choice].getHint());
+            StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+        }
+
+        return applyTaints(ret, choice);
     }
 
     int generateFieldRef(SourceOfRandomness r) {
@@ -527,4 +639,39 @@ public class JavaClassGenerator extends Generator<JavaClass> {
     int generateClassRef(SourceOfRandomness r) {
         return constants.addClass(generateClassName(r));
     }
+
+    private static int currentFunctionNumber = 0;
+
+    private static String applyTaints(String result, Object taint) {
+        if (result == null || result.length() == 0 || !(taint instanceof TaintedObjectWithObjTag))
+            return result;
+
+        // New string to avoid adding taints to the dictionary itself
+        String ret = new String(result);
+
+        Expression t = (Expression) ((Taint)((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG()).getSingleLabel();
+
+        if (Symbolicator.getTaints(result) instanceof LazyCharArrayObjTags) {
+            LazyCharArrayObjTags taints = (LazyCharArrayObjTags) Symbolicator.getTaints(result);
+            // Don't taint what's already tainted
+            if (taints.taints != null)
+                return result;
+
+            taints.taints = new Taint[result.length()];
+            for (int i = 0 ; i< taints.taints.length ; i++) {
+                taints.taints[i] = new ExpressionTaint(new FunctionCall(
+                        "gen" + currentFunctionNumber,
+                        new Expression[]{ new IntConstant(i), t}));
+            }
+
+            currentFunctionNumber += 1;
+
+        }
+
+        // New string so that Phosphor can compute the tag for the string itself based on the tag for each character
+        ret = new String(ret.getBytes(), 0, ret.length());
+
+        return ret;
+    }
+
 }
