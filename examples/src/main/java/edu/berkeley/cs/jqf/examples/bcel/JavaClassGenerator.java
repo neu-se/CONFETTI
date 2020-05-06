@@ -99,7 +99,7 @@ public class JavaClassGenerator extends Generator<JavaClass> {
         for (int i = 0; i < numInterfaces; i++) {
             interfaces[i] = "example.I"+i;
         }
-        ClassGen classGen = null; // new ClassGen(className, superName, fileName, flags, interfaces, constants);
+        ClassGen classGen =  new ClassGen(className, superName, fileName, flags, interfaces, constants);
 
         // Validate flags
         Assume.assumeFalse(classGen.isFinal() && (classGen.isAbstract() | classGen.isInterface()));
