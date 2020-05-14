@@ -34,6 +34,8 @@ class ZestWorker extends Worker {
             // Receive input or select new input
 
 
+            oos.flush();
+            oos.reset();
             ZestMessageType messageType = (ZestMessageType) ois.readObject();
             if (messageType == null) continue;
 
@@ -139,8 +141,6 @@ class ZestWorker extends Worker {
                     oos.writeObject(instructionsToSend);
                     oos.writeObject(stringsToSend);     // Strings that are new hints
                     oos.writeObject(in.hints);          // Strings that are previously used hints that must be replicated
-                    oos.reset();
-                    oos.flush();
 
                     printSentStringHints(stringsToSend);
 
@@ -160,7 +160,6 @@ class ZestWorker extends Worker {
                     }
 
                     oos.writeObject(next);
-                    oos.reset();
                     break;
 
                 default:

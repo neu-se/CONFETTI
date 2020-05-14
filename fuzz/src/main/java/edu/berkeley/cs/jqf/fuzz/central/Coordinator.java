@@ -364,7 +364,7 @@ public class Coordinator implements Runnable {
 
             // Handle result
             if (newInput.isPresent()) {
-                System.out.println("Z3 found new input for " + inputToTarget.id);
+                System.out.println("Z3 found new input for " + inputToTarget.id + " " + target.branch.source);
 //                try {
 //                    // Send input to knarr, check if we explore target
 //                    LinkedList<Expression> updatedConstraints = knarr.getConstraints(newInput.get().bytes, newInput.get().hints);

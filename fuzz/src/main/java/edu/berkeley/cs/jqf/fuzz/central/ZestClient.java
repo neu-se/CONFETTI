@@ -15,6 +15,7 @@ public class ZestClient extends Central {
         super();
         oos.writeObject(Type.Zest_Initial);
         oos.flush();
+        oos.reset();
         try {
             triggerZ3SampleWindow = (Integer) ois.readObject();
             triggerZ3SampleThreshold = (Double) ois.readObject();
@@ -62,13 +63,16 @@ public class ZestClient extends Central {
         oos.writeObject(hints);
         oos.writeDouble(coveragePercentage);
         oos.writeLong(totalExecutions);
-        oos.reset();
         oos.flush();
+        oos.reset();
     }
+
+    private boolean hasSeenNullZ3Input = false;
 
     public void selectInput(int id) throws IOException {
         oos.writeObject(ZestMessageType.SELECTINPUT);
         oos.writeObject(new Integer(id));
+        hasSeenNullZ3Input = false;
     }
 
     public LinkedList<int[]> receiveInstructions() throws IOException {
@@ -101,9 +105,19 @@ public class ZestClient extends Central {
     }
 
     public Coordinator.Input getInput() {
+        if (hasSeenNullZ3Input)
+            return null;
+
         try {
             oos.writeObject(ZestMessageType.GETZ3INPUT);
-            return (Coordinator.Input) ois.readObject();
+            oos.reset();
+            oos.flush();
+            Coordinator.Input ret = (Coordinator.Input) ois.readObject();
+
+            if (ret == null)
+                hasSeenNullZ3Input = true;
+
+            return ret;
         } catch (ClassNotFoundException e) {
             throw new Error(e);
         } catch (IOException e) {

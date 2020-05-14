@@ -376,7 +376,6 @@ public class Z3Worker {
 
             Set<Expression> stringHintConstraints = hintsToConstraints(t.constraints, t.hints);
             Optional<Coordinator.Input> input = negateConstraint(t, stringHintConstraints);
-            System.out.println("Z3 found new input for " + t.branch.source);
             return input;
 
         } catch (Z3Exception | ClassCastException e) {
