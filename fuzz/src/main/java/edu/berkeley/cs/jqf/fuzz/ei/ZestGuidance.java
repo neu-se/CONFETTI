@@ -1141,17 +1141,16 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                         currentInput.size(),
                         nonZeroAfter);
 
-
+                // Save input to queue and to disk
+                try {
+                    saveCurrentInput(responsibilities, why);
+                } catch (IOException e) {
+                    throw new GuidanceException(e);
+                }
 
                 if (central != null || triggerClient != null) {
                     currentInput.bytes = ris.getRequests();
                     currentInput.result = result;
-                    // Save input to queue and to disk
-                    try {
-                        saveCurrentInput(responsibilities, why);
-                    } catch (IOException e) {
-                        throw new GuidanceException(e);
-                    }
                 }
 
                 if(central != null) {
