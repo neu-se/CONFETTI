@@ -9,9 +9,19 @@ import com.pholser.junit.quickcheck.random.SourceOfRandomness;
 import edu.berkeley.cs.jqf.examples.common.AlphaStringGenerator;
 import edu.berkeley.cs.jqf.examples.common.Dictionary;
 import edu.berkeley.cs.jqf.examples.common.DictionaryBackedStringGenerator;
+import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
+import edu.berkeley.cs.jqf.fuzz.guidance.StringEqualsHintingInputStream;
+import edu.columbia.cs.psl.phosphor.runtime.Taint;
+import edu.columbia.cs.psl.phosphor.struct.LazyCharArrayObjTags;
+import edu.columbia.cs.psl.phosphor.struct.TaintedObjectWithObjTag;
+import edu.gmu.swe.knarr.runtime.ExpressionTaint;
+import edu.gmu.swe.knarr.runtime.Symbolicator;
 import org.apache.batik.anim.dom.SVGDOMImplementation;
 import org.junit.Assume;
 import org.w3c.dom.*;
+import za.ac.sun.cs.green.expr.Expression;
+import za.ac.sun.cs.green.expr.FunctionCall;
+import za.ac.sun.cs.green.expr.IntConstant;
 
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.IOException;
@@ -202,7 +212,21 @@ public class SVGDocumentGenerator extends Generator<Document> {
     }
 
     private String makeString(SourceOfRandomness random, GenerationStatus status) {
-        return stringGenerator.generate(random, status);
+
+        int choice = random.nextInt(0, Integer.MAX_VALUE);
+        Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+        String word;
+
+        if (hints != null && hints.length > 0 ) {
+            choice = choice % hints.length;
+            word = hints[choice].getHint();
+        } else {
+            word = stringGenerator.generate(random, status);
+        }
+
+        word = applyTaints(word, choice);
+
+        return word;
     }
 
     private void populateElement(Document document, Element elem, SourceOfRandomness random, GenerationStatus status, int depth) {
@@ -213,7 +237,19 @@ public class SVGDocumentGenerator extends Generator<Document> {
             int numChildren = Math.max(0, geometricDistribution.sampleWithMean(MEAN_NUM_CHILDREN, random) - 1);
             for (int i = 0; i < numChildren; i++) {
 
-                Element child = document.createElementNS(svgNS, elements[random.nextInt(0, elements.length)]);
+                int choice = random.nextInt(0, Integer.MAX_VALUE);
+                Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+                String word;
+                if (hints != null && hints.length > 0 ) {
+                    choice = choice % hints.length;
+                    word = hints[choice].getHint();
+                } else {
+                    word = elements[choice % elements.length];
+                }
+
+                word = applyTaints(word, choice);
+
+                Element child = document.createElementNS(svgNS, word);
                 populateElement(document, child, random, status, depth + 1);
                 elem.appendChild(child);
             }
@@ -223,4 +259,36 @@ public class SVGDocumentGenerator extends Generator<Document> {
             elem.appendChild(text);
         }
     }
+
+    private static int currentFunctionNumber = 0;
+
+    private static String applyTaints(String result, Object taint) {
+        if (result == null || result.length() == 0 || !(taint instanceof TaintedObjectWithObjTag))
+            return result;
+
+
+        // New string to avoid adding taints to the dictionary itself
+        String ret = new String(result);
+
+        Expression t = (Expression) ((Taint)((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG()).getSingleLabel();
+
+        if (Symbolicator.getTaints(result) instanceof LazyCharArrayObjTags) {
+            LazyCharArrayObjTags taints = (LazyCharArrayObjTags) Symbolicator.getTaints(result);
+            taints.taints = new Taint[result.length()];
+            for (int i = 0 ; i< taints.taints.length ; i++) {
+                taints.taints[i] = new ExpressionTaint(new FunctionCall(
+                        "gen" + currentFunctionNumber,
+                        new Expression[]{ new IntConstant(i), t}));
+            }
+
+            currentFunctionNumber += 1;
+
+        }
+
+        // New string so that Phosphor can compute the tag for the string itself based on the tag for each character
+        ret = new String(ret.getBytes(), 0, ret.length());
+
+        return ret;
+    }
+
 }
