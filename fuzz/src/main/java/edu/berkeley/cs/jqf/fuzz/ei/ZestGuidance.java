@@ -95,9 +95,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     // ------------ ALGORITHM BOOKKEEPING ------------
 
-
     private int combinationsLimit = Integer.MAX_VALUE;
-
 
     /** The max amount of time to run for, in milli-seconds */
     private final long maxDurationMillis;
@@ -180,6 +178,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
         public final Arithmetic equalsHintScoreOperation;
 
+        public final int z3newBranchesScoreValue;
+
+        public final Arithmetic  z3newBranchesScoreOperation;
 
         public  PriorityQueueConfig(Properties p) {
 
@@ -228,6 +229,15 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             } else {
                 equalsHintScoreValue = 0;
                 equalsHintScoreOperation = operations.get("+");
+            }
+
+            String z3newBranchesScoreCalculation = p.getProperty("z3newBranchesScoreCalculation");
+            if(validInputScoreCalculation != null) {
+                z3newBranchesScoreValue = Integer.parseInt(equalsHintScoreCalculation.split(",")[1]);
+                z3newBranchesScoreOperation = operations.get(z3HintScoreCalculation.split(",")[0]);
+            } else {
+                z3newBranchesScoreValue = 0;
+                z3newBranchesScoreOperation = operations.get("+");
             }
         }
     }
@@ -837,6 +847,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
            // currentInput = new ZestGuidance.SeedInput(inputFromCentral.bytes, "From central");
             currentInput = new ZestGuidance.SeedInput(newInputBytes, "From central");
+            currentInput.z3 = true; // the only inputs we get from the central this way are z3
+
             stringEqualsHints = inputFromCentral.hints;
             instructions = new LinkedList<>();
             for (int i = 0 ; i < stringEqualsHints.size() ; i++)
@@ -1542,11 +1554,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
          */
         Integer score = 0;
 
+        boolean z3 = false;
+
         LinkedList<byte[]> bytes = new LinkedList<>();
         Result result;
-
-
-
 
         /**
          * Create an empty input.
@@ -1585,6 +1596,12 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                         temp_score = ZestGuidance.priorityQueueConfig.equalsHintScoreOperation.operation(temp_score, ZestGuidance.priorityQueueConfig.equalsHintScoreValue);
                 }
             }
+            if(this.isZ3()) {
+
+                for(int i = 0; i < this.responsibilities.size(); i++)
+                    temp_score = ZestGuidance.priorityQueueConfig.z3newBranchesScoreOperation.operation(temp_score, ZestGuidance.priorityQueueConfig.z3newBranchesScoreValue);
+            }
+
             this.score = temp_score;
         }
         /**
@@ -1599,6 +1616,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             return responsibilities != null && responsibilities.size() > 0;
         }
 
+
+        private boolean isZ3() { return z3;}
 
         /**
          * Sample from a geometric distribution with given mean.
