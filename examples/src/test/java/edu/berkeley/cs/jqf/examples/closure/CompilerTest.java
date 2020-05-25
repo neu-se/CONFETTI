@@ -50,13 +50,13 @@ public class CompilerTest {
     /** Entry point for fuzzing with default (arbitrary) string generator */
     @Fuzz
 //    public void testWithString(String code) {
-    public void testWithString(@From(JavaScriptCodeGenerator.class) String code) {
+    public void testWithGenerator(@From(JavaScriptCodeGenerator.class) String code) {
         SourceFile input = SourceFile.fromCode("input", code);
         compile(input); // No assertions; we are looking for unexpected exceptions
     }
 
     @Fuzz
-    public void testWithString2(String code) {
+    public void testWithString(String code) {
         SourceFile input = SourceFile.fromCode("input", code);
         compile(input); // No assertions; we are looking for unexpected exceptions
     }
