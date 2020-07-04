@@ -24,6 +24,8 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     }
 
     private GenerationStatus status; // saved state object when generating
+
+    private static Boolean useHints = false;
     private static final int MAX_IDENTIFIERS = 100;
     private static final int MAX_EXPRESSION_DEPTH = 10;
     private static final int MAX_STATEMENT_DEPTH = 6;
@@ -64,6 +66,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     /** Main entry point. Called once per test case. Returns a random JS program. */
     @Override
     public String generate(SourceOfRandomness random, GenerationStatus status) {
+        JavaScriptCodeGenerator.useHints = random.nextBoolean();
         this.status = status; // we save this so that we can pass it on to other generators
         this.identifiers = new HashSet<>();
         this.identifiersList = new ArrayList<>();
@@ -85,7 +88,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
             Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
             String item;
             //Boolean coinflip = random.nextBoolean();
-            if (hints != null && hints.length > 0 ) {
+            if (useHints && hints != null && hints.length > 0 ) {
 
                 //random.nextInt(0, Integer.MAX_VALUE);
                 choice = choice % hints.length;
@@ -302,7 +305,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
 
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
        // Boolean coinflip = random.nextBoolean();
-        if (hints != null && hints.length > 0 ) { //&& coinflip ) {
+        if (useHints && hints != null && hints.length > 0 ) { //&& coinflip ) {
             //random.nextInt(0, Integer.MAX_VALUE);
             choice = choice % hints.length;
 
@@ -401,7 +404,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
 
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
        // Boolean coinflip = random.nextBoolean();
-        if (hints != null && hints.length > 0 ) { //&& coinflip) {
+        if (useHints && hints != null && hints.length > 0 ) { //&& coinflip) {
 
             identifier = "";
 

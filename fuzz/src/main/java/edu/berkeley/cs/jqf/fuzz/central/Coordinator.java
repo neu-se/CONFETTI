@@ -4,6 +4,7 @@ import za.ac.sun.cs.green.expr.Expression;
 
 import java.io.*;
 import java.util.*;
+import java.util.regex.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BinaryOperator;
 
@@ -298,6 +299,28 @@ public class Coordinator implements Runnable {
         this.notifyAll();
 
     }
+    private Boolean isInWhitelist(String branchname) {
+
+        if (config.regexFilter == null)
+            return true;
+        else {
+
+            // Create a pattern from regex
+            Pattern pattern
+                    = Pattern.compile(config.regexFilter);
+
+
+            // Create a matcher for the input String
+            Matcher matcher
+                    = pattern
+                    .matcher(branchname);
+
+            // Get the possible result
+            // using lookingAt() method
+            return matcher.lookingAt();
+        }
+       // return branchname.contains("org/mozilla/javascript/CodeGenerator") || branchname.contains("org/mozilla/javascript/optimizer");
+    }
 
     private void z3Thread() {
         HashMap<Branch, Set<Input>> z3tried = new HashMap<>();
@@ -314,6 +337,7 @@ public class Coordinator implements Runnable {
                     Optional<Branch> maybeTop = branches.values().stream()
                             .filter(b -> b.source != null)
                             .filter(b -> !triedTops.contains(b))
+                            .filter(b -> isInWhitelist(b.source))
                             .filter(b -> b.falseExplored.isEmpty() || b.trueExplored.isEmpty())
                             .reduce(BinaryOperator.maxBy(Comparator.comparingInt(o -> o.trueExplored.size() + o.falseExplored.size())));
 
@@ -476,12 +500,16 @@ public class Coordinator implements Runnable {
         public enum Hinting { NONE, GLOBAL, PER_INPUT, PER_BYTE }
 
         public final String[] filter;
+
+        public final String regexFilter;
         public final Hinting hinting;
 
         public final boolean useInvalid;
         public final boolean useConstraints;
 
         public final boolean usez3Hints;
+
+        public final boolean doNotUseHints;
 
         public final String constraintsPath;
 
@@ -495,6 +523,10 @@ public class Coordinator implements Runnable {
             {
                 String f = p.getProperty("path.filter");
                 filter = (f == null) ? null : f.split(",");
+            }
+
+            {
+                regexFilter = p.getProperty("regex.filter");
             }
             {
                 Hinting h;
@@ -514,6 +546,7 @@ public class Coordinator implements Runnable {
 
                 triggerZ3 = (p.getProperty("triggerZ3") != null);
 
+                doNotUseHints = (p.getProperty("doNotUseHints") != null);
                 String sampleWindow;
                 if((sampleWindow = p.getProperty("triggerZ3SampleWindow")) != null) {
                     triggerZ3SampleWindow = Integer.parseInt(sampleWindow);

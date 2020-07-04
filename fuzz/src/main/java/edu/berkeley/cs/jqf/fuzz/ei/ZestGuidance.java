@@ -1581,10 +1581,13 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         public abstract void gc();
 
 
-        private void calculateScore(LinkedList<Coordinator.StringHint[]> hints) {
+        private  void calculateScore(LinkedList<Coordinator.StringHint[]> hints) {
+
             Integer temp_score = 0;
-            if(this.valid)
-                temp_score = ZestGuidance.priorityQueueConfig.validInputScoreOperation.operation(temp_score,ZestGuidance.priorityQueueConfig.validInputScoreValue);
+            if(this.valid) {
+                for (int i = 0; i < this.responsibilities.size(); i++)
+                    temp_score = ZestGuidance.priorityQueueConfig.validInputScoreOperation.operation(temp_score, ZestGuidance.priorityQueueConfig.validInputScoreValue);
+            }
             if(this.isFavored())
                 temp_score = ZestGuidance.priorityQueueConfig.favoredInputScoreOperation.operation(temp_score, ZestGuidance.priorityQueueConfig.favoredInputScoreValue);
             for(Coordinator.StringHint[] stringHints : hints ) {
@@ -1601,6 +1604,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 for(int i = 0; i < this.responsibilities.size(); i++)
                     temp_score = ZestGuidance.priorityQueueConfig.z3newBranchesScoreOperation.operation(temp_score, ZestGuidance.priorityQueueConfig.z3newBranchesScoreValue);
             }
+
+            //occasionally just randomly shoot something up to the front (1/500)
+
 
             this.score = temp_score;
         }
