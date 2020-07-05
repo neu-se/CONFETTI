@@ -58,6 +58,8 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
     private final List<String> dictionary;
     private Generator<String> fallback;
 
+    public static Boolean useHints = false;
+
     public DictionaryBackedStringGenerator(String source, Generator<String> fallback) throws IOException {
         super(String.class);
         this.dictionary = new ArrayList<>();
@@ -91,7 +93,7 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
 
 
 
-            if (hints != null && hints.length > 0 ) {
+            if (DictionaryBackedStringGenerator.useHints && hints != null && hints.length > 0 ) {
 
 
                 choice = choice % hints.length;

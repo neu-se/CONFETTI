@@ -122,6 +122,7 @@ public class XmlDocumentGenerator extends Generator<Document> {
     public Document generate(SourceOfRandomness random, GenerationStatus status) {
         DocumentBuilder builder;
         try {
+            DictionaryBackedStringGenerator.useHints = random.nextBoolean();
             builder = documentBuilderFactory.newDocumentBuilder();
         } catch (ParserConfigurationException e) {
             throw new RuntimeException(e);
