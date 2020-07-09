@@ -1021,7 +1021,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 try {
                     triggerClient.sendInput(i.bytes, i.result, i.id,
                             new LinkedList<>(),
-                            0.0, 0L  );
+                            0.0, 0L, i.score  );
                 } catch (IOException e) {
                 }
             }
@@ -1177,7 +1177,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                         Double coveragePercentage = totalCoverage.getNonZeroCount() * 100.0 / totalCoverage.size();
                         central.sendInput(ris.getRequests(), result, currentInput.id,
                                 hintsUsed ? StringEqualsHintingInputStream.getHints() : new LinkedList<>(),
-                                coveragePercentage, numTrials  );
+                                coveragePercentage, numTrials, currentInput.score  );
                         StringEqualsHintingInputStream.hintUsedInCurrentInput = false;
 
                         // Send updated coverage
@@ -1410,6 +1410,25 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         if (priorityQueueConfig.usePriorityQueue) {
             currentInput.calculateScore(StringEqualsHintingInputStream.getHints());
             savedInputsAccess.add(currentInput);
+
+            List<Coordinator.Input> newScoreInputs = central.getScoreUpdates();
+
+            Input temp = null;
+            for(Coordinator.Input n : newScoreInputs) {
+                for (Input i : savedInputsAccess) {
+                    if (n.id == i.id){
+                       temp = i;
+                       break;
+                    }
+                }
+                if(temp != null) {
+                    savedInputsAccess.remove(temp);
+                    temp.score += n.score;
+                    savedInputsAccess.add(temp);
+                }
+            }
+
+
         }
     }
 

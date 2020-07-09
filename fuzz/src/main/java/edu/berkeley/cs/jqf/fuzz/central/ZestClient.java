@@ -3,9 +3,11 @@ package edu.berkeley.cs.jqf.fuzz.central;
 import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
 import edu.berkeley.cs.jqf.fuzz.guidance.Result;
 import edu.berkeley.cs.jqf.fuzz.util.Coverage;
+import edu.columbia.cs.psl.phosphor.struct.Pair;
 
 import java.io.IOException;
 import java.util.LinkedList;
+import java.util.List;
 
 public class ZestClient extends Central {
 
@@ -55,7 +57,7 @@ public class ZestClient extends Central {
      * 3. Select input
      * 3. Receive instructions
      */
-    public void sendInput(LinkedList<byte[]> inputRequests, Result result, int id, LinkedList<Coordinator.StringHint[]> hints, Double coveragePercentage, Long totalExecutions) throws IOException {
+    public void sendInput(LinkedList<byte[]> inputRequests, Result result, int id, LinkedList<Coordinator.StringHint[]> hints, Double coveragePercentage, Long totalExecutions, Integer score) throws IOException {
         oos.writeObject(ZestMessageType.SENDINPUT);
         oos.writeObject(inputRequests);
         oos.writeObject(result);
@@ -63,6 +65,7 @@ public class ZestClient extends Central {
         oos.writeObject(hints);
         oos.writeDouble(coveragePercentage);
         oos.writeLong(totalExecutions);
+        oos.writeInt(score);
         oos.flush();
         oos.reset();
     }
@@ -102,6 +105,29 @@ public class ZestClient extends Central {
 
     public void sendCoverage(Coverage totalCoverage) {
         // TODO
+    }
+
+    public List<Coordinator.Input> getScoreUpdates() {
+
+        try {
+
+            LinkedList<Coordinator.Input> ret = new LinkedList<>();
+            oos.writeObject(ZestMessageType.GETSCOREUPDATES);
+            oos.reset();
+            oos.flush();
+            Coordinator.Input i = (Coordinator.Input) ois.readObject();
+            while(i != null) {
+                ret.add(i);
+                i = (Coordinator.Input) ois.readObject();
+            }
+
+            return ret;
+
+        } catch (ClassNotFoundException e) {
+            throw new Error(e);
+        } catch (IOException e) {
+            return new LinkedList<>();
+        }
     }
 
     public Coordinator.Input getInput() {

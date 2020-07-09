@@ -1,5 +1,6 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
+import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
 import edu.berkeley.cs.jqf.fuzz.guidance.Result;
 
 import java.io.IOException;
@@ -21,6 +22,7 @@ class ZestWorker extends Worker {
     private final Coordinator.StringHint[] EMPTY = new Coordinator.StringHint[0];
 
     private LinkedList<Coordinator.Input> fromZ3 = new LinkedList<>();
+    private LinkedList<Coordinator.Input> updatedScoreInputs = new LinkedList<>();
 
     public ZestWorker(ObjectInputStream ois, ObjectOutputStream oos, Coordinator c) throws IOException {
         super(ois, oos);
@@ -63,6 +65,7 @@ class ZestWorker extends Worker {
 
                     Double coveragePercentage = ois.readDouble();
                     Long numExecutions = ois.readLong();
+                    Integer score = ois.readInt();
 
                     // Receive coverage
                     //                Coverage cov = (Coverage) ois.readObject();
@@ -82,7 +85,7 @@ class ZestWorker extends Worker {
                         i += b.length;
                     }
 
-                    c.foundInput(id, bs, res != Result.INVALID, hints, coveragePercentage, numExecutions);
+                    c.foundInput(id, bs, res != Result.INVALID, hints, coveragePercentage, numExecutions, score);
 
 
                     synchronized (recommendations) {
@@ -162,6 +165,23 @@ class ZestWorker extends Worker {
                     oos.writeObject(next);
                     break;
 
+                case GETSCOREUPDATES:
+                    // Zest is asking if there's an Inputs whose scores we should update
+                    Coordinator.Input n;
+                    synchronized (updatedScoreInputs) {
+
+                        while(true) {
+                            n = (updatedScoreInputs.isEmpty() ? null : updatedScoreInputs.removeFirst());
+                            if (n != null) {
+                                System.out.println("SCORE UPDATES FOR INPUTS BEING SENT");
+                            }
+                            oos.writeObject(n);
+                            if(n == null) break;
+                        }
+                    }
+
+                    break;
+
                 default:
                     break;
             }
@@ -196,6 +216,12 @@ class ZestWorker extends Worker {
     public void addInputFromZ3(Coordinator.Input i) {
         synchronized (fromZ3) {
             fromZ3.add(i);
+        }
+    }
+
+    public void addUpdatedInputScore(Coordinator.Input i ) {
+        synchronized (updatedScoreInputs) {
+            updatedScoreInputs.add(i);
         }
     }
 }

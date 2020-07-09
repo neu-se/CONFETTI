@@ -15,6 +15,8 @@ public class Coordinator implements Runnable {
     private ConcurrentHashMap<Input, HashMap<Integer, HashSet<StringHint>>> perByteStringEqualsHints = new ConcurrentHashMap<>();
     private HashSet<StringHint> globalStringEqualsHints = new HashSet<>();
 
+    private HashMap<Integer, Set<Branch>> seenBranches = new HashMap<>();
+
     private ConcurrentHashMap<Input, ConstraintRepresentation> constraints = new ConcurrentHashMap<>();
     private KnarrWorker knarr;
     private Z3Worker z3;
@@ -29,7 +31,7 @@ public class Coordinator implements Runnable {
     }
 
 
-    protected final synchronized void foundInput(int id, byte[] bytes, boolean valid, LinkedList<StringHint[]>hints, Double coveragePercentage, long numExecutions) {
+    protected final synchronized void foundInput(int id, byte[] bytes, boolean valid, LinkedList<StringHint[]>hints, Double coveragePercentage, long numExecutions, Integer score) {
         Input in = new Input();
         in.bytes = bytes;
         in.id = id;
@@ -37,6 +39,7 @@ public class Coordinator implements Runnable {
         in.hints = hints;
         in.coveragePercentage = coveragePercentage;
         in.numExecutions = numExecutions;
+        in.score = score;
 
 
         this.inputs.addLast(in);
@@ -57,6 +60,36 @@ public class Coordinator implements Runnable {
         return null;
     }
 
+    private void update_score( LinkedList<Branch> bs, Input input) {
+        Integer temp_score = 0;
+        Integer starting_branch_score = 1000000;
+        for(int i = 0; i < bs.size(); i++) {
+            Set<Branch> seen = null;
+            if(seenBranches.containsKey(i)) {
+                if(!seenBranches.get(i).contains(bs.get(i))) {
+                    seen = seenBranches.get(i);
+                    if(!seen.contains(bs.get(i))) {
+                        seen.add(bs.get(i));
+                        temp_score += starting_branch_score;
+                    }
+                }
+            }
+            else {
+                HashSet<Branch> hs = new HashSet<>();
+                hs.add(bs.get(i));
+                seenBranches.put(i, hs);
+                temp_score += starting_branch_score;
+            }
+
+            starting_branch_score = starting_branch_score/2;
+        }
+
+        if(temp_score > 0 ) {
+            input.score = input.score + temp_score;
+            zest.addUpdatedInputScore(input);
+        }
+
+    }
 
     @Override
     public void run() {
@@ -145,6 +178,7 @@ public class Coordinator implements Runnable {
                     for (Expression e : cs)
                         knarr.process(bs, eqs, e);
 
+                    update_score(bs, input);
                     // Adjust string hints
                     if (!eqs.isEmpty()) {
                         switch (config.hinting) {
@@ -414,12 +448,13 @@ public class Coordinator implements Runnable {
     }
 
     public static class Input implements Serializable {
-        int id;
+        public int id;
         public byte[] bytes;
         boolean isNew;
         public double coveragePercentage;
         public long numExecutions;
         public LinkedList<StringHint[]> hints;
+        public Integer score = 0;
 
         @Override
         public boolean equals(Object o) {

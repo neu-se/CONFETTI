@@ -4,5 +4,6 @@ public enum ZestMessageType {
     HEARTBEAT,
     SENDINPUT,
     SELECTINPUT,
-    GETZ3INPUT
+    GETZ3INPUT,
+    GETSCOREUPDATES
 }
