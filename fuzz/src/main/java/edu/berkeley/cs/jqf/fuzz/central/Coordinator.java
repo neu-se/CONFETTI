@@ -1,5 +1,6 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
+import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
 import za.ac.sun.cs.green.expr.Expression;
 
 import java.io.*;
@@ -62,7 +63,7 @@ public class Coordinator implements Runnable {
 
     private void update_score( LinkedList<Branch> bs, Input input) {
         Integer temp_score = 0;
-        Integer starting_branch_score = 1000000;
+        Integer starting_branch_score = config.branchPriorityDecayFunctionStartingValue;
         for(int i = 0; i < bs.size(); i++) {
             Set<Branch> seen = null;
             if(seenBranches.containsKey(i)) {
@@ -81,7 +82,7 @@ public class Coordinator implements Runnable {
                 temp_score += starting_branch_score;
             }
 
-            starting_branch_score = starting_branch_score/2;
+            starting_branch_score = config.branchPriorityDecayFunctionOperation.operation(starting_branch_score, config.branchPriorityDecayFunctionValue);
         }
 
         if(temp_score > 0 ) {
@@ -534,6 +535,12 @@ public class Coordinator implements Runnable {
     public static class Config {
         public enum Hinting { NONE, GLOBAL, PER_INPUT, PER_BYTE }
 
+        public interface Arithmetic {
+            int operation(int a, int b);
+        }
+
+        public  HashMap<String, Config.Arithmetic> operations  = new HashMap<>();
+
         public final String[] filter;
 
         public final String regexFilter;
@@ -553,8 +560,17 @@ public class Coordinator implements Runnable {
         public final int triggerZ3SampleWindow;
 
         public final double triggerZ3SampleThreshold;
+        public final int branchPriorityDecayFunctionValue;
+        public final Arithmetic branchPriorityDecayFunctionOperation;
+        public final int branchPriorityDecayFunctionStartingValue;
 
         public Config(Properties p) {
+
+            operations.put("+", (int a, int b) -> (a + b));
+            operations.put("-", (int a, int b) -> (a - b));
+            operations.put("/", (int a, int b) -> (a / b));
+            operations.put("*", (int a, int b) -> (a * b));
+
             {
                 String f = p.getProperty("path.filter");
                 filter = (f == null) ? null : f.split(",");
@@ -592,6 +608,17 @@ public class Coordinator implements Runnable {
                     triggerZ3SampleThreshold = Double.parseDouble(sampleThreshold);
                 } else triggerZ3SampleThreshold = Double.MAX_VALUE;
 
+
+                String branchPriorityDecayFunction = p.getProperty("branchPriorityDecayFunction");
+                if(branchPriorityDecayFunction != null) {
+                    branchPriorityDecayFunctionStartingValue = Integer.parseInt(branchPriorityDecayFunction.split(",")[2]);
+                    branchPriorityDecayFunctionValue = Integer.parseInt(branchPriorityDecayFunction.split(",")[1]);
+                    branchPriorityDecayFunctionOperation = operations.get(branchPriorityDecayFunction.split(",")[0]);
+                } else {
+                    branchPriorityDecayFunctionValue = 0;
+                    branchPriorityDecayFunctionStartingValue = 0;
+                    branchPriorityDecayFunctionOperation = operations.get("+");
+                }
             }
         }
     }
