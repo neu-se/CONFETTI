@@ -158,7 +158,7 @@ class ZestWorker extends Worker {
                         next = (fromZ3.isEmpty() ? null : fromZ3.removeFirst());
                     }
                     if (next != null) {
-                        System.out.println("WIN");
+                        //System.out.println("WIN");
                         printSentStringHints(next.hints);
                     }
 

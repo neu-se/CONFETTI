@@ -120,14 +120,12 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     private PriorityQueue<Input> savedInputsAccess = new PriorityQueue<Input>(new InputComparator());
 
-
-
     private class InputComparator implements Comparator<Input> {
         public int compare(Input i1, Input i2)
         {
             if (i1.score < i2.score)
                 return 1;
-            else if (i1.score > i1.score)
+            else if (i1.score > i2.score)
                 return -1;
             return 0;
         }
@@ -308,7 +306,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     // ---------- LOGGING / STATS OUTPUT ------------
 
     /** Whether to print log statements to stderr (debug option; manually edit). */
-    private final boolean verbose = true;
+    private final boolean verbose = false;
 
 
     /** A system console, which is non-null only if STDOUT is a console. */
@@ -936,9 +934,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             }
 
             // Write it to disk for debugging
-            try {
-                writeCurrentInputToFile(currentInputFile);
-            } catch (IOException ignore) { }
+            //try {
+            //    writeCurrentInputToFile(currentInputFile);
+            //} catch (IOException ignore) { }
 
             // Start time-counting for timeout handling
             this.runStart = new Date();
