@@ -18,6 +18,7 @@ public class Central {
 
     protected Central() throws IOException {
         Socket s = new Socket(InetAddress.getLocalHost(), PORT);
+        s.setTcpNoDelay(true);
         ois = new ObjectInputStream(s.getInputStream());
         oos = new ObjectOutputStream(s.getOutputStream());
     }

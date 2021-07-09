@@ -50,12 +50,12 @@ import static org.junit.Assume.assumeThat;
 public class ParserTest {
 
     @Fuzz
-    public void testWithInputStream(InputStream inputStream) throws IOException {
+    public void testWithInputStream(InputStream inputStream) throws IOException, ClassFormatException {
         JavaClass clazz;
 
         try {
             clazz = new ClassParser(new DataInputStream(inputStream), "Hello.class").parse();
-        } catch (ClassFormatError | ClassFormatException e) {
+        } catch (ClassFormatError | ClassFormatException | EOFException e) {
             // ClassFormatException thrown by the parser is just invalid input
             Assume.assumeNoException(e);
             return;
@@ -63,6 +63,9 @@ public class ParserTest {
 
         // Any non-IOException thrown here should be marked a failure
         // (including ClassFormatException)
+        //TODO JSB: Why is a classformatexception count as an error here?
+        //TODO sometimes this fails becuase we reference a class that doesn't exist (IOException causing ClassNotFound),
+        // those should be ignored
         verifyJavaClass(clazz);
     }
 

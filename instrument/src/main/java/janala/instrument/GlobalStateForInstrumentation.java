@@ -16,34 +16,35 @@ public class GlobalStateForInstrumentation {
 
   public int incAndGetId() {
     iid++;
-    validate(iid, IBITS);
+    //validate(iid, IBITS);
     return getId();
   }
 
   public int getId() {
-    return (cid << (32 - CBITS)) + (mid << (32 - CBITS - MBITS)) + iid;
+    //return (cid << (32 - CBITS)) + (mid << (32 - CBITS - MBITS)) + iid;
+      return iid;
   }
 
-  public int getMid() {
-    return mid;
-  }
+  //public int getMid() {
+  //  return mid;
+  //}
 
   public void incMid() {
-    this.mid++;
-    validate(mid, MBITS);
-    this.iid = 0;
+    //this.mid++;
+    //validate(mid, MBITS);
+    //this.iid = 0;
   }
 
-  public int getCid() {
-    return cid;
-  }
+  //public int getCid() {
+  //  return cid;
+  //}
 
   public void setCid(int cid) {
-    cid = Math.abs(cid) % CBITS;
-    validate(cid, CBITS);
-    this.iid = 0;
-    this.mid = 0;
-    this.cid = cid;
+    //cid = Math.abs(cid) % CBITS;
+    //validate(cid, CBITS);
+    //this.iid = 0;
+    //this.mid = 0;
+    //this.cid = cid;
   }
 
   private void validate(int id, int bits) {

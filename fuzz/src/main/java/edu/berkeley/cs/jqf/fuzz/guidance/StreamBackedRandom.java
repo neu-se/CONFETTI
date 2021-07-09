@@ -50,7 +50,7 @@ import java.util.Random;
  *
  */
 public class StreamBackedRandom extends Random {
-    private final InputStream inputStream;
+    public final InputStream inputStream;
     private final ByteBuffer byteBuffer = ByteBuffer.allocate(4);
     private int totalBytesRead = 0;
     private int leadingBytesToIgnore = 0;

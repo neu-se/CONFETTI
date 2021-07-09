@@ -3,9 +3,9 @@ package edu.berkeley.cs.jqf.fuzz.central;
 import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
 import edu.berkeley.cs.jqf.fuzz.guidance.Result;
 import edu.berkeley.cs.jqf.fuzz.util.Coverage;
-import edu.columbia.cs.psl.phosphor.struct.Pair;
 
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -57,15 +57,16 @@ public class ZestClient extends Central {
      * 3. Select input
      * 3. Receive instructions
      */
-    public void sendInput(LinkedList<byte[]> inputRequests, Result result, int id, LinkedList<Coordinator.StringHint[]> hints, Double coveragePercentage, Long totalExecutions, Integer score) throws IOException {
+    public void sendInput(LinkedList<byte[]> inputRequests, Result result, ZestGuidance.Input input, Double coveragePercentage, Long totalExecutions) throws IOException {
         oos.writeObject(ZestMessageType.SENDINPUT);
         oos.writeObject(inputRequests);
         oos.writeObject(result);
-        oos.writeInt(id);
-        oos.writeObject(hints);
+        oos.writeInt(input.id);
+        oos.writeObject(input.stringEqualsHints == null ? new LinkedList<Coordinator.StringHint[]>() : input.stringEqualsHints);
+        oos.writeObject(input.instructions == null ? new LinkedList<int[]>() : input.instructions);
         oos.writeDouble(coveragePercentage);
         oos.writeLong(totalExecutions);
-        oos.writeInt(score);
+        oos.writeInt(input.score);
         oos.flush();
         oos.reset();
     }
@@ -103,6 +104,22 @@ public class ZestClient extends Central {
         }
     }
 
+    public LinkedList<int[]> receiveByteRangesUsedAsControlInGenerator() throws IOException {
+        try {
+            return (LinkedList<int[]>) ois.readObject();
+        } catch (ClassNotFoundException e) {
+            throw new Error(e);
+        }
+    }
+
+    public HashSet<Integer> receiveBytesFoundUsedBySUT() throws IOException {
+        try {
+            return (HashSet<Integer>) ois.readObject();
+        } catch (ClassNotFoundException e) {
+            throw new Error(e);
+        }
+    }
+
     public void sendCoverage(Coverage totalCoverage) {
         // TODO
     }
@@ -133,6 +150,8 @@ public class ZestClient extends Central {
     public Coordinator.Input getInput() {
         if (hasSeenNullZ3Input)
             return null;
+        // TODO optimization: it would be nice if the central pushed down to the client z3 inputs,
+        // rather than forcing this message to get answered each time.
 
         try {
             oos.writeObject(ZestMessageType.GETZ3INPUT);
@@ -150,4 +169,22 @@ public class ZestClient extends Central {
             return null;
         }
     }
+
+    public LinkedList<Integer> getRecommendations() {
+        try {
+            oos.writeObject(ZestMessageType.GETRECOMMENDATIONS);
+            oos.reset();
+            oos.flush();
+            LinkedList<Integer> ret = (LinkedList<Integer>) ois.readObject();
+            if(ret == null)
+                ret = new LinkedList<>();
+
+            return ret;
+        } catch (ClassNotFoundException e) {
+            throw new Error(e);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
 }

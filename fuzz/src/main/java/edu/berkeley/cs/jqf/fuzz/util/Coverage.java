@@ -28,27 +28,31 @@
  */
 package edu.berkeley.cs.jqf.fuzz.util;
 
-import java.lang.reflect.Array;
-import java.util.ArrayList;
-import java.util.Collection;
-
 import edu.berkeley.cs.jqf.instrument.tracing.events.BranchEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.CallEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEventVisitor;
+import janala.instrument.CoverageListener;
+import org.eclipse.collections.api.iterator.IntIterator;
+import org.eclipse.collections.api.list.primitive.IntList;
+import org.eclipse.collections.api.tuple.primitive.IntIntPair;
+import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
+
+import java.util.Iterator;
 
 /**
  * Utility class to collect branch and function coverage
  *
  * @author Rohan Padhye
  */
-public class Coverage implements TraceEventVisitor {
+public class Coverage implements TraceEventVisitor, CoverageListener {
 
     /** The size of the coverage map. */
     private final int COVERAGE_MAP_SIZE = (1 << 16) - 1; // Minus one to reduce collisions
 
     /** The coverage counts for each edge. */
-    private final Counter counter = new NonZeroCachingCounter(COVERAGE_MAP_SIZE);
+    //private final Counter counter = new NonZeroCachingCounter(COVERAGE_MAP_SIZE);
+    private final ReliableCounter counter = new ReliableCounter();
 
     private boolean lock = false;
     /** Creates a new coverage map. */
@@ -62,9 +66,10 @@ public class Coverage implements TraceEventVisitor {
      * @param that the coverage map to copy
      */
     public Coverage(Coverage that) {
-        for (int idx = 0; idx < COVERAGE_MAP_SIZE; idx++) {
-            this.counter.setAtIndex(idx, that.counter.getAtIndex(idx));
-        }
+        //for (int idx = 0; idx < COVERAGE_MAP_SIZE; idx++) {
+        //    this.counter.setAtIndex(idx, that.counter.getAtIndex(idx));
+        //}
+        this.counter.copyFrom(that.counter);
     }
 
     /**
@@ -91,14 +96,16 @@ public class Coverage implements TraceEventVisitor {
     @Override
     public void visitBranchEvent(BranchEvent b) {
         if(!lock) {
-            counter.increment(b.getIid() * 31 + b.getArm());
+            //This might still not be quite right - is it possible to overflow here and have a collision?
+            //Also note switch statements will have many arms...
+            counter.increment((b.getIid() << 2) + b.getArm());
         }
     }
 
     @Override
     public void visitCallEvent(CallEvent e) {
         if(!lock) {
-            counter.increment(e.getIid());
+            counter.increment((e.getIid() << 2) + 3);
         }
     }
 
@@ -116,21 +123,21 @@ public class Coverage implements TraceEventVisitor {
      *
      * @return a collection of keys that are covered
      */
-    public Collection<?> getCovered() {
-        return counter.getNonZeroIndices();
+    public IntList getCovered() {
+        return counter.getNonZeroKeys();
     }
 
 
-    public Collection<?> computeNewCoverage(Coverage baseline) {
-        Collection<Integer> newCoverage = new ArrayList<>();
+    public IntList computeNewCoverage(Coverage baseline) {
+        IntArrayList newCoverage = new IntArrayList();
 
-
-
-       Collection<Integer> baseNonZero = this.counter.getNonZeroIndices();
-       for (int idx : baseNonZero) {
-           if (baseline.counter.getAtIndex(idx) == 0) {
-             newCoverage.add(idx);
-           }
+        IntList baseNonZero = this.counter.getNonZeroKeys();
+        IntIterator iter = baseNonZero.intIterator();
+        while (iter.hasNext()) {
+            int idx = iter.next();
+            if (baseline.counter.get(idx) == 0) {
+                newCoverage.add(idx);
+            }
         }
         return newCoverage;
 
@@ -196,16 +203,35 @@ public class Coverage implements TraceEventVisitor {
      */
     public boolean updateBits(Coverage that) {
         boolean changed = false;
-        for (int idx = 0; idx < COVERAGE_MAP_SIZE; idx++) {
-            int before = this.counter.getAtIndex(idx);
-            int after = before | hob(that.counter.getAtIndex(idx));
-            if (after != before) {
-                this.counter.setAtIndex(idx, after);
-                changed = true;
+        //for (int idx = 0; idx < COVERAGE_MAP_SIZE; idx++) {
+        //    int before = this.counter.getAtIndex(idx);
+        //    int after = before | hob(that.counter.getAtIndex(idx));
+        //    if (after != before) {
+        //        this.counter.setAtIndex(idx, after);
+        //        changed = true;
+        //    }
+        //}
+        synchronized (this.counter){
+            synchronized (that.counter){
+                Iterator<IntIntPair> thatIter = that.counter.map.keyValuesView().iterator();
+
+                while(thatIter.hasNext()){
+                    IntIntPair coverageEntry = thatIter.next();
+                    int before = this.counter.map.get(coverageEntry.getOne());
+                    int after = before | hob(coverageEntry.getTwo());
+                    if(after != before){
+                        this.counter.map.put(coverageEntry.getOne(), after);
+                        changed = true;
+                    }
+                }
             }
         }
         return changed;
     }
 
 
+    @Override
+    public void logCoverage(int iid, int arm) {
+        counter.increment((iid << 2) + arm);
+    }
 }

@@ -41,11 +41,19 @@ import com.pholser.junit.quickcheck.random.SourceOfRandomness;
 import edu.berkeley.cs.jqf.examples.common.AlphaStringGenerator;
 import edu.berkeley.cs.jqf.examples.common.Dictionary;
 import edu.berkeley.cs.jqf.examples.common.DictionaryBackedStringGenerator;
+import edu.berkeley.cs.jqf.fuzz.central.KnarrWorker;
+import edu.columbia.cs.psl.phosphor.PreMain;
+import edu.columbia.cs.psl.phosphor.TaintUtils;
+import edu.columbia.cs.psl.phosphor.runtime.MultiTainter;
+import edu.columbia.cs.psl.phosphor.runtime.Taint;
+import edu.gmu.swe.knarr.runtime.ExpressionTaint;
+import edu.gmu.swe.knarr.runtime.Symbolicator;
 import org.junit.Assume;
 import org.w3c.dom.DOMException;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Text;
+import za.ac.sun.cs.green.expr.Expression;
 
 /**
  * A generator for XML documents.
@@ -58,7 +66,45 @@ public class XmlDocumentGenerator extends Generator<Document> {
             DocumentBuilderFactory.newInstance();
 
     private static GeometricDistribution geometricDistribution =
-            new GeometricDistribution();
+            new GeometricDistribution(){ // Copied from pholser.junit.quickcheck.internal.GeometricDistribution
+                                        //With taint propogation manually added
+                double probabilityOfMean(double mean) {
+                    if (mean <= 0)
+                        throw new IllegalArgumentException("Need a positive mean, got " + mean);
+
+                    return 1 / mean;
+                }
+                public int sampleWithMean(double mean, SourceOfRandomness random) {
+                    return this.sample(this.probabilityOfMean(mean), random);
+                }
+
+                int sample(double p, SourceOfRandomness random) {
+                    this.ensureProbability(p);
+                    if (p == 1.0D) {
+                        return 0;
+                    } else {
+                        double uniform = random.nextDouble();
+                        if(PreMain.RUNTIME_INST) {
+                            Taint tag = MultiTainter.getTaint(uniform);
+                            //TODO check if this is doing anything, i don't think it is but don't want to delete it right now
+                            int ret = (int) Math.ceil(Math.log(1.0D - uniform) / Math.log(1.0D - p));
+                            ret = Symbolicator.symbolic(ret, tag);
+                            Expression exp = (Expression) tag.getSingleLabel();
+                            Exception loc = new Exception();
+                            loc.fillInStackTrace();
+                            exp.metadata = loc;
+
+                            return ret;
+                        }else{
+                            return (int) Math.ceil(Math.log(1.0D - uniform) / Math.log(1.0D - p));
+                        }
+                    }
+                }
+                private void ensureProbability(double p) {
+                    if (p <= 0 || p > 1)
+                        throw new IllegalArgumentException("Need a probability in (0, 1], got " + p);
+                }
+            };
 
     /** Mean number of child nodes for each XML element. */
     private static final double MEAN_NUM_CHILDREN = 4;
@@ -122,7 +168,6 @@ public class XmlDocumentGenerator extends Generator<Document> {
     public Document generate(SourceOfRandomness random, GenerationStatus status) {
         DocumentBuilder builder;
         try {
-            DictionaryBackedStringGenerator.useHints = random.nextBoolean();
             builder = documentBuilderFactory.newDocumentBuilder();
         } catch (ParserConfigurationException e) {
             throw new RuntimeException(e);
@@ -150,6 +195,10 @@ public class XmlDocumentGenerator extends Generator<Document> {
         Element root = document.createElement(makeString(random, status));
         populateElement(document, root, random, status, 0);
         document.appendChild(root);
+        // Useful for debugging - will show all taint flows from sources to output string
+        // WARNING - when you have this on, you'll also get the constraints applied from the printer!
+        //if(PreMain.RUNTIME_INST || System.getenv("DEBUG") != null) //Only print debug in knarr
+        //    System.out.println(XMLDocumentUtils.documentToString(document));
         return document;
     }
 

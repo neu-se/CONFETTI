@@ -41,6 +41,9 @@ class Config {
 
       instrumentHeapLoad = Boolean.parseBoolean(properties.getProperty("janala.instrumentHeapLoad", "false"));
       instrumentAlloc = Boolean.parseBoolean(properties.getProperty("janala.instrumentAlloc", "false"));
+      if(instrumentAlloc || instrumentHeapLoad){
+          throw new UnsupportedOperationException("These features are no longer supported, they are not actually used for fuzzing.");
+      }
 
       String excludeInstStr = properties.getProperty("janala.excludes", "");
       if (excludeInstStr.length() > 0) {

@@ -29,6 +29,7 @@ public class RemoteGuidance implements Guidance {
 
     public RemoteGuidance() throws IOException {
         Socket s = new Socket(InetAddress.getLocalHost(), 54321);
+        s.setTcpNoDelay(true);
         ois = new ObjectInputStream(s.getInputStream());
         oos = new ObjectOutputStream(s.getOutputStream());
     }

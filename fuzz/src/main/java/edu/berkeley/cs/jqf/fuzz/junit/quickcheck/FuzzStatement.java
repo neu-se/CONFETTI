@@ -193,10 +193,12 @@ public class FuzzStatement extends Statement {
                     result = SUCCESS;
                 } catch (GuidanceException e) {
                     // Throw the guidance exception outside to stop fuzzing
-//                    throw e;
+                    //TODO JSB: Someone needs to figure out what those actual knarr errors are and handle just those...
+                    throw e;
+                    //JSB prior code here was:
                     // TODO this is where Knarr errors get caught, remove this after fixed Knarr bugs
-                    result = INVALID;
-                    error = e;
+                    //result = INVALID;
+                    //error = e;
                 } catch (org.junit.internal.AssumptionViolatedException e) {
                     result = INVALID;
                     error = e;

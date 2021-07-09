@@ -28,17 +28,10 @@
  */
 package edu.berkeley.cs.jqf.examples.ant;
 
-import java.io.*;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-
 import com.pholser.junit.quickcheck.From;
+import edu.berkeley.cs.jqf.examples.common.Dictionary;
 import edu.berkeley.cs.jqf.examples.xml.XMLDocumentUtils;
 import edu.berkeley.cs.jqf.examples.xml.XmlDocumentGenerator;
-import edu.berkeley.cs.jqf.examples.common.Dictionary;
 import edu.berkeley.cs.jqf.fuzz.Fuzz;
 import edu.berkeley.cs.jqf.fuzz.JQF;
 import org.apache.tools.ant.BuildException;
@@ -56,6 +49,13 @@ import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.SAXParseException;
 import org.xml.sax.helpers.XMLReaderAdapter;
+
+import java.io.*;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 @RunWith(JQF.class)
 public class ProjectBuilderTest {
@@ -121,6 +121,32 @@ public class ProjectBuilderTest {
     }
 
     private static class MyProjectHelperImpl extends ProjectHelperImpl {
+        static Class ProjectHelperRootHandler;
+        static Constructor ProjectHelperRootHandlerConstructor;
+        static Field ProjectHelperImplParser;
+        static Field ProjectHelperImplProject;
+        static Field ProjectHelperImplBuildFile;
+        static Field ProjectHelperImplBuildFileParent;
+
+
+        static {
+            try {
+                ProjectHelperRootHandler = Class.forName(ProjectHelperImpl.class.getName() + "$RootHandler");
+                ProjectHelperRootHandlerConstructor = ProjectHelperRootHandler.getDeclaredConstructor(ProjectHelperImpl.class);
+                ProjectHelperRootHandlerConstructor.setAccessible(true);
+                ProjectHelperImplParser = ProjectHelperImpl.class.getDeclaredField("parser");
+                ProjectHelperImplParser.setAccessible(true);
+                ProjectHelperImplProject = ProjectHelperImpl.class.getDeclaredField("project");
+                ProjectHelperImplProject.setAccessible(true);
+                ProjectHelperImplBuildFile = ProjectHelperImpl.class.getDeclaredField("buildFile");
+                ProjectHelperImplBuildFile.setAccessible(true);
+                ProjectHelperImplBuildFileParent = ProjectHelperImpl.class.getDeclaredField("buildFileParent");
+                ProjectHelperImplBuildFileParent.setAccessible(true);
+
+            } catch (ClassNotFoundException | NoSuchMethodException | NoSuchFieldException e) {
+                e.printStackTrace();
+            }
+        }
 
         @Override
         public void parse(Project project, Object source) throws BuildException {
@@ -140,32 +166,13 @@ public class ProjectBuilderTest {
                     inputSource = new InputSource(inputStream);
                     HandlerBase hb; // = new RootHandler(this);
                     try {
-                        Class<?> c = Class.forName(ProjectHelperImpl.class.getName() + "$RootHandler");
-                        Constructor<?> cc = c.getDeclaredConstructor(ProjectHelperImpl.class);
-                        cc.setAccessible(true);
-                        hb = (HandlerBase) cc.newInstance(this);
+                        hb = (HandlerBase) ProjectHelperRootHandlerConstructor.newInstance(this);
 
-                        {
-                            Field f = ProjectHelperImpl.class.getDeclaredField("parser");
-                            f.setAccessible(true);
-                            f.set(this, parser);
-                        }
-                        {
-                            Field f = ProjectHelperImpl.class.getDeclaredField("project");
-                            f.setAccessible(true);
-                            f.set(this, project);
-                        }
-                        {
-                            Field f = ProjectHelperImpl.class.getDeclaredField("buildFile");
-                            f.setAccessible(true);
-                            f.set(this, new File("/tmp/build.xml"));
-                        }
-                        {
-                            Field f = ProjectHelperImpl.class.getDeclaredField("buildFileParent");
-                            f.setAccessible(true);
-                            f.set(this, new File("/tmp"));
-                        }
-                    } catch (ClassNotFoundException | NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchFieldException e) {
+                        ProjectHelperImplParser.set(this, parser);
+                        ProjectHelperImplProject.set(this, project);
+                        ProjectHelperImplBuildFile.set(this, new File("/tmp/build.xml"));
+                        ProjectHelperImplBuildFileParent.set(this, new File("/tmp"));
+                    } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
                         throw new Error(e);
                     }
                     parser.setDocumentHandler(hb);

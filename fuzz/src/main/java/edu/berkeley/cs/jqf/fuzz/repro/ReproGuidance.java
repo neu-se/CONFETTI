@@ -28,15 +28,7 @@
  */
 package edu.berkeley.cs.jqf.fuzz.repro;
 
-import java.io.BufferedInputStream;
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.PrintStream;
+import java.io.*;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -46,17 +38,22 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 
+import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
 import edu.berkeley.cs.jqf.fuzz.central.ZestClient;
 import edu.berkeley.cs.jqf.fuzz.guidance.*;
+import edu.berkeley.cs.jqf.fuzz.knarr.KnarrGuidance;
 import edu.berkeley.cs.jqf.fuzz.util.Coverage;
 import edu.berkeley.cs.jqf.instrument.tracing.events.BranchEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.CallEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEvent;
+import edu.columbia.cs.psl.phosphor.PreMain;
+import edu.gmu.swe.knarr.runtime.PathUtils;
 import org.jacoco.core.analysis.Analyzer;
 import org.jacoco.core.analysis.CoverageBuilder;
 import org.jacoco.core.tools.ExecFileLoader;
 import org.jacoco.report.IReportVisitor;
 import org.jacoco.report.csv.CSVFormatter;
+import za.ac.sun.cs.green.expr.Expression;
 
 /**
  * A front-end that provides a specified set of inputs for test
@@ -83,6 +80,8 @@ public class ReproGuidance implements Guidance {
     private RecordingInputStream ris;
 
     HashMap<Integer, String> branchDescCache = new HashMap<>();
+    private File currentInput;
+    private KnarrGuidance.TaintingInputStream currentTaintingInputStream;
 
 
     /**
@@ -135,12 +134,38 @@ public class ReproGuidance implements Guidance {
     public InputStream getInput() {
         try {
             File inputFile = inputFiles[nextFileIdx];
-            this.inputStream = new BufferedInputStream(new FileInputStream(inputFile));
+            this.currentInput = inputFile;
+
+            //CONFETTI: we changed the saved input format.
+            try(ObjectInputStream ois = new ObjectInputStream(new BufferedInputStream(new FileInputStream(inputFile)))){
+                int inputSize = ois.readInt();
+                byte[] input = new byte[inputSize];
+                ois.readFully(input);
+                LinkedList<int[]> instructions = (LinkedList<int[]>) ois.readObject();
+                LinkedList<Coordinator.StringHint[]> stringHints = (LinkedList<Coordinator.StringHint[]>) ois.readObject();
+                int offsetOfLastAppliedHint = ois.readInt();
+                this.inputStream = new ByteArrayInputStream(input);
+                System.out.println("Running: " + inputFile.getName());
+                System.out.println("Input size: " + input.length);
+                System.out.println("Hint count: " + stringHints.size());
+                if(instructions != null && stringHints != null){
+                    if(instructions.size() != stringHints.size())
+                        throw new IllegalStateException();
+                    this.inputStream = new StringEqualsHintingInputStream(this.inputStream, null, instructions, stringHints);
+                }
+                if(PreMain.RUNTIME_INST == true)
+                {
+
+                    this.currentTaintingInputStream = new KnarrGuidance.TaintingInputStream(this.inputStream);
+                    this.inputStream = this.currentTaintingInputStream;
+                }
+            } catch (ClassNotFoundException e) {
+                e.printStackTrace();
+            }
 
             if (central != null) {
                 ris = new RecordingInputStream(this.inputStream);
                 this.inputStream = ris;
-                // TODO also replay String hints
             }
 
             if (allBranchesCovered != null) {
@@ -189,21 +214,22 @@ public class ReproGuidance implements Guidance {
         }
 
         if (central != null) {
-            try {
-                // Send new input / random requests used
-                Boolean hintsUsed = StringEqualsHintingInputStream.hintUsedInCurrentInput;
-                if (hintsUsed) {
-                    System.out.println("HINTS WERE USED IN CURRENT INPUT - SHOULD SEND THEM");
-                }
-                // TODO also replay String hints
-                central.sendInput(ris.getRequests(), result, 0, new LinkedList<>(), 0.0, 0L, 0);
-                StringEqualsHintingInputStream.hintUsedInCurrentInput = false;
-
-                // Send updated coverage
-                central.sendCoverage(new Coverage());
-            } catch (IOException e) {
-                throw new Error(e);
-            }
+            //try {
+            //    // Send new input / random requests used
+            //    Boolean hintsUsed = StringEqualsHintingInputStream.hintUsedInCurrentInput;
+            //    if (hintsUsed) {
+            //        System.out.println("HINTS WERE USED IN CURRENT INPUT - SHOULD SEND THEM");
+            //    }
+            //    // TODO also replay String hints
+            //    central.sendInput(ris.getRequests(), result, 0, new LinkedList<>(), 0.0, 0L, 0);
+            //    StringEqualsHintingInputStream.hintUsedInCurrentInput = false;
+            //
+            //    // Send updated coverage
+            //    central.sendCoverage(new Coverage());
+            //} catch (IOException e) {
+            //    throw new Error(e);
+            //}
+            throw new UnsupportedOperationException("Why is the central connected when you are doing repro? I don't know what that means. - JSB");
         }
 
         // Show errors for invalid tests
@@ -387,6 +413,37 @@ public class ReproGuidance implements Guidance {
 
     @Override
     public void setArgs(Object[] args) {
+        //if(PreMain.RUNTIME_INST){
+        //    Expression constraints = PathUtils.getCurPC().constraints;
+        //    HashSet<Integer> choiceVars = KnarrGuidance.extractVarNames(constraints);
+        //    LinkedList<int[]> rangesUsedInControlPointsInGenerator = new LinkedList<>();
+        //
+        //    for(int[] requestForRandomBytes : this.currentTaintingInputStream.readRequests){
+        //        boolean fullRequestMatched = false;
+        //        int offsetsMatched = 0;
+        //        if(requestForRandomBytes[1] != 1)
+        //            continue; //TODO testing with only booleans
+        //        for(int i = requestForRandomBytes[0]; i< requestForRandomBytes[0] + requestForRandomBytes[1]; i++){
+        //            if(choiceVars.contains(i)){
+        //                offsetsMatched++;
+        //            }
+        //        }
+        //        if(offsetsMatched == requestForRandomBytes[1]){
+        //            // The entire request matched
+        //            rangesUsedInControlPointsInGenerator.add(requestForRandomBytes);
+        //        }else{
+        //            // Only part of the request matched, add each byte one-by-one
+        //            for(int i = requestForRandomBytes[0]; i< requestForRandomBytes[0] + requestForRandomBytes[1]; i++){
+        //                if (choiceVars.contains(i)) {
+        //                    rangesUsedInControlPointsInGenerator.add(new int[]{i, 1});
+        //                }
+        //            }
+        //        }
+        //    }
+        //    for (int[] each : rangesUsedInControlPointsInGenerator) {
+        //        System.out.println("TARGET: " + each[0] + "..." + (each[0] + each[1]));
+        //    }
+        //}
     }
 
 }

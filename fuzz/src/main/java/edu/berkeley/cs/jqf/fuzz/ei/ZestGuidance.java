@@ -28,43 +28,35 @@
  */
 package edu.berkeley.cs.jqf.fuzz.ei;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
-import java.io.Console;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.PrintWriter;
-import java.lang.reflect.Method;
-import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
-
-import org.apache.bcel.classfile.JavaClass;
 import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
 import edu.berkeley.cs.jqf.fuzz.central.ZestClient;
 import edu.berkeley.cs.jqf.fuzz.ei.ExecutionIndex.Prefix;
 import edu.berkeley.cs.jqf.fuzz.ei.ExecutionIndex.Suffix;
 import edu.berkeley.cs.jqf.fuzz.guidance.*;
-import edu.berkeley.cs.jqf.fuzz.guidance.Result;
 import edu.berkeley.cs.jqf.fuzz.util.Coverage;
 import edu.berkeley.cs.jqf.fuzz.util.ProducerHashMap;
+import edu.berkeley.cs.jqf.instrument.tracing.SingleSnoop;
 import edu.berkeley.cs.jqf.instrument.tracing.events.CallEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.ReturnEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEventVisitor;
+import org.apache.bcel.classfile.JavaClass;
+import org.eclipse.collections.api.iterator.IntIterator;
+import org.eclipse.collections.api.list.primitive.IntList;
+import org.eclipse.collections.impl.set.mutable.primitive.IntHashSet;
 import org.w3c.dom.Document;
 
-import javax.xml.transform.*;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
+import java.io.*;
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import static java.lang.Math.ceil;
 import static java.lang.Math.log;
@@ -117,6 +109,19 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     /** Set of saved inputs to fuzz. */
     private ArrayList<Input> savedInputs = new ArrayList<>();
+
+    // CONFETTI book-keeping
+    private long[] countOfInputsSavedByMutation = new long[MutationType.values().length];
+
+    private long[] countOfSavedInputsBySeedSource = new long[SeedSource.values().length];
+
+    private int[] countOfInputsSavedWithMutationCountsRanges = new int[]{0, 1, 5, 10, 20, 100, 1000, 10000};
+    private long[] countOfInputsSavedWithMutationCounts = new long[countOfInputsSavedWithMutationCountsRanges.length];
+
+    /**
+     * If the central says that there is a recommendation for something, it will jump up to the front here
+     */
+    private LinkedList<Integer> recommendedInputsToFuzz = new LinkedList<>();
 
     private PriorityQueue<Input> savedInputsAccess = new PriorityQueue<Input>(new InputComparator());
 
@@ -261,6 +266,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     /** Number of mutated inputs generated from currentInput. */
     private int numChildrenGeneratedForCurrentParentInput = 0;
 
+    /** CONFETTI: Number of mutated inputs generated from currentInput at the most recent directed mutation location. */
+    private int numChildrenGeneratedForCurrentMutationLocation = 0;
+
+
     /** Number of cycles completed (i.e. how many times we've reset currentParentInputIdx to 0. */
     private int cyclesCompleted = 0;
 
@@ -306,7 +315,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     // ---------- LOGGING / STATS OUTPUT ------------
 
     /** Whether to print log statements to stderr (debug option; manually edit). */
-    private final boolean verbose = false;
+    private final boolean verbose = true;
 
 
     /** A system console, which is non-null only if STDOUT is a console. */
@@ -341,7 +350,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private File currentInputFile;
 
     /** Whether to print the fuzz config to the stats screen. */
-    private static boolean SHOW_CONFIG = false;
+    private static boolean SHOW_CONFIG = true;
 
     // ------------- TIMEOUT HANDLING ------------
 
@@ -403,15 +412,14 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     static final int UNIQUE_SENSITIVITY = Integer.getInteger("jqf.ei.UNIQUE_SENSITIVITY", Integer.MAX_VALUE);
 
-    private ZestClient central;
+    /**
+     * CONFETTI might ask that some specific bytes be mutated. This is how many times we'll try each place.
+     */
+    static final int MUTATIONS_PER_REQUESTED_MUTATION_LOCATION = 5;
+
+    private static ZestClient central;
     private ZestClient triggerClient;
     private RecordingInputStream ris;
-    private LinkedList<int[]> instructions;
-    public LinkedList<Coordinator.StringHint[]> stringEqualsHints;
-    public LinkedList<Coordinator.StringHint[]> previouslyUsedStringEqualsHints;
-
-
-    public LinkedList<LinkedList<Coordinator.StringHint[]>> allStringEqualsHintsCombinations = new LinkedList<>();
 
 
     private Long windowStartExecs = 0L;
@@ -435,6 +443,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         this.maxDurationMillis = duration != null ? duration.toMillis() : Long.MAX_VALUE;
         this.outputDirectory = outputDirectory;
         this.heartbeatInterval = heartbeatDuration;
+        SingleSnoop.setCoverageListener(runCoverage);
+
         prepareOutputDirectory();
 
         // Try to parse the single-run timeout
@@ -509,8 +519,22 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
      */
     public ZestGuidance(String testName, Duration duration, Integer heartbeatDuration, File outputDirectory, File... seedInputFiles) throws IOException {
         this(testName, duration, heartbeatDuration, outputDirectory);
-        for (File seedInputFile : seedInputFiles) {
-            seedInputs.add(new SeedInput(seedInputFile));
+        if(seedInputFiles.length == 1 && seedInputFiles[0].isDirectory()){
+            for(File f : seedInputFiles[0].listFiles()){
+                if(f.getName().endsWith(".input")){
+                    continue;
+                }
+                try {
+                    seedInputs.add(new SeedInput(f));
+                }catch(Throwable t){
+                    System.err.println("Unable to read seed " + f);
+                    t.printStackTrace();
+                }
+            }
+        } else {
+            for (File seedInputFile : seedInputFiles) {
+                seedInputs.add(new SeedInput(seedInputFile));
+            }
         }
     }
 
@@ -594,9 +618,50 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         result += seconds + "s";
         return result;
     }
+    private void logStatsWithoutDisplay(){
+
+        Date now = new Date();
+        long intervalMilliseconds = now.getTime() - lastRefreshTime.getTime();
+        if (intervalMilliseconds < STATS_REFRESH_TIME_PERIOD) {
+            return;
+        }
+        long interlvalTrials = numTrials - lastNumTrials;
+        long intervalExecsPerSec = interlvalTrials * 1000L / intervalMilliseconds;
+        double intervalExecsPerSecDouble = interlvalTrials * 1000.0 / intervalMilliseconds;
+        lastRefreshTime = now;
+        lastNumTrials = numTrials;
+        long elapsedMilliseconds = now.getTime() - startTime.getTime();
+        long execsPerSec = numTrials * 1000L / elapsedMilliseconds;
+
+        String currentParentInputDesc;
+        if (seedInputs.size() > 0 || savedInputs.isEmpty()) {
+            currentParentInputDesc = "<seed>";
+        } else {
+            Input currentParentInput = savedInputs.get(currentParentInputIdx);
+            currentParentInputDesc = currentParentInputIdx + " ";
+            currentParentInputDesc += currentParentInput.isFavored() ? "(favored)" : "(not favored)";
+            currentParentInputDesc += " {" + numChildrenGeneratedForCurrentParentInput +
+                    "/" + getTargetChildrenForParent(currentParentInput) + " mutations}";
+        }
+
+        int nonZeroCount = totalCoverage.getNonZeroCount();
+        double nonZeroFraction = nonZeroCount * 100.0 / totalCoverage.size();
+        int nonZeroValidCount = validCoverage.getNonZeroCount();
+        double nonZeroValidFraction = nonZeroValidCount * 100.0 / validCoverage.size();
+
+
+        String plotData = String.format("%d, %d, %d, %d, %d, %d, %.2f%%, %d, %d, %d, %.2f, %d, %d, %d, %d, %.2f%%, %d",
+                TimeUnit.MILLISECONDS.toSeconds(now.getTime()), cyclesCompleted, currentParentInputIdx,
+                savedInputs.size(), 0, 0, nonZeroFraction, uniqueFailures.size(), 0, 0, intervalExecsPerSecDouble,
+                numTrials, mutatedBytes/numTrials, numValid, numTrials-numValid, nonZeroValidFraction,
+                (z3ThreadStartedInputNum != -1) && (numTrials >= z3ThreadStartedInputNum) ? 1: 0);
+        appendLineToFile(statsFile, plotData);
+    }
 
     // Call only if console exists
     private void displayStats() {
+        if(System.getenv("NO_CONSOLE") != null)
+            return;
         assert (console != null);
 
         Date now = new Date();
@@ -657,6 +722,26 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         console.printf("Execution speed:      %,d/sec now | %,d/sec overall\n", intervalExecsPerSec, execsPerSec);
         console.printf("Total coverage:       %,d (%.2f%% of map)\n", nonZeroCount, nonZeroFraction);
         console.printf("Valid coverage:       %,d (%.2f%% of map)\n", nonZeroValidCount, nonZeroValidFraction);
+        console.printf("Coverage-revealing inputs generated by:\n");
+        console.printf("    A single hint:        %,d\n", countOfInputsSavedByMutation[MutationType.APPLY_SINGLE_HINT.ordinal()]);
+        console.printf("    Mutating before hints:%,d\n", countOfInputsSavedByMutation[MutationType.BEFORE_HINTS.ordinal()]);
+        console.printf("    Mutating after hints: %,d\n", countOfInputsSavedByMutation[MutationType.AFTER_HINTS.ordinal()]);
+        console.printf("    Mutating near hints:  %,d\n", countOfInputsSavedByMutation[MutationType.AFTER_HINTS_BUT_NEAR.ordinal()]);
+        console.printf("    Mutating randomly:    %,d\n", countOfInputsSavedByMutation[MutationType.RANDOM.ordinal()]);
+        console.printf("    Mutating targeted:    %,d\n", countOfInputsSavedByMutation[MutationType.TARGETED_RANDOM.ordinal()]);
+        console.printf("Inputs saved by mutation count:\n");
+        console.printf("    0:                %,d\n", countOfInputsSavedWithMutationCounts[0]);
+        console.printf("    1:                %,d\n", countOfInputsSavedWithMutationCounts[1]);
+        console.printf("    1-5:              %,d\n", countOfInputsSavedWithMutationCounts[2]);
+        console.printf("    5-10:             %,d\n", countOfInputsSavedWithMutationCounts[3]);
+        console.printf("    10-20:            %,d\n", countOfInputsSavedWithMutationCounts[4]);
+        console.printf("    20-100:           %,d\n", countOfInputsSavedWithMutationCounts[5]);
+        console.printf("    100-1,000:        %,d\n", countOfInputsSavedWithMutationCounts[6]);
+        console.printf("    1,000-10,000:     %,d\n", countOfInputsSavedWithMutationCounts[7]);
+        console.printf("Saved inputs derived from:\n");
+        console.printf("    Hints             %,d\n", countOfSavedInputsBySeedSource[SeedSource.HINTS.ordinal()]);
+        console.printf("    Z3                %,d\n", countOfSavedInputsBySeedSource[SeedSource.Z3.ordinal()]);
+        console.printf("    Other             %,d\n", countOfSavedInputsBySeedSource[SeedSource.RANDOM.ordinal()]);
 
         String plotData = String.format("%d, %d, %d, %d, %d, %d, %.2f%%, %d, %d, %d, %.2f, %d, %d, %d, %d, %.2f%%, %d",
                 TimeUnit.MILLISECONDS.toSeconds(now.getTime()), cyclesCompleted, currentParentInputIdx,
@@ -671,6 +756,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         // Baseline is a constant
         int target = NUM_CHILDREN_BASELINE;
 
+
         // We like inputs that cover many things, so scale with fraction of max
         if (maxCoverage > 0) {
             target = (NUM_CHILDREN_BASELINE * parentInput.nonZeroCoverage) / maxCoverage;
@@ -681,82 +767,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             target = target * NUM_CHILDREN_MULTIPLIER_FAVORED;
         }
 
+        target += parentInput.bonusMutations;
         return target;
     }
 
-    private void generateAllCombinationsOfStringEqualsHints() {
-
-        int totalCombinations = 1;
-
-       HashMap<Integer,  Integer> indexes = new HashMap<>();
-
-
-        for(int i = 0; i < stringEqualsHints.size(); i++) {
-            Coordinator.StringHint[] ref = stringEqualsHints.get(i);
-            if (ref.length == 0) {
-               // indexes.put(i, null);
-                continue;
-            }
-            else {
-                stringEqualsHints.set(i, shuffleHints(ref));
-            }
-            totalCombinations *= ref.length;
-            indexes.put(i, 0);
-        }
-
-        if(totalCombinations > combinationsLimit) {
-            totalCombinations = combinationsLimit;
-        }
-
-        int carry = 0;
-
-        while(totalCombinations != 0) {
-
-            // reset carry
-            carry = 1;
-            LinkedList<Coordinator.StringHint[]> newEntry = new LinkedList<>();
-            for(int i = 0; i < stringEqualsHints.size(); i++) {
-                if(indexes.get(i) == null)
-                    newEntry.addLast(stringEqualsHints.get(i));
-                else
-                {
-                    Coordinator.StringHint hintArr[] = new Coordinator.StringHint[1];
-                    Coordinator.StringHint[] ref = stringEqualsHints.get(i);
-                    int curIndex = indexes.get(i);
-                    hintArr[0] = ref[curIndex];
-                    newEntry.addLast(hintArr);
-                    curIndex += carry;
-                    if(curIndex == ref.length) {
-                        curIndex = 0;
-                        carry = 1;
-                    } else {
-                        carry = 0;
-                    }
-                    indexes.put(i, curIndex);
-                }
-
-            }
-            allStringEqualsHintsCombinations.add(newEntry);
-            totalCombinations--;
-        }
-
-        return;
-    }
-
-
-    private Coordinator.StringHint[] shuffleHints(Coordinator.StringHint[] array){
-        Random random = new Random();
-
-        // Simple random swap algorithm
-        for (int i=0; i<array.length; i++) {
-            int randomPosition = random.nextInt(array.length);
-            Coordinator.StringHint temp = array[i];
-            array[i] = array[randomPosition];
-            array[randomPosition] = temp;
-        }
-
-        return array;
-    }
     private void completeCycle() {
         // Increment cycle count
         cyclesCompleted++;
@@ -780,6 +794,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 numFavoredLastCycle++;
             }
         }
+
         int totalCoverageCount = totalCoverage.getNonZeroCount();
         infoLog("Total %d branches covered", totalCoverageCount);
         if (sumResponsibilities != totalCoverageCount) {
@@ -827,120 +842,128 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             // Make fresh input using either list or maps
             infoLog("Spawning new input from thin air");
             currentInput = DISABLE_EXECUTION_INDEXING ? new LinearInput() : new MappedInput();
+            currentInput.seedSource = SeedSource.RANDOM;
 
-        } else if (central != null && (inputFromCentral = central.getInput()) != null) {
-            // Central sent input, use that instead
-
-
-
-            byte[] newInputBytes  = new byte[Math.max(inputFromCentral.hints.size(), inputFromCentral.bytes.length)];
-            for(int i = 0; i < newInputBytes.length ; i++) {
-                if( i < inputFromCentral.bytes.length) {
-                    newInputBytes[i] = inputFromCentral.bytes[i];
-                }
-                else {
-                    newInputBytes[i] = 0;
-                }
-            }
-
-           // currentInput = new ZestGuidance.SeedInput(inputFromCentral.bytes, "From central");
-            currentInput = new ZestGuidance.SeedInput(newInputBytes, "From central");
-            currentInput.z3 = true; // the only inputs we get from the central this way are z3
-
-            stringEqualsHints = inputFromCentral.hints;
-            instructions = new LinkedList<>();
-            for (int i = 0 ; i < stringEqualsHints.size() ; i++)
-                // This input came from the central, so we don't know how the Random requests bytes
-                // Treat each byte as a single request
-                instructions.addLast(new int[]{i,1});
-
-            // Write it to disk for debugging
-            try {
-                writeCurrentInputToFile(currentInputFile);
-            } catch (IOException ignore) {
-            }
-
-            // Start time-counting for timeout handling
-            this.runStart = new Date();
-            this.branchCount = 0;
-        }
-
-        else {
+        } else{
             // The number of children to produce is determined by how much of the coverage
             // pool this parent input hits
             Input currentParentInput = savedInputs.get(currentParentInputIdx);
             int targetNumChildren = getTargetChildrenForParent(currentParentInput);
-            boolean newParent = false;
+            if (numChildrenGeneratedForCurrentParentInput >= targetNumChildren &&
+                    central != null && (inputFromCentral = central.getInput()) != null) {
+                // Central sent input, use that instead
 
-
-
-            if (numChildrenGeneratedForCurrentParentInput >= targetNumChildren) {
-                // Select the next saved input to fuzz
-                if (priorityQueueConfig.usePriorityQueue)
-                    currentParentInputIdx = savedInputsAccess.remove().id;
-                else
-                    currentParentInputIdx = (currentParentInputIdx + 1) % savedInputs.size();
-
-                // Count cycles
-               // if (currentParentInputIdx == 0) {
-                if ((priorityQueueConfig.usePriorityQueue  && savedInputsAccess.isEmpty()) || (!priorityQueueConfig.usePriorityQueue && currentParentInputIdx == 0)) {
-                    completeCycle();
+                byte[] newInputBytes  = new byte[Math.max(inputFromCentral.hints.size(), inputFromCentral.bytes.length)];
+                for(int i = 0; i < newInputBytes.length ; i++) {
+                    if( i < inputFromCentral.bytes.length) {
+                        newInputBytes[i] = inputFromCentral.bytes[i];
+                    }
+                    else {
+                        newInputBytes[i] = 0;
+                    }
                 }
 
-                numChildrenGeneratedForCurrentParentInput = 0;
-                newParent = true;
-            }
-            Input parent = savedInputs.get(currentParentInputIdx);
+                // currentInput = new ZestGuidance.SeedInput(inputFromCentral.bytes, "From central");
+                currentInput = new ZestGuidance.SeedInput(newInputBytes, "From central");
+                currentInput.seedSource = SeedSource.Z3;
+                currentInput.z3 = true; // the only inputs we get from the central this way are z3
 
+                currentInput.stringEqualsHints = inputFromCentral.hints;
+                currentInput.instructions = new LinkedList<>();
+                //TODO this is almost surely wrong - shouldn't this only be at places where there is a non-zero?
+                for (int i = 0 ; i < currentInput.stringEqualsHints.size() ; i++)
+                    // This input came from the central, so we don't know how the Random requests bytes
+                    // Treat each byte as a single request
+                    currentInput.instructions.addLast(new int[]{i,1});
 
-            if (newParent && central != null) {
-                try {
-                    central.selectInput(parent.id);
-                    instructions = central.receiveInstructions();
-                    stringEqualsHints = central.receiveStringEqualsHints();
-                    previouslyUsedStringEqualsHints = central.receivePreviouslyUsedStringEqualsHints();
-                    generateAllCombinationsOfStringEqualsHints();
+                // Write it to disk for debugging
+                //try {
+                //    writeCurrentInputToFile(currentInputFile);
+                //} catch (IOException ignore) {
+                //}
 
+                // Start time-counting for timeout handling
+                this.runStart = new Date();
+                this.branchCount = 0;
+            } else {
+                boolean newParent = false;
+                boolean getRecommendations = false;
 
-                } catch (IOException e) {
-                    throw new Error(e);
+                if (numChildrenGeneratedForCurrentParentInput >= targetNumChildren) {
+                    // Select the next saved input to fuzz
+                    if(recommendedInputsToFuzz.isEmpty() && central != null && triggerClient != null){
+                        recommendedInputsToFuzz = triggerClient.getRecommendations();
+                    }
+                    if(!recommendedInputsToFuzz.isEmpty()){
+                        currentParentInputIdx = recommendedInputsToFuzz.pop();
+                        getRecommendations = true;
+                    }
+                    else if (priorityQueueConfig.usePriorityQueue)
+                        currentParentInputIdx = savedInputsAccess.remove().id;
+                    else
+                        currentParentInputIdx = (currentParentInputIdx + 1) % savedInputs.size();
+
+                    // Count cycles
+                    // if (currentParentInputIdx == 0) {
+                    if ((priorityQueueConfig.usePriorityQueue  && savedInputsAccess.isEmpty()) || (!priorityQueueConfig.usePriorityQueue && currentParentInputIdx == 0)) {
+                        completeCycle(); //TODO should probably revisit priority queue...
+                    }
+
+                    numChildrenGeneratedForCurrentParentInput = 0;
+                    numChildrenGeneratedForCurrentMutationLocation = 0;
+                    newParent = true;
                 }
-            }
+                Input parent = savedInputs.get(currentParentInputIdx);
 
 
-            if(!allStringEqualsHintsCombinations.isEmpty()) {
+                if (newParent && getRecommendations && central != null) {
+                    try {
+                        central.selectInput(parent.id);
+                        LinkedList<int[]> instructionsToTryInChildren = central.receiveInstructions();
+                        LinkedList<Coordinator.StringHint[]> stringEqualsHintsToTryInChildren = central.receiveStringEqualsHints();
+                        LinkedList<int[]> byteRangesUsedAsControlInGenerator = central.receiveByteRangesUsedAsControlInGenerator();
+                        HashSet<Integer> bytesFoundUsedInSUT = central.receiveBytesFoundUsedBySUT();
+                        if (!parent.alreadyReceivedHints) {
+                            if(instructionsToTryInChildren.isEmpty()){
+                                throw new IllegalStateException("Central didn't send instructions for input "+ parent.id + " even though it suggested it!");
+                            }
+                            parent.alreadyReceivedHints = true;
+                            parent.instructionsToTryInChildren = instructionsToTryInChildren;
+                            parent.stringEqualsHintsToTryInChildren = stringEqualsHintsToTryInChildren;
+                            parent.byteRangesToMutateDirectlyInChildren = byteRangesUsedAsControlInGenerator;
+                            parent.bytesFoundUsedInSUT = bytesFoundUsedInSUT;
+                            parent.addExtraRandomStringEqualsHints(random);
+                            parent.bonusMutations = 0;
+                            // CONFETTI will always get to generate its own set of children inputs
+                            if (parent.stringEqualsHintsToTryInChildren != null) {
+                                for (Object hints : parent.stringEqualsHintsToTryInChildren) {
+                                    parent.bonusMutations += ((Coordinator.StringHint[]) hints).length;
+                                }
+                            }
+                            if (parent.byteRangesToMutateDirectlyInChildren != null) {
+                                parent.bonusMutations += MUTATIONS_PER_REQUESTED_MUTATION_LOCATION * parent.byteRangesToMutateDirectlyInChildren.size();
+                            }
+                        }
 
-                // remove a random element
-                Random random = new Random();
-                stringEqualsHints = allStringEqualsHintsCombinations.remove(random.nextInt(allStringEqualsHintsCombinations.size()));
-
-                if(instructions.size() != stringEqualsHints.size()) {
-                    instructions = new LinkedList<>();
-                    // I BELIEVE this should only happen on input 0...
-                    for (int i = 0; i < stringEqualsHints.size(); i++)
-                        // This input came from the central, so we don't know how the Random requests bytes
-                        // Treat each byte as a single request
-                        instructions.addLast(new int[]{i, 1});
+                    } catch (IOException e) {
+                        throw new Error(e);
+                    }
                 }
 
-                currentInput = new LinearInput((LinearInput)parent);
-
-            }
-            else {
                 // Fuzz it to get a new input
                 infoLog("Mutating input: %s", parent.desc);
                 currentInput = parent.fuzz(random);
                 numChildrenGeneratedForCurrentParentInput++;
+
+                // Write it to disk for debugging
+                //try {
+                //    writeCurrentInputToFile(currentInputFile);
+                //} catch (IOException ignore) { }
+
+                // Start time-counting for timeout handling
+                this.runStart = new Date();
+                this.branchCount = 0;
             }
-
-            // Write it to disk for debugging
-            //try {
-            //    writeCurrentInputToFile(currentInputFile);
-            //} catch (IOException ignore) { }
-
-            // Start time-counting for timeout handling
-            this.runStart = new Date();
-            this.branchCount = 0;
         }
 
         // Return an input stream that uses the EI map
@@ -987,8 +1010,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             ris = new RecordingInputStream(is);
             is = ris;
 
-            if ((stringEqualsHints != null) || previouslyUsedStringEqualsHints != null)
-                is = new StringEqualsHintingInputStream(is, instructions, stringEqualsHints != null ? stringEqualsHints : new LinkedList<>(), previouslyUsedStringEqualsHints != null ? previouslyUsedStringEqualsHints : new LinkedList<>());
+            if ((currentInput.stringEqualsHints != null))
+                is = new StringEqualsHintingInputStream(is, ris, currentInput.instructions, currentInput.stringEqualsHints != null ? currentInput.stringEqualsHints : new LinkedList<>());
         }
 
         return is;
@@ -1017,9 +1040,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             // send all the inputs...
             for(Input i: this.savedInputs) {
                 try {
-                    triggerClient.sendInput(i.bytes, i.result, i.id,
-                            new LinkedList<>(),
-                            0.0, 0L, i.score  );
+                    triggerClient.sendInput(i.bytes, i.result, i,
+                            0.0, 0L); // TODO should coveragePercent be the actual amount!?
                 } catch (IOException e) {
                 }
             }
@@ -1082,7 +1104,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             // Newly covered branches are always included.
             // Existing branches *may* be included, depending on the heuristics used.
             // A valid input will steal responsibility from invalid inputs
-            Set<Object> responsibilities = computeResponsibilities(valid);
+            IntHashSet responsibilities = computeResponsibilities(valid);
 
             // Update total coverage
             boolean coverageBitsUpdated = totalCoverage.updateBits(runCoverage);
@@ -1104,8 +1126,6 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
 
             if(StringEqualsHintingInputStream.hintUsedInCurrentInput) {
-                // TODO: Do we want to save all inputs that use hints??
-                //toSave = true;
                // StringEqualsHintingInputStream.hintUsedInCurrentInput = false;
                 if(StringEqualsHintingInputStream.z3HintsUsedInCurrentInput) {
                     why= why + "+z3hint";
@@ -1117,6 +1137,19 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     why= why + "+hint";
 
                // toSave = true;
+            }
+
+            if(coverageBitsUpdated){
+                if(currentInput instanceof LinearInput && ((LinearInput) currentInput).mutationType != null){
+                    this.countOfInputsSavedByMutation[((LinearInput) currentInput).mutationType.ordinal()]++;
+                    int n = ((LinearInput) currentInput).numMutations;
+                    for(int i = 0; i < this.countOfInputsSavedWithMutationCountsRanges.length; i++){
+                        if(n <= this.countOfInputsSavedWithMutationCountsRanges[i]){
+                            this.countOfInputsSavedWithMutationCounts[i]++;
+                            break;
+                        }
+                    }
+                }
             }
 
             if (SAVE_NEW_COUNTS && coverageBitsUpdated) {
@@ -1139,8 +1172,13 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 toSave = true;
                 why = why + "+valid";
             }
+            if(!toSave && currentInput.desc.contains("hint")){
+                infoLog("No new coverage for %s", currentInput.desc);
+            }
 
             if (toSave) {
+                if(currentInput.seedSource != null)
+                    countOfSavedInputsBySeedSource[currentInput.seedSource.ordinal()]++;
 
                 infoLog("Saving new input (at run %d): " +
                                 "input #%d " +
@@ -1168,14 +1206,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     try {
                         // Send new input / random requests used
                         Boolean hintsUsed = StringEqualsHintingInputStream.hintUsedInCurrentInput;
-                        if (hintsUsed) {
-                            System.out.println("HINTS WERE USED IN CURRENT INPUT - SHOULD SEND THEM");
-                        }
 
                         Double coveragePercentage = totalCoverage.getNonZeroCount() * 100.0 / totalCoverage.size();
-                        central.sendInput(ris.getRequests(), result, currentInput.id,
-                                hintsUsed ? StringEqualsHintingInputStream.getHints() : new LinkedList<>(),
-                                coveragePercentage, numTrials, currentInput.score  );
+                        central.sendInput(ris.getRequests(), result, currentInput,
+                                coveragePercentage, numTrials);
                         StringEqualsHintingInputStream.hintUsedInCurrentInput = false;
 
                         // Send updated coverage
@@ -1235,6 +1269,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         if (console != null) {
             displayStats();
         }
+        else{
+            logStatsWithoutDisplay();
+        }
 
         runCoverage.unlock();
 
@@ -1242,18 +1279,18 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
 
     // Compute a set of branches for which the current input may assume responsibility
-    private Set<Object> computeResponsibilities(boolean valid) {
-        Set<Object> result = new HashSet<>();
+    private IntHashSet computeResponsibilities(boolean valid) {
+        IntHashSet result = new IntHashSet();
 
         // This input is responsible for all new coverage
-        Collection<?> newCoverage = runCoverage.computeNewCoverage(totalCoverage);
+        IntList newCoverage = runCoverage.computeNewCoverage(totalCoverage);
         if (newCoverage.size() > 0) {
             result.addAll(newCoverage);
         }
 
         // If valid, this input is responsible for all new valid coverage
         if (valid) {
-            Collection<?> newValidCoverage = runCoverage.computeNewCoverage(validCoverage);
+            IntList newValidCoverage = runCoverage.computeNewCoverage(validCoverage);
             if (newValidCoverage.size() > 0) {
                 result.addAll(newValidCoverage);
             }
@@ -1263,12 +1300,12 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         if (STEAL_RESPONSIBILITY) {
             int currentNonZeroCoverage = runCoverage.getNonZeroCount();
             int currentInputSize = currentInput.size();
-            Set<?> covered = new HashSet<>(runCoverage.getCovered());
+            IntHashSet covered = new IntHashSet(runCoverage.getCovered());
 
             // Search for a candidate to steal responsibility from
             candidate_search:
             for (Input candidate : savedInputs) {
-                Set<?> responsibilities = candidate.responsibilities;
+                IntHashSet responsibilities = candidate.responsibilities;
 
                 // Candidates with no responsibility are not interesting
                 if (responsibilities.isEmpty()) {
@@ -1283,7 +1320,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                                 currentInputSize < candidate.size())) {
 
                     // Check if we can steal all responsibilities from candidate
-                    for (Object b : responsibilities) {
+                    IntIterator iter = responsibilities.intIterator();
+                    while(iter.hasNext()){
+                        int b = iter.next();
                         if (covered.contains(b) == false) {
                             // Cannot steal if this input does not cover something
                             // that the candidate is responsible for
@@ -1302,11 +1341,15 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     }
 
     private void writeCurrentInputToFile(File saveFile) throws IOException {
-        try (BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(saveFile))) {
+        try (ObjectOutputStream out = new ObjectOutputStream(new BufferedOutputStream(new FileOutputStream(saveFile)))) {
+            out.writeInt(currentInput.size());
             for (Integer b : currentInput) {
                 assert (b >= 0 && b < 256);
                 out.write(b);
             }
+            out.writeObject(currentInput.instructions);
+            out.writeObject(currentInput.stringEqualsHints);
+            out.writeInt(currentInput.offsetOfLastHintAdded);
         }
 
     }
@@ -1339,11 +1382,14 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         }
     }
 
-    private void saveCurrentInput(Set<Object> responsibilities, String why) throws IOException {
+    private void saveCurrentInput(IntHashSet responsibilities, String why) throws IOException {
 
         // First, save to disk (note: we issue IDs to everyone, but only write to disk  if valid)
         int newInputIdx = numSavedInputs++;
         String saveFileName = String.format("id_%06d", newInputIdx);
+        //if(StringEqualsHintingInputStream.hintUsedInCurrentInput){
+        //    saveFileName = "HINTS_"+saveFileName;
+        //}
         String how = currentInput.desc;
         File saveFile = new File(savedInputsDirectory, saveFileName);
         if (SAVE_ONLY_VALID == false || currentInput.valid) {
@@ -1352,8 +1398,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         }
 
         File argsFile = new File(savedInputsDirectory, saveFileName + ".input");
-        for (Object o : args)
-            saveInputToDisk(argsFile, o);
+        if (args != null) //todo why does this happen?
+            for (Object o : args)
+                saveInputToDisk(argsFile, o);
 
         // If not using guidance, do nothing else
         if (TOTALLY_RANDOM) {
@@ -1386,7 +1433,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
         // Fourth, assume responsibility for branches
         currentInput.responsibilities = responsibilities;
-        for (Object b : responsibilities) {
+        IntIterator iter = responsibilities.intIterator();
+        while(iter.hasNext()){
+            int b = iter.next();
             // If there is an old input that is responsible,
             // subsume it
             Input oldResponsible = responsibleInputs.get(b);
@@ -1405,7 +1454,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         mapEcToInputLoc(currentInput);
 
 
-        if (priorityQueueConfig.usePriorityQueue) {
+        if (priorityQueueConfig.usePriorityQueue && central != null) {
             currentInput.calculateScore(StringEqualsHintingInputStream.getHints());
             savedInputsAccess.add(currentInput);
 
@@ -1499,6 +1548,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
      */
     public static abstract class Input<K> implements Iterable<Integer> {
 
+        public SeedSource seedSource;
+
+        public int bonusMutations;
+
         /**
          * The file where this input is saved.
          *
@@ -1511,7 +1564,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
          *
          * <p>This field is -1 for inputs that are not saved.</p>
          */
-        int id;
+        public int id;
 
         /**
          * The description for this input.
@@ -1563,18 +1616,53 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
          * in at least some responsibility set. Hence, this list
          * needs to be kept in-sync with {@link #responsibleInputs}.</p>
          */
-        Set<Object> responsibilities = null;
+        IntHashSet responsibilities = null;
 
+
+        /**
+         * CONFETTI
+         * These are hints that must be followed to reproduce *this* input
+         * stringEqualsHints and instructions are parallel arrays, each "instruction" is 2 ints: first is the offset
+         * to provide a hint at, the second is the number of bytes read to select the hint.
+         *
+         * This design could be simplified to simply provide the right string at the right place. There will now only be
+         * a single string hint for each offset, so there's no need to make that be an array.
+         */
+        public LinkedList<Coordinator.StringHint[]> stringEqualsHints = new LinkedList<>();
+        public LinkedList<int[]> instructions = new LinkedList<>();
+
+
+        /**
+         * CONFETTI
+         * These are hints that were derived by Knarr from this input. They should each be tried when we generate children
+         * of this input. Each hint should be tried independently, since they were all constructed from *this* input, and not
+         * from a combination. If a combination would be useful, we'll generate that combo eventually anyway when the derived
+         * input (with one of the hints) is analyzed again by Knarr.
+         */
+        public LinkedList<Coordinator.StringHint[]> stringEqualsHintsToTryInChildren;
+        public LinkedList<int[]> instructionsToTryInChildren;
+        /**
+         * Unrelated to string hints: we also might be told to try to mutate (independently)
+         */
+        public LinkedList<int[]> byteRangesToMutateDirectlyInChildren;
+        public boolean alreadyReceivedHints;
+
+        /**
+         * CONFETTI
+         * These are bytes that we found in any constraints in the SUT, be they from strings or otherwise.
+         */
+        public HashSet<Integer> bytesFoundUsedInSUT;
 
         /**
          * A tunable "score" of how "interesting" the input is
          */
-        Integer score = 0;
+        public Integer score = 0;
 
         boolean z3 = false;
 
         LinkedList<byte[]> bytes = new LinkedList<>();
         Result result;
+        protected int offsetOfLastHintAdded = -1;
 
         /**
          * Create an empty input.
@@ -1590,6 +1678,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
          */
         public Input(Input toClone) {
             desc = String.format("src:%06d", toClone.id);
+            this.stringEqualsHints = new LinkedList<>(toClone.stringEqualsHints);
+            this.instructions = new LinkedList<>(toClone.instructions);
+            this.offsetOfLastHintAdded = toClone.offsetOfLastHintAdded;
+            this.seedSource = toClone.seedSource;
         }
 
         public abstract int getOrGenerateFresh(K key, Random random);
@@ -1639,7 +1731,6 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             return responsibilities != null && responsibilities.size() > 0;
         }
 
-
         private boolean isZ3() { return z3;}
 
         /**
@@ -1656,9 +1747,91 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             double uniform = random.nextDouble();
             return (int) ceil(log(1 - uniform) / log(1 - p));
         }
+
+        public void addSingleHintInPlace(Coordinator.StringHint hint, int[] insn) {
+            if(this.instructions == null || this.stringEqualsHints == null){
+                this.instructions = new LinkedList<>();
+                this.stringEqualsHints = new LinkedList<>();
+            }
+            if(this.instructions.isEmpty()){
+                this.instructions.add(insn);
+                this.stringEqualsHints.add(new Coordinator.StringHint[]{hint});
+                return;
+            }
+            Iterator<Coordinator.StringHint[]> newInputHintIter = this.stringEqualsHints.iterator();
+            Iterator<int[]> newInputInsnIter = this.instructions.iterator();
+            int pos = 0;
+            boolean inserted = false;
+            while(newInputInsnIter.hasNext()){
+                newInputHintIter.next();
+                int[] insns = newInputInsnIter.next();
+                if(insns[0] == insn[0]){
+                    inserted = true;
+                    this.stringEqualsHints.set(pos, new Coordinator.StringHint[]{hint});
+                    break;
+                }
+                if(insns[0] > insn[0]){
+                    inserted = true;
+                    this.stringEqualsHints.add(pos, new Coordinator.StringHint[]{hint});
+                    this.instructions.add(pos, insn); // TODO should we clear hints after the one that we inserted??? probably before we send it to knar...
+                    break;
+                }
+                pos++;
+            }
+            if(!inserted){
+                this.stringEqualsHints.add(new Coordinator.StringHint[]{hint});
+                this.instructions.add(insn);
+            }
+            this.offsetOfLastHintAdded = insn[0]+insn[1];
+        }
+
+        protected void clearHintsAfterOffset(int offset){
+            Iterator<Coordinator.StringHint[]> hintIter = this.stringEqualsHints.iterator();
+            Iterator<int[]> insnIter = this.instructions.iterator();
+            while(hintIter.hasNext()){
+                int[] insn = insnIter.next();
+                hintIter.next();
+
+                if(insn[0] + insn[1]> offset){
+                    hintIter.remove();
+                    insnIter.remove();
+                }
+            }
+        }
+
+        public void addExtraRandomStringEqualsHints(Random random) {
+            for(int i = 0; i < this.stringEqualsHintsToTryInChildren.size(); i++) {
+                Coordinator.StringHint[] hints = this.stringEqualsHintsToTryInChildren.get(i);
+                if(hints.length > 0) {
+                    Coordinator.StringHint[] extraHinted = new Coordinator.StringHint[hints.length + 1];
+                    System.arraycopy(hints, 0, extraHinted, 0, hints.length);
+                    StringBuilder sb = new StringBuilder(random.nextInt(50) + 5);
+                    for (int j = 0; j < sb.capacity(); j++) {
+                        sb.append((char)(48 + random.nextInt(127 - 48)));
+                    }
+                    extraHinted[hints.length] = new Coordinator.StringHint(sb.toString(), Coordinator.HintType.EQUALS);
+                    this.stringEqualsHintsToTryInChildren.set(i, extraHinted);
+                }
+            }
+        }
     }
 
     private long mutatedBytes = 0L;
+
+    public enum SeedSource {
+        RANDOM,
+        HINTS,
+        Z3
+    }
+
+    public enum MutationType {
+        RANDOM,
+        APPLY_SINGLE_HINT,
+        BEFORE_HINTS,
+        AFTER_HINTS,
+        TARGETED_RANDOM,
+        AFTER_HINTS_BUT_NEAR
+    }
 
     public class LinearInput extends Input<Integer> {
 
@@ -1667,6 +1840,11 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
         /** The number of bytes requested so far */
         protected int requested = 0;
+
+        public MutationType mutationType;
+
+        public int numMutations;
+
 
         public LinearInput() {
             super();
@@ -1684,7 +1862,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             // Otherwise, make sure we are requesting just beyond the end-of-list
             // assert (key == values.size());
             if (key != requested) {
-                throw new IllegalStateException(String.format("Bytes from linear input out of order. " +
+                throw new GuidanceException(String.format("Bytes from linear input out of order. " +
                         "Size = %d, Key = %d", values.size(), key));
             }
 
@@ -1737,37 +1915,148 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             // Clone this input to create initial version of new child
             LinearInput newInput = new LinearInput(this);
 
+            boolean setToZero = random.nextDouble() < 0.1; // one out of 10 times
+            if(this.instructionsToTryInChildren != null && !this.instructionsToTryInChildren.isEmpty())
+            {
+                // Before doing any random mutations, first try to generate a new input that simply uses one of the hints
+                // We'll try each hint independently, and only once: if it's useful, then a new input can be derived from
+                // that one, which will always use that hint.
+
+                Coordinator.StringHint[] hints = this.stringEqualsHintsToTryInChildren.peek();
+                int[] insn = this.instructionsToTryInChildren.peek();
+                Coordinator.StringHint hint;
+                if(hints.length == 0){ //TODO what the heck causes this!?
+                    this.stringEqualsHintsToTryInChildren.pop();
+                    this.instructionsToTryInChildren.pop();
+                    if(insn.length == 2){
+                        //Just to be cute, let's keep it as-is but do a single random mutation at the location indicated
+                        //if this check fails, then we just do a random mutation
+                        newInput.desc += ",guidedMutation@" + insn[0];
+                        for(int i = insn[0]; i < insn[0]+insn[1]; i++){
+                            int mutatedValue = setToZero ? 0 : random.nextInt(256);
+                            mutatedBytes += Integer.BYTES;
+                            newInput.values.set(i, mutatedValue);
+                        }
+                        newInput.mutationType = MutationType.TARGETED_RANDOM;
+                        newInput.seedSource = SeedSource.RANDOM;
+                    }
+                }
+                else {
+                    if (hints.length == 1) {
+                        hint = hints[0];
+                        this.stringEqualsHintsToTryInChildren.pop();
+                        this.instructionsToTryInChildren.pop();
+                    } else {
+                        hint = hints[0];
+                        Coordinator.StringHint[] remainingStringHints = new Coordinator.StringHint[hints.length - 1];
+                        System.arraycopy(hints, 1, remainingStringHints, 0, remainingStringHints.length);
+                        this.stringEqualsHintsToTryInChildren.set(0, remainingStringHints);
+                    }
+                    //if(hint.getHint().equals("execution")){
+                    //    System.out.println("Oh, we are almost there!");
+                    //}
+                    newInput.desc += ",hint:" + hint.getHint() + "@" + insn[0];
+                    newInput.mutationType = MutationType.APPLY_SINGLE_HINT;
+                    newInput.seedSource = SeedSource.HINTS;
+                    infoLog("Applied hint: %s", newInput.desc);
+                    newInput.addSingleHintInPlace(hint, insn);
+                    return newInput;
+                }
+            }
+            //if(newInput.stringEqualsHints != null){
+            //    for(Coordinator.StringHint[] sh : newInput.stringEqualsHints){
+            //        if(sh.length > 0 && sh[0].getHint().equals("execution")){
+            //            System.out.println("We are mutating one that already has execution");
+            //        }
+            //        if(sh.length>1){
+            //            throw new IllegalStateException();
+            //        }
+            //    }
+            //}
+            //TODO i don't think we need this, probably delete, currently not using
+            if (this.valid && this.byteRangesToMutateDirectlyInChildren != null && this.byteRangesToMutateDirectlyInChildren.size() > 0) {
+                if (numChildrenGeneratedForCurrentMutationLocation > MUTATIONS_PER_REQUESTED_MUTATION_LOCATION) {
+                    this.byteRangesToMutateDirectlyInChildren.pop();
+                    numChildrenGeneratedForCurrentMutationLocation = 0;
+                }
+                if (!this.byteRangesToMutateDirectlyInChildren.isEmpty()) {
+                    int[] offsetAndSize = this.byteRangesToMutateDirectlyInChildren.peek();
+                    for (int i = offsetAndSize[0]; i < offsetAndSize[0] + offsetAndSize[1]; i++) {
+                        // Don't go past end of list
+                        if (i >= newInput.values.size()) {
+                            break;
+                        }
+
+                        // Otherwise, apply a random mutation
+                        int mutatedValue = setToZero ? 0 : random.nextInt(256);
+                        mutatedBytes += Integer.BYTES;
+                        //System.out.println(i + ": " + newInput.values.get(i) + "->" + mutatedValue);
+                        newInput.values.set(i, mutatedValue);
+                    }
+                    if (!newInput.instructions.isEmpty()) {
+                        newInput.clearHintsAfterOffset(offsetAndSize[0]);
+                        //System.out.println("Cleared hints after " + offsetAndSize);
+                    }
+                    newInput.mutationType = MutationType.TARGETED_RANDOM;
+                    newInput.desc += ",targeted@" + offsetAndSize[0] + "+" + offsetAndSize[1];
+                    numChildrenGeneratedForCurrentMutationLocation++;
+                    return newInput;
+                }
+            }
+
             // Stack a bunch of mutations
             int numMutations = sampleGeometric(random, MEAN_MUTATION_COUNT);
+            newInput.numMutations = numMutations;
             newInput.desc += ",havoc:"+numMutations;
 
-            boolean setToZero = random.nextDouble() < 0.1; // one out of 10 times
 
-            HashSet<Integer> instructionsTaken = new HashSet<>();
+            int mutateOnlyAfter = 0;
+            int mutateOnlyBefore = newInput.values.size();
+            if(this.offsetOfLastHintAdded >= 0){
+                if(random.nextBoolean()){
+                    // Also constrain how far out we look for mutations to stay close to this hint.
+                    mutateOnlyAfter = this.offsetOfLastHintAdded;
+                    mutateOnlyBefore = this.offsetOfLastHintAdded + 40;
+                    if(mutateOnlyAfter >= newInput.values.size()){
+                        mutateOnlyAfter = 0;
+                    }
+                    if(mutateOnlyBefore >= newInput.values.size()){
+                        mutateOnlyBefore = newInput.values.size();
+                    }
+                    newInput.desc += ",afterHint:"+this.offsetOfLastHintAdded+",before:"+mutateOnlyBefore;
+                    newInput.mutationType = MutationType.AFTER_HINTS_BUT_NEAR;
 
+                } else if(random.nextBoolean()){
+                    // If adding a hint was useful for this input (that is - it resulted in the input
+                    // being saved), then we will apply half of the mutations *after* that hint,
+                    // rather than before
+                    mutateOnlyAfter = this.offsetOfLastHintAdded;
+                    newInput.desc += ",afterHint:"+this.offsetOfLastHintAdded;
+                    if (mutateOnlyAfter >= newInput.values.size()) {
+                        //Hmm... not sure what to do here.
+                        mutateOnlyAfter = 0;
+                    }
+                    newInput.mutationType = MutationType.AFTER_HINTS;
+                } else {
+                    newInput.mutationType = MutationType.RANDOM;
+                }
+            } else {
+                newInput.mutationType = MutationType.RANDOM;
+            }
 
             for (int mutation = 1; mutation <= numMutations; mutation++) {
 
                 int offset;
                 int mutationSize;
 
-                if (central != null && instructions != null && instructionsTaken.size() < instructions.size()) {
-                    // Follow the central's instructions
-                    int idx;
+                // Select a random offset and size
+                offset = random.nextInt(mutateOnlyBefore - mutateOnlyAfter) + mutateOnlyAfter;
+                mutationSize = sampleGeometric(random, MEAN_MUTATION_SIZE);
 
-                    do {
-                        idx = random.nextInt(instructions.size());
-                    } while (instructionsTaken.contains(idx));
 
-                    instructionsTaken.add(idx);
-
-                    int[] inst  = instructions.get(idx);
-                    offset = inst[0];
-                    mutationSize = inst[1];
-                } else {
-                    // Select a random offset and size
-                    offset = random.nextInt(newInput.values.size());
-                    mutationSize = sampleGeometric(random, MEAN_MUTATION_SIZE);
+                //If the mutation is before any hints in the input, remove the hints.
+                if (!newInput.instructions.isEmpty()) {
+                    newInput.clearHintsAfterOffset(offset);
                 }
 
 
@@ -1880,7 +2169,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
          */
         private final int getValueAtOffset(int offset) throws IndexOutOfBoundsException, IllegalStateException {
             if (!executed) {
-                throw new IllegalStateException("Cannot get with offset before execution");
+                throw new GuidanceException("Cannot get with offset before execution");
             }
 
             // Return the mapping for the execution index queried at the offset
@@ -2250,15 +2539,43 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     public class SeedInput extends LinearInput {
         final Optional<File> seedFile;
-        final InputStream in;
+        InputStream in;
 
+        /**
+         * WARNING This version assumes we saved the hints into the file...
+         * @param seedFile
+         * @throws IOException
+         */
         public SeedInput(File seedFile) throws IOException {
             super();
             this.seedFile = Optional.of(seedFile);
-            this.in = new BufferedInputStream(new FileInputStream(seedFile));
+            try(ObjectInputStream ois = new ObjectInputStream(new BufferedInputStream(new FileInputStream(seedFile)))){
+                int inputSize = ois.readInt();
+                byte[] input = new byte[inputSize];
+                ois.readFully(input);
+                LinkedList<int[]> instructions = (LinkedList<int[]>) ois.readObject();
+                LinkedList<Coordinator.StringHint[]> stringHints = (LinkedList<Coordinator.StringHint[]>) ois.readObject();
+                this.offsetOfLastHintAdded = ois.readInt();
+                this.stringEqualsHints = stringHints;
+                this.instructions = instructions;
+                this.in = new ByteArrayInputStream(input);
+                if(instructions != null && stringHints != null){
+                    if(instructions.size() != stringHints.size())
+                        throw new GuidanceException("Invalid hint structure");
+                    this.in = new StringEqualsHintingInputStream(this.in, null, instructions, stringHints);
+                }
+            } catch (ClassNotFoundException e) {
+                e.printStackTrace();
+            }
+            //this.in = new BufferedInputStream(new FileInputStream(seedFile));
             this.desc = "seed";
         }
 
+        /**
+         * WARNING This version does NOT assume that the hints were packed in...
+         * @param seedBytes
+         * @param desc
+         */
         public SeedInput(byte[] seedBytes, String desc) {
             super();
             this.seedFile = Optional.empty();

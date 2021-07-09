@@ -30,8 +30,11 @@
 package edu.berkeley.cs.jqf.fuzz.repro;
 
 import java.io.File;
+import java.util.LinkedList;
 
 import edu.berkeley.cs.jqf.fuzz.junit.GuidedFuzzing;
+import edu.berkeley.cs.jqf.fuzz.knarr.KnarrGuidance;
+import edu.columbia.cs.psl.phosphor.PreMain;
 
 /**
  * @author Rohan Padhye
@@ -47,9 +50,27 @@ public class ReproDriver {
 
         String testClassName  = args[0];
         String testMethodName = args[1];
-        File[] testInputFiles = new File[args.length - 2];
-        for (int i = 0; i < testInputFiles.length; i++) {
-            testInputFiles[i] = new File(args[i+2]);
+        File[] testInputFiles;
+        if(args.length == 3){
+            File inputArg = new File(args[2]);
+            if(inputArg.isDirectory()){
+                LinkedList<File> validFiles = new LinkedList<>();
+                for(File f: inputArg.listFiles()){
+                    if(f.getName().endsWith(".input"))
+                        continue;
+                    validFiles.add(f);
+                }
+                testInputFiles = new File[validFiles.size()];
+                testInputFiles = validFiles.toArray(testInputFiles);
+            }
+            else{
+                testInputFiles = new File[]{inputArg};
+            }
+        } else {
+            testInputFiles = new File[args.length - 2];
+            for (int i = 0; i < testInputFiles.length; i++) {
+                testInputFiles[i] = new File(args[i + 2]);
+            }
         }
 
         try {
@@ -63,6 +84,9 @@ public class ReproDriver {
             // Run the Junit test
             GuidedFuzzing.run(testClassName, testMethodName, guidance, System.out);
 
+            if(PreMain.RUNTIME_INST){
+                KnarrGuidance.printOutStringHints();
+            }
 
 
             if (guidance.getBranchesCovered() != null) {

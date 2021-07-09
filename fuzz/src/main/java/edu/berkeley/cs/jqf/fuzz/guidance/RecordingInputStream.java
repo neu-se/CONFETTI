@@ -7,7 +7,7 @@ import java.util.LinkedList;
 public class RecordingInputStream extends InputStream {
 
     private final InputStream is;
-    private LinkedList<byte[]> reqs = new LinkedList<>();
+    protected LinkedList<byte[]> reqs = new LinkedList<>();
 
     public RecordingInputStream(InputStream is) {
         this.is = is;

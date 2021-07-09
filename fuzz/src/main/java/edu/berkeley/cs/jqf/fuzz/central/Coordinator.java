@@ -1,13 +1,13 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
-import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
 import za.ac.sun.cs.green.expr.Expression;
 
 import java.io.*;
 import java.util.*;
-import java.util.regex.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BinaryOperator;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class Coordinator implements Runnable {
     private LinkedList<Input> inputs = new LinkedList<>();
@@ -32,23 +32,20 @@ public class Coordinator implements Runnable {
     }
 
 
-    protected final synchronized void foundInput(int id, byte[] bytes, boolean valid, LinkedList<StringHint[]>hints, Double coveragePercentage, long numExecutions, Integer score) {
+    protected final synchronized void foundInput(int id, byte[] bytes, boolean valid, LinkedList<StringHint[]>hints, LinkedList<int[]> instructions, Double coveragePercentage, long numExecutions, Integer score) {
         Input in = new Input();
         in.bytes = bytes;
         in.id = id;
         in.isNew = (config.useInvalid ? true : valid);
         in.hints = hints;
+        in.instructions = instructions;
         in.coveragePercentage = coveragePercentage;
         in.numExecutions = numExecutions;
         in.score = score;
-
+        in.isValid = valid;
 
         this.inputs.addLast(in);
         this.notifyAll();
-
-        System.out.println("Input added " + id);
-        if(!hints.isEmpty())
-            System.out.println("HINTS FOUND! " + hints);
     }
 
     protected final synchronized Input getInput(int index) {
@@ -97,7 +94,7 @@ public class Coordinator implements Runnable {
         HashMap<Integer, TreeSet<Integer>> lastRecommendation = new HashMap<>();
 
         while (true) {
-            LinkedList<Input> m;
+            ArrayList<Input> m;
 
             synchronized (this) {
                 boolean newInputs = false;
@@ -126,7 +123,26 @@ public class Coordinator implements Runnable {
                     }
                 }
 
-                m = new LinkedList<>(inputs);
+                m = new ArrayList<>(inputs);
+                //m.sort((o1, o2) -> o1.isValid && !o2.isValid ? -1 : o1.isValid == o2.isValid ? 0 : 1);
+                //don't sort, it will starve invalid inputs from being processed.
+
+                //DEBUG/profiling:
+                int numNewInputs = 0;
+                int numNewValidInputs = 0;
+                int numNewInvalidInputs = 0;
+                for(Input i : inputs){
+                    if(i.isNew){
+                        numNewInputs++;
+                        if(i.isValid){
+                            numNewValidInputs++;
+                        }else{
+                            numNewInvalidInputs++;
+                        }
+                    }
+                }
+                System.out.println("Knarr queue size: " + numNewInputs + " ("+numNewValidInputs+" valid, " + numNewInvalidInputs+" invalid)");
+
             }
 
             int n = 0;
@@ -137,7 +153,7 @@ public class Coordinator implements Runnable {
                     // Get constraints from Knarr
                     LinkedList<Expression> cs;
                     try {
-                        cs = knarr.getConstraints(input.bytes, input.hints);
+                        cs = knarr.getConstraints(input);
                     } catch (IOException e) {
                         throw new Error(e);
                     }
@@ -176,8 +192,10 @@ public class Coordinator implements Runnable {
                     // Compute coverage and branches from constraints
                     LinkedList<Branch> bs = new LinkedList<>();
                     HashMap<Integer, HashSet<StringHint>> eqs = new HashMap<>();
+                    HashSet<Integer> bytesUsedBySUT = new HashSet<>();
                     for (Expression e : cs)
-                        knarr.process(bs, eqs, e);
+                        KnarrWorker.process(bs, eqs, e, bytesUsedBySUT, config.filter);
+                    input.bytesFoundUsedInSUT = bytesUsedBySUT;
 
                     update_score(bs, input);
                     // Adjust string hints
@@ -202,21 +220,6 @@ public class Coordinator implements Runnable {
                                 throw new Error("Not implemented");
                         }
 
-                    }
-
-
-                    {
-                        ListIterator<Branch> iter = bs.listIterator(0);
-                        while (iter.hasNext()) {
-                            Branch b = iter.next();
-
-                            for (String f : config.filter) {
-                                if (b.source != null && b.source.contains(f)) {
-                                    iter.remove();
-                                    break;
-                                }
-                            }
-                        }
                     }
 
                     // Check if any previous branches were explored
@@ -266,18 +269,25 @@ public class Coordinator implements Runnable {
             // Make recommendations
             synchronized (this) {
                 for (Input input : inputs) {
+                    if(input.isNew || input.recommendedBefore){
+                        continue;
+                    }
+                    input.recommendedBefore = true;
                     TreeSet<Integer> recommendation = new TreeSet<>();
                     for (Branch branch : branches.values()) {
-                        if (branch.falseExplored.isEmpty() || branch.trueExplored.isEmpty() || branch.keep) {
+                        //We need to recommend things even if they weren't used in a branch that wasn't explored -
+                        //otherwise we miss out big on ability to find new paths!!!!
+                        //if (branch.falseExplored.isEmpty() || branch.trueExplored.isEmpty() || branch.keep) {
                             if (branch.control.containsKey(input)) {
-                                for (int i : branch.control.get(input))
+                                for (int i : branch.control.get(input)){
                                     recommendation.add(i);
+                                }
                             }
-                        }
+                        //}
                     }
 
                     if (!lastRecommendation.containsKey(input.id) || !recommendation.equals(lastRecommendation.get(input.id))) {
-                        System.out.println(input.id + " -> " + recommendation);
+                        //System.out.println(input.id + " -> " + recommendation);
                         lastRecommendation.put(input.id, recommendation);
                     }
 
@@ -306,7 +316,17 @@ public class Coordinator implements Runnable {
                             throw new Error("Not implemented");
                     }
 
-                    zest.recommend(input.id, recommendation, stringEqualsHints);
+                    if(recommendation.size() > 0){
+                        System.out.println("Recommendation for " + input.id);
+                        for(Integer i : recommendation){
+                            System.out.println("\t"+i+": " + stringEqualsHints.get(i));
+                        }
+                    }
+                    //input.allHints = stringEqualsHints;
+                    //input.recs = new LinkedList<>(recommendation);
+                    if(recommendation.size() > 0){
+                        zest.recommend(input.id, recommendation, stringEqualsHints);
+                    }
                 }
             }
         }
@@ -435,7 +455,8 @@ public class Coordinator implements Runnable {
 //                    }
 
                     for(StringHint[] hint : newInput.get().hints) {
-                        System.out.println(hint);
+                        if(hint.length > 0)
+                            System.out.println(hint[0]);
                     }
 //                } catch (IOException e) {
 //
@@ -451,11 +472,20 @@ public class Coordinator implements Runnable {
     public static class Input implements Serializable {
         public int id;
         public byte[] bytes;
+        public LinkedList<int[]> instructions;
+        public boolean recommendedBefore;
+        public LinkedList<int[]> byteRangesUsedAsControlInGenerator;
+        public HashSet<Integer> bytesFoundUsedInSUT;
         boolean isNew;
         public double coveragePercentage;
         public long numExecutions;
         public LinkedList<StringHint[]> hints;
         public Integer score = 0;
+        public boolean isValid;
+
+        public Input(){
+
+        }
 
         @Override
         public boolean equals(Object o) {
@@ -473,9 +503,15 @@ public class Coordinator implements Runnable {
 
 
     public static class StringHint implements Serializable {
+        private static final long serialVersionUID = -1812382770909515539L;
         String hint;
         HintType type;
+        transient HashSet<String> debugSources;
 
+        public StringHint(String hint, HintType type, HashSet<String> debugSources){
+            this(hint, type);
+            this.debugSources = debugSources;
+        }
         public StringHint(String hint, HintType type) {
             this.hint = hint;
             this.type = type;
@@ -499,15 +535,28 @@ public class Coordinator implements Runnable {
         }
 
         @Override
+        public String toString() {
+            return "StringHint{" +
+                    "hint='" + hint + '\'' +
+                    ", type=" + type +
+                    ", debugSources=" + debugSources +
+                    '}';
+        }
+
+        @Override
         public int hashCode() {
             return Objects.hash(hint, type);
         }
     }
     public enum HintType {
         EQUALS,
+        INDEXOF, //Currently we will also add a startsWith and an endsWith
+        STARTSWITH,
+        ENDSWITH,
         Z3
     }
     public static class Branch implements Serializable {
+        private static final long serialVersionUID = -6900391468143442577L;
         public int takenID, notTakenID;
         public boolean result, keep;
         public HashSet<Integer> controllingBytes;

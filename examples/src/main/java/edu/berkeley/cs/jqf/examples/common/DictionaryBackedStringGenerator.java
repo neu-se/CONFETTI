@@ -28,16 +28,6 @@
  */
 package edu.berkeley.cs.jqf.examples.common;
 
-import java.io.BufferedReader;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Random;
-
 import com.pholser.junit.quickcheck.generator.GenerationStatus;
 import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
@@ -51,7 +41,10 @@ import edu.gmu.swe.knarr.runtime.Symbolicator;
 import za.ac.sun.cs.green.expr.Expression;
 import za.ac.sun.cs.green.expr.FunctionCall;
 import za.ac.sun.cs.green.expr.IntConstant;
-import za.ac.sun.cs.green.expr.Operation;
+
+import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class DictionaryBackedStringGenerator extends Generator<String> {
 
@@ -81,48 +74,37 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
 
     @Override
     public String generate(SourceOfRandomness random, GenerationStatus status) {
-        int coin = random.nextInt(0,100);
-        if (true) {
-            int choice = random.nextInt(0, Integer.MAX_VALUE);
+        int coin = random.nextInt(0, 100);
+        int choice = random.nextInt(0, Integer.MAX_VALUE);
 
-            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+        Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
 
-            String word = "";
-
-            //if (hints != null && hints.length > 0 && (coin < 90)) {
-
-
-
-            if (DictionaryBackedStringGenerator.useHints && hints != null && hints.length > 0 ) {
-
-
-                choice = choice % hints.length;
-                word = hints[choice].getHint();
-
-                // Add hint to the global dictionary...
-                for(Coordinator.StringHint hint : hints) {
-                    if (!dictionary.contains(hint.getHint())){
-                        dictionary.add(hint.getHint());
-                    }
+        String word = "";
+        if (hints != null && hints.length > 0) {
+            word = hints[0].getHint();
+            if (hints[0].getType() == Coordinator.HintType.INDEXOF) {
+                String origWord = dictionary.get(choice % dictionary.size());
+                if (origWord.length() <= 1) {
+                    word = origWord + word;
+                } else {
+                    int middle = origWord.length() / 2;
+                    word = origWord.substring(0, middle) + word + origWord.substring(middle);
                 }
-//                if(word == "") {
-//                    choice = choice % hints.length;
-//                    word = hints[choice].getHint();
-//                }
-
-                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
-            } else {
-                choice = choice % dictionary.size();
-                word = dictionary.get(choice);
+            } else if (hints[0].getType() == Coordinator.HintType.ENDSWITH) {
+                String origWord = dictionary.get(choice % dictionary.size());
+                word = origWord + word;
+            } else if (hints[0].getType() == Coordinator.HintType.STARTSWITH) {
+                String origWord = dictionary.get(choice % dictionary.size());
+                word = word + origWord;
             }
-
-            return applyTaints(word, choice);
+            //System.out.println("Hint word: " + word);
+            StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         } else {
-            if (fallback == null) {
-                fallback = gen().type(String.class);
-            }
-            return fallback.generate(random, status);
+            choice = choice % dictionary.size();
+            word = dictionary.get(choice);
         }
+
+        return applyTaints(word, choice);
     }
 
     private static int currentFunctionNumber = 0;

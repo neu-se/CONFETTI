@@ -41,6 +41,7 @@ import edu.columbia.cs.psl.phosphor.struct.TaintedObjectWithObjTag;
 import edu.gmu.swe.knarr.runtime.ExpressionTaint;
 import edu.gmu.swe.knarr.runtime.Symbolicator;
 import org.apache.bcel.Const;
+import org.apache.bcel.classfile.ClassFormatException;
 import org.apache.bcel.classfile.Field;
 import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
@@ -102,125 +103,121 @@ public class JavaClassGenerator extends Generator<JavaClass> {
         // Generate a class with its meta-data
         String className;
         {
-//            int choice = r.nextInt();
-//            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
-            className = r.nextBoolean() ? "example.A" : "example.A";
-//            if (hints != null && hints.length > 0 ) {
-//
-//                //random.nextInt(0, Integer.MAX_VALUE);
-//                choice = choice % hints.length;
-//
-//                className = new String(hints[choice].getHint());
-//                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
-//            }
-//
-//            className = applyTaints(className, choice);
+            int choice = r.nextInt();
+            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+            className = "example.A";
+            if (hints != null && hints.length > 0 ) {
+                className = new String(hints[0].getHint());
+                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+            }
+
+            className = applyTaints(className, choice);
         }
         String superName;
         {
-//            int choice = r.nextInt();
-//            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+            int choice = r.nextInt();
+            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
             superName = r.nextBoolean() ? "example.B" : "java.lang.Object";
-//            if (hints != null && hints.length > 0 ) {
-//
-//                //random.nextInt(0, Integer.MAX_VALUE);
-//                choice = choice % hints.length;
-//
-//                superName = new String(hints[choice].getHint());
-//                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
-//            }
-//
-//            superName = applyTaints(superName, choice);
+            if (hints != null && hints.length > 0 ) {
+                superName = new String(hints[0].getHint());
+                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+            }
+
+            superName = applyTaints(superName, choice);
         }
         String fileName;
         {
-//            int choice = r.nextInt();
-//            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+            int choice = r.nextInt();
+            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
             fileName = r.nextBoolean() ? "A.class" : "A.class";
-//            if (hints != null && hints.length > 0 ) {
-//
-//                //random.nextInt(0, Integer.MAX_VALUE);
-//                choice = choice % hints.length;
-//
-//                fileName = new String(hints[choice].getHint());
-//                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
-//            }
-//
-//            fileName = applyTaints(fileName, choice);
+            if (hints != null && hints.length > 0 ) {
+                fileName = new String(hints[0].getHint());
+                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+            }
+            fileName = applyTaints(fileName, choice);
         }
         int flags = r.nextInt(0, Short.MAX_VALUE);
         int numInterfaces = r.nextBoolean() ? 0 : geom.sampleWithMean(MEAN_INTERFACE_COUNT, r);
         String[] interfaces = new String[numInterfaces];
         for (int i = 0; i < numInterfaces; i++) {
-//            int choice = r.nextInt();
-//            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
-
+            int choice = r.nextInt();
+            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
             interfaces[i] = r.nextBoolean() ? "example.I"+i : "example.I"+i;
 
-//            if (hints != null && hints.length > 0 ) {
-//
-//                //random.nextInt(0, Integer.MAX_VALUE);
-//                choice = choice % hints.length;
-//
-//                interfaces[i] = new String(hints[choice].getHint());
-//                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
-//            }
-//
-//            interfaces[i] = applyTaints(interfaces[i], choice);
+            if (hints != null && hints.length > 0 ) {
+
+                interfaces[i] = new String(hints[0].getHint());
+                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+            }
+            interfaces[i] = applyTaints(interfaces[i], choice);
 
         }
-        ClassGen classGen =  new ClassGen(className, superName, fileName, flags, interfaces, constants);
+        try {
+            ClassGen classGen = new ClassGen(className, superName, fileName, flags, interfaces, constants);
 
-        // Validate flags
-        Assume.assumeFalse(classGen.isFinal() && (classGen.isAbstract() | classGen.isInterface()));
+            // Validate flags
+            Assume.assumeFalse(classGen.isFinal() && (classGen.isAbstract() | classGen.isInterface()));
 
-        int numFields = geom.sampleWithMean(MEAN_FIELDS_COUNT, r);
-        for (int i = 0; i < numFields; i++) {
-            classGen.addField(generateField(r));
+            int numFields = geom.sampleWithMean(MEAN_FIELDS_COUNT, r);
+            for (int i = 0; i < numFields; i++) {
+                classGen.addField(generateField(r));
+            }
+
+            int numMethods = geom.sampleWithMean(MEAN_METHODS_COUNT, r);
+            for (int i = 0; i < numMethods; i++) {
+                classGen.addMethod(generateMethod(className, r));
+            }
+
+            return classGen.getJavaClass();
+        } catch (ClassGenException | ClassFormatException ex) {
+            //TODO
+            return generate(r, s);
         }
-
-        int numMethods = geom.sampleWithMean(MEAN_METHODS_COUNT, r);
-        for (int i = 0; i < numMethods; i++) {
-            classGen.addMethod(generateMethod(className, r));
-        }
-
-        return classGen.getJavaClass();
 
     }
 
+
     private Field generateField(SourceOfRandomness r) {
-        int flags = r.nextInt(0, Short.MAX_VALUE);
-        Type type = generateType(r, true);
-        String name = generateMemberName(r);
-        FieldGen fieldGen = new FieldGen(flags, type, name, constants);
-        return fieldGen.getField();
+        try {
+            int flags = r.nextInt(0, Short.MAX_VALUE);
+            Type type = generateType(r, true);
+            String name = generateMemberName(r);
+            FieldGen fieldGen = new FieldGen(flags, type, name, constants);
+            return fieldGen.getField();
+        }catch(ClassGenException | ClassFormatException ex){
+            //TODO
+            return generateField(r);
+        }
     }
 
     private Method generateMethod(String className, SourceOfRandomness r) {
-        int flags = r.nextInt(0, Short.MAX_VALUE);
-        Type returnType = r.nextBoolean() ? Type.VOID : generateType(r, true);
-        String methodName = generateMemberName(r);
-        int numArgs = r.nextInt(4);
-        Type[] argTypes = new Type[numArgs];
-        String[] argNames = new String[numArgs];
-        for (int i = 0; i < numArgs; i++) {
-            argTypes[i] = generateType(r, true);
-            argNames[i] = generateMemberName(r);
+        try {
+            int flags = r.nextInt(0, Short.MAX_VALUE);
+            Type returnType = r.nextBoolean() ? Type.VOID : generateType(r, true);
+            String methodName = generateMemberName(r);
+            int numArgs = r.nextInt(4);
+            Type[] argTypes = new Type[numArgs];
+            String[] argNames = new String[numArgs];
+            for (int i = 0; i < numArgs; i++) {
+                argTypes[i] = generateType(r, true);
+                argNames[i] = generateMemberName(r);
+            }
+            InstructionList code = generateCode(r, argTypes, returnType);
+            MethodGen methodGen = new MethodGen(flags, returnType, argTypes, argNames, methodName, className, code, constants);
+            // Validate flags
+            Assume.assumeFalse(methodGen.isFinal() && methodGen.isAbstract());
+            return methodGen.getMethod();
+        }catch(ClassGenException | ClassFormatException ex){
+            //TODO can we do better here!?
+            return generateMethod(className, r);
         }
-        InstructionList code = generateCode(r, argTypes, returnType);
-        MethodGen methodGen = new MethodGen(flags, returnType, argTypes, argNames, methodName, className, code, constants);
-        // Validate flags
-        Assume.assumeFalse(methodGen.isFinal() && methodGen.isAbstract());
-        return methodGen.getMethod();
     }
 
     private String generateMemberName(SourceOfRandomness r) {
-        int choice = r.nextInt();
+        int choice = r.nextInt(0, Integer.MAX_VALUE);
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
 
-        if (r.nextBoolean()) {
-            return r.choose(memberDictionary);
-        }
+
         String ret = r.nextChar('a', 'z') + "_" + r.nextInt(10);
 
         if (hints != null && hints.length > 0 ) {
@@ -230,6 +227,10 @@ public class JavaClassGenerator extends Generator<JavaClass> {
 
             ret = new String(hints[choice].getHint());
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+        }else{
+            if (choice % 2 == 0) {
+                ret = memberDictionary[choice % memberDictionary.length];
+            }
         }
 
         return applyTaints(ret, choice);
@@ -237,7 +238,7 @@ public class JavaClassGenerator extends Generator<JavaClass> {
 
     private String generateTypeSignature(SourceOfRandomness r, boolean arraysAllowed) {
         String typeSig;
-        int choice = r.nextInt();
+        int choice = r.nextInt(0, Integer.MAX_VALUE);
 
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
 
@@ -269,7 +270,12 @@ public class JavaClassGenerator extends Generator<JavaClass> {
     }
 
     private Type generateType(SourceOfRandomness r, boolean arraysAllowed) {
-        return Type.getType(generateTypeSignature(r, arraysAllowed));
+        try {
+            return Type.getType(generateTypeSignature(r, arraysAllowed));
+        }catch(ClassFormatException | StringIndexOutOfBoundsException ex){
+            //TODO can we do better than just trying again?
+            return generateType(r, arraysAllowed);
+        }
     }
 
     private InstructionList generateCode(SourceOfRandomness r, Type[] argTypes, Type returnType) {
@@ -595,12 +601,9 @@ public class JavaClassGenerator extends Generator<JavaClass> {
 
     String generateClassName(SourceOfRandomness r)
     {
-        int choice = r.nextInt();
+        int choice = r.nextInt(0, Integer.MAX_VALUE);
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
 
-        if (r.nextBoolean()) {
-            return r.choose(interestingClasses);
-        }
         int numParts = r.nextInt(1, 5);
         String[] parts = new String[numParts];
         for (int i = 0; i < numParts; i++) {
@@ -616,7 +619,9 @@ public class JavaClassGenerator extends Generator<JavaClass> {
             ret = new String(hints[choice].getHint());
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         }
-
+        else if (choice % 2 == 0) {
+            ret =  interestingClasses[choice % interestingClasses.length];
+        }
         return applyTaints(ret, choice);
     }
 

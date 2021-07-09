@@ -25,31 +25,21 @@ public class JavaScriptCodeGenerator extends Generator<String> {
 
     private GenerationStatus status; // saved state object when generating
 
-    private static Boolean useHints = false;
     private static final int MAX_IDENTIFIERS = 100;
     private static final int MAX_EXPRESSION_DEPTH = 10;
     private static final int MAX_STATEMENT_DEPTH = 6;
-    private static Set<String> identifiers; // Stores generated IDs, to promote re-use
-    private static List<String> identifiersList;
-    private static Set<String> knownHints;
-    static {
-        if (System.getProperty("JSgeneratorReuseHints") != null)
-            knownHints = new HashSet<>();
-        else
-            knownHints = new HashSet<String>(){
-                @Override
-                public boolean add(String s) {
-                    return false;
-                }
-
-                @Override
-                public boolean contains(Object o) {
-                    return false;
-                }
-            };
-    }
     private int statementDepth; // Keeps track of how deep the AST is at any point
     private int expressionDepth; // Keeps track of how nested an expression is at any point
+
+    // The original generator created identifiers *as it went*
+    // This was a nice idea in theory, because you would start out making expressions with the same identifier a lot
+    // But, it totally, totally, totally destroys any determinism of the generator: same seed will result in a different
+    // identifier, and even worse, it would actually result in a totally different input (since generating an identifier
+    // would consume some random bytes that could have gone somewhere else.
+    // These hardcoded identifiers were generated the exact same way that they would have been anyway.
+    // - JSB
+    private static final String[] IDENTIFIERS = {"z_0", "m_1", "r_2", "e_3", "r_4", "l_5", "h_6", "p_7", "y_8", "r_9", "t_10", "u_11", "s_12", "x_13", "l_14", "t_15", "s_16", "m_17", "r_18", "j_19", "i_20", "q_21", "g_22", "n_23", "y_24", "t_25", "o_26", "q_27", "v_28", "d_29", "b_30", "n_31", "j_32", "g_33", "w_34", "t_35", "z_36", "t_37", "h_38", "r_39", "l_40", "b_41", "d_42", "r_43", "o_44", "i_45", "a_46", "p_47", "x_48", "b_49", "t_50", "h_51", "z_52", "q_53", "b_54", "a_55", "h_56", "m_57", "w_58", "o_59", "y_60", "w_61", "p_62", "d_63", "v_64", "d_65", "u_66", "i_67", "w_68", "x_69", "i_70", "a_71", "t_72", "b_73", "b_74", "d_75", "s_76", "a_77", "w_78", "q_79", "x_80", "n_81", "u_82", "g_83", "s_84", "l_85", "n_86", "j_87", "q_88", "x_89", "q_90", "r_91", "c_92", "m_93", "e_94", "t_95", "i_96", "l_97", "g_98", "x_99", };
+
 
     private static final String[] UNARY_TOKENS = {
             "!", "++", "--", "~",
@@ -66,11 +56,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     /** Main entry point. Called once per test case. Returns a random JS program. */
     @Override
     public String generate(SourceOfRandomness random, GenerationStatus status) {
-        JavaScriptCodeGenerator.useHints = random.nextBoolean();
         this.status = status; // we save this so that we can pass it on to other generators
-        this.identifiers = new HashSet<>();
-        this.identifiersList = new ArrayList<>();
-        this.identifiersList.addAll(knownHints);
         this.statementDepth = 0;
         this.expressionDepth = 0;
         return generateStatement(random).toString();
@@ -79,28 +65,14 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     /** Utility method for generating a random list of items (e.g. statements, arguments, attributes) */
     private static List<String> generateItems(Function<SourceOfRandomness, String> genMethod, SourceOfRandomness random,
                                              int mean) {
-        int len = random.nextInt(mean*2); // Generate random number in [0, mean*2) 
+        int len = random.nextInt(mean*2); // Generate random number in [0, mean*2)
         List<String> items = new ArrayList<>(len);
 
         for (int i = 0; i < len; i++) {
             int choice = random.nextInt(0, Integer.MAX_VALUE);
 
-            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
             String item;
-            //Boolean coinflip = random.nextBoolean();
-            if (useHints && hints != null && hints.length > 0 ) {
-
-                //random.nextInt(0, Integer.MAX_VALUE);
-                choice = choice % hints.length;
-
-                item = new String(hints[choice].getHint());
-                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
-            } else {
                 item = genMethod.apply(random);
-            }
-
-            item = applyTaints(item, choice);
-
             items.add(item);
         }
         return items;
@@ -278,12 +250,21 @@ public class JavaScriptCodeGenerator extends Generator<String> {
 
     /** Generates a random binary expression (e.g. A op B) */
     private String generateBinaryNode(SourceOfRandomness random) {
-        int choice = random.nextInt(0, BINARY_TOKENS.length);
-        String token = new String(BINARY_TOKENS[choice]);
+        int choice = random.nextInt(0, Integer.MAX_VALUE);
+
+        String token;
+        Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+        if (hints != null && hints.length > 0 ) {
+            token = new String(hints[0].getHint());
+            StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+        } else {
+            choice = choice % BINARY_TOKENS.length;
+            token = new String(BINARY_TOKENS[choice]);
+        }
+        token = applyTaints(token, choice);
+
         String lhs = generateExpression(random);
         String rhs = generateExpression(random);
-
-//        token = applyTaints(token, choice);
 
         return lhs + " " + token + " " + rhs;
     }
@@ -303,19 +284,8 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         int choice = random.nextInt(0, Integer.MAX_VALUE);
 
 
-        Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
-       // Boolean coinflip = random.nextBoolean();
-        if (useHints && hints != null && hints.length > 0 ) { //&& coinflip ) {
-            //random.nextInt(0, Integer.MAX_VALUE);
-            choice = choice % hints.length;
 
-            func = new String(hints[choice].getHint());
-            StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
-        } else {
-            func = generateExpression(random);
-        }
-
-        func = applyTaints(func, choice);
+        func = generateExpression(random);
 
         String args = String.join(",", generateItems(this::generateExpression, random, 3));
 
@@ -384,8 +354,6 @@ public class JavaScriptCodeGenerator extends Generator<String> {
             result = params + " => " + generateExpression(random);
         }
 
-//        result = applyTaints(result, choice);
-
         return result;
 
     }
@@ -393,37 +361,21 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     private String generateIdentNode(SourceOfRandomness random) {
         // Either generate a new identifier or use an existing one
         String identifier;
-        if (identifiers.isEmpty() || (identifiers.size() - knownHints.size() < MAX_IDENTIFIERS && random.nextBoolean())) {
-            identifier = random.nextChar('a', 'z') + "_" + identifiers.size();
-            identifiers.add(identifier);
-            identifiersList.add(identifier);
-        }
+        //if (identifiers.isEmpty() || (identifiers.size() - knownHints.size() < MAX_IDENTIFIERS && random.nextBoolean())) {
+        //    identifier = random.nextChar('a', 'z') + "_" + identifiers.size();
+        //    identifiers.add(identifier);
+        //    identifiersList.add(identifier);
+        //}
 
-        boolean coin = random.nextBoolean();
         int choice = random.nextInt(0, Integer.MAX_VALUE);
 
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
-       // Boolean coinflip = random.nextBoolean();
-        if (useHints && hints != null && hints.length > 0 ) { //&& coinflip) {
-
-            identifier = "";
-
-            // This seems to work:  add all hints to a set that we use later to choose new identifiers from
-            // This way, all hints that we found end up being used, even if at random places
-            // It seems to improve coverage
-            for (Coordinator.StringHint h : hints) {
-                if (!knownHints.contains(h.getHint()))
-                    knownHints.add(new String(h.getHint()));
-            }
-
-            //random.nextInt(0, Integer.MAX_VALUE);
-            choice = choice % hints.length;
-
-            identifier = new String(hints[choice].getHint());
+        if (hints != null && hints.length > 0 ) {
+            identifier = new String(hints[0].getHint());
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         } else {
-            choice = choice % identifiers.size();
-            identifier = new String(identifiersList.get(choice));
+            choice = choice % IDENTIFIERS.length;
+            identifier = new String(IDENTIFIERS[choice]);
         }
 
         identifier = applyTaints(identifier, choice);
@@ -459,8 +411,6 @@ public class JavaScriptCodeGenerator extends Generator<String> {
                 result = "{" + String.join(", ", generateItems(this::generateObjectProperty, random, 3)) + "}";
             }
 
-//            result = applyTaints(result, choice);
-
             return result;
         } else {
             // Otherwise, generate primitive literals
@@ -495,6 +445,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
 
     private String generateStringLiteral(SourceOfRandomness random) {
         // Generate an arbitrary string using the default string generator, and quote it
+        // todo will we use hints here!?!?
         return '"' + gen().type(String.class).generate(random, status) + '"';
     }
 
@@ -525,10 +476,19 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     }
 
     private String generateUnaryNode(SourceOfRandomness random) {
-        int choice = random.nextInt(UNARY_TOKENS.length);
-        String token = new String(UNARY_TOKENS[choice]);
+        int choice = random.nextInt(0, Integer.MAX_VALUE);
 
-//        token = applyTaints(token, choice);
+        String token;
+        Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+        if (hints != null && hints.length > 0 ) {
+            token = new String(hints[0].getHint());
+            StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+        } else {
+            choice = choice % UNARY_TOKENS.length;
+            token = new String(UNARY_TOKENS[choice]);
+        }
+
+        token = applyTaints(token, choice);
 
         return token + " " + generateExpression(random);
     }

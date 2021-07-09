@@ -28,6 +28,14 @@
  */
 package edu.berkeley.cs.jqf.examples.xml;
 
+import edu.berkeley.cs.jqf.fuzz.knarr.KnarrGuidance;
+import edu.columbia.cs.psl.phosphor.PreMain;
+import edu.columbia.cs.psl.phosphor.TaintUtils;
+import edu.columbia.cs.psl.phosphor.runtime.Taint;
+import org.w3c.dom.Document;
+import za.ac.sun.cs.green.expr.Expression;
+
+import javax.xml.transform.OutputKeys;
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
@@ -37,8 +45,6 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.StringWriter;
-
-import org.w3c.dom.Document;
 
 /**
  * @author Rohan Padhye
@@ -50,7 +56,23 @@ public class XMLDocumentUtils {
     public static String documentToString(Document document) {
         try {
             Transformer transformer = transformerFactory.newTransformer();
-            StringWriter stream = new StringWriter();
+            transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+            transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "2");
+
+            StringWriter stream = new StringWriter(){
+                @Override
+                public void write(String str) {
+                    // When using Knarr, print out the XML annotated with taint sources
+                    if(PreMain.RUNTIME_INST && TaintUtils.getTaintObj(str) != null){
+                        Taint<Expression> tag = TaintUtils.getTaintObj(str);
+                        if(tag.getSingleLabel() != null){
+                            String prefix = "(" + KnarrGuidance.extractChoices(tag.getSingleLabel()) + ">)";
+                            super.write(prefix);
+                        }
+                    }
+                    super.write(str);
+                }
+            };
             transformer.transform(new DOMSource(document), new StreamResult(stream));
             return stream.toString();
         } catch (TransformerException e) {

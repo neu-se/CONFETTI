@@ -45,7 +45,7 @@ import java.util.List;
  *
  * @author Rohan Padhye
  */
-public class Counter {
+public class Counter implements ICounter {
 
     /** The size of the counter map. */
     protected final int size;
@@ -68,6 +68,7 @@ public class Counter {
      *
      * @return the size of this counter
      */
+    @Override
     public int size() {
         return this.size;
     }
@@ -75,6 +76,7 @@ public class Counter {
     /**
      * Clears the counter by setting all values to zero.
      */
+    @Override
     public void clear() {
         for (int i = 0; i < counts.length; i++) {
             this.counts[i] = 0;
@@ -99,6 +101,7 @@ public class Counter {
      * @param key the key whose count to increment
      * @return the new value after incrementing the count
      */
+    @Override
     public synchronized int increment(int key) {
         return incrementAtIndex(idx(key), 1);
     }
@@ -115,6 +118,7 @@ public class Counter {
      * @param delta the amount to increment by
      * @return the new value after incrementing the count
      */
+    @Override
     public synchronized int increment(int key, int delta) {
         return incrementAtIndex(idx(key), delta);
     }
@@ -124,6 +128,7 @@ public class Counter {
      *
      * @return the number of indices with non-zero counts
      */
+    @Override
     public synchronized int getNonZeroSize() {
         int size = 0;
         for (int i = 0; i < counts.length; i++) {
@@ -145,6 +150,7 @@ public class Counter {
      *
      * @return a set of indices at which the count is non-zero
      */
+    @Override
     public Collection<Integer> getNonZeroIndices() {
         List<Integer> indices = new ArrayList<>(size /2);
         for (int i = 0; i < counts.length; i++) {
@@ -161,6 +167,7 @@ public class Counter {
      *
      * @return a set of non-zero count values in this counter.
      */
+    @Override
     public synchronized Collection<Integer> getNonZeroValues() {
         List<Integer> values = new ArrayList<>(size /2);
         for (int i = 0; i < counts.length; i++) {
@@ -181,15 +188,18 @@ public class Counter {
      * @param key the key to query
      * @return the count for the index corresponding to this key
      */
+    @Override
     public synchronized int get(int key) {
         return this.counts[idx(key)];
     }
 
 
+    @Override
     public synchronized int getAtIndex(int idx) {
         return this.counts[idx];
     }
 
+    @Override
     public synchronized void setAtIndex(int idx, int value) {
         this.counts[idx] = value;
     }

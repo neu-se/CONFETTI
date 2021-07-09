@@ -1,5 +1,6 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
+import edu.berkeley.cs.jqf.fuzz.knarr.KnarrGuidance;
 import edu.gmu.swe.knarr.runtime.Coverage;
 import org.jgrapht.alg.util.Pair;
 import za.ac.sun.cs.green.expr.Expression;
@@ -12,7 +13,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.util.*;
 
-class KnarrWorker extends Worker {
+public class KnarrWorker extends Worker {
     private ArrayList<LinkedList<byte[]>> inputs = new ArrayList<>();
     private ArrayList<Integer> fuzzing = new ArrayList<>();
     private Coordinator c;
@@ -22,29 +23,41 @@ class KnarrWorker extends Worker {
         this.c = c;
     }
 
-    public synchronized LinkedList<Expression> getConstraints(byte[] bytes, LinkedList<Coordinator.StringHint[]>hints) throws IOException {
+    public synchronized LinkedList<Expression> getConstraints(Coordinator.Input input) throws IOException {
         // Send input to Knarr process
-        oos.writeObject(bytes);
-        oos.writeObject(hints);
+        oos.writeObject(input.bytes);
+        oos.writeObject(input.hints);
+        oos.writeObject(input.instructions);
+        oos.writeInt(input.id);
+        oos.writeBoolean(input.isValid);
         oos.reset();
         oos.flush();
 
         // Get constraints from Knarr process
         LinkedList<Expression> constraints;
+        LinkedList<int[]> byteRangesUsedAsControlInGenerator;
         try {
             constraints = ((LinkedList<Expression>)ois.readObject());
+            byteRangesUsedAsControlInGenerator = (LinkedList<int[]>) ois.readObject();
         } catch (ClassNotFoundException e) {
             throw new Error(e);
         }
+        input.byteRangesUsedAsControlInGenerator = byteRangesUsedAsControlInGenerator;
 
         return constraints;
     }
 
-    public void process(LinkedList<Coordinator.Branch> bs, HashMap<Integer, HashSet<Coordinator.StringHint>> stringEqualsArgs, Expression e) {
+    public static void process(LinkedList<Coordinator.Branch> bs, HashMap<Integer, HashSet<Coordinator.StringHint>> stringEqualsArgs, Expression e, HashSet<Integer> bytesUsedBySUT, String[] filter) {
         Coverage.BranchData b = (Coverage.BranchData) e.metadata;
 
         if (b == null)
             return;
+
+        for (String f : filter) {
+            if (b.source != null && b.source.contains(f)) {
+                return;
+            }
+        }
 
         Coordinator.Branch bb = new Coordinator.Branch();
 
@@ -58,6 +71,24 @@ class KnarrWorker extends Worker {
         HashSet<Coordinator.StringHint> eq = new HashSet<>();
 
         findControllingBytes(e, bb.controllingBytes, eq);
+        if(b.source == null || !b.source.contains("edu/berkeley/cs/jqf/examples"))
+        {
+            boolean ignored = false;
+            if(filter != null)
+            {
+                for(String f : filter){
+                    if(b.source == null || b.source.contains(f)){
+                        ignored = true;
+                    }
+                }
+            }
+            //TODO make this a cleaner way to exclude bytes from the generator or driver
+            //We might still want to take hints for them, and collect them other ways,
+            //but for the purposes of targeting what subset of an input is worthwhile to fuzz
+            //, it seems pointless.
+            if(!ignored)
+                bytesUsedBySUT.addAll(bb.controllingBytes);
+        }
 
         bs.add(bb);
 
@@ -88,8 +119,25 @@ class KnarrWorker extends Worker {
                     Pair<String, String> cur = it.next();
                     switch(cur.getFirst()) {
                         case "EQUALS":
-                        case "INDEXOF":
+                            //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.EQUALS, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
                             stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.EQUALS));
+                            break;
+                        case "INDEXOF":
+                            //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.INDEXOF, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
+                            //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.STARTSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
+                            //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.ENDSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
+
+                            stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.INDEXOF));
+                            stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.STARTSWITH));
+                            stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.ENDSWITH));
+                            break;
+                        case "STARTSWITH":
+                            //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.STARTSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
+                            stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.STARTSWITH));
+                            break;
+                        case "ENDSWITH":
+                            //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.ENDSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
+                            stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.ENDSWITH));
                             break;
                     }
 

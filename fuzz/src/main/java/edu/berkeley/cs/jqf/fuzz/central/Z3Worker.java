@@ -741,8 +741,14 @@ public class Z3Worker {
         Map<String, BoolExpr> ret = new HashMap<>();
 
         for (Map.Entry<String, Expression> e : constraints.entrySet()) {
-            e.getValue().accept(translator);
-            ret.put(e.getKey(), (BoolExpr) translator.getTranslation());
+            try {
+                e.getValue().accept(translator);
+                ret.put(e.getKey(), (BoolExpr) translator.getTranslation());
+            }catch(Throwable tr){
+                //System.err.println("Unable to translate expression");
+                //System.err.println(e);
+                //tr.printStackTrace();
+            }
         }
 
         variables.addAll(translator.getVariableMap().values());

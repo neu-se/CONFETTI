@@ -1,6 +1,5 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
-import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
 import edu.berkeley.cs.jqf.fuzz.guidance.Result;
 
 import java.io.IOException;
@@ -16,6 +15,8 @@ class ZestWorker extends Worker {
     private ArrayList<LinkedList<byte[]>> inputs = new ArrayList<>();
     private ArrayList<Integer> fuzzing = new ArrayList<>();
     private ArrayList<TreeSet<Integer>> recommendations = new ArrayList<>();
+    private LinkedList<Integer> newlyRecommendedInputsToQueue = new LinkedList<>();
+    private HashSet<Integer> allRecommendedInputs = new HashSet<>();
     private ArrayList<HashMap<Integer, HashSet<Coordinator.StringHint>>> stringEqualsHints = new ArrayList<>();
     private Coordinator c;
 
@@ -62,6 +63,7 @@ class ZestWorker extends Worker {
                     int id = ois.readInt();
 
                     LinkedList<Coordinator.StringHint[]> hints = (LinkedList<Coordinator.StringHint[]>) ois.readObject();
+                    LinkedList<int[]> instructions = (LinkedList<int[]>) ois.readObject();
 
                     Double coveragePercentage = ois.readDouble();
                     Long numExecutions = ois.readLong();
@@ -71,6 +73,9 @@ class ZestWorker extends Worker {
                     //                Coverage cov = (Coverage) ois.readObject();
 
                     // Save input
+                    if(id > inputs.size() && inputs.get(id) != null){
+                        throw new IllegalArgumentException();
+                    }
                     inputs.add(id, inputRequests);
                     fuzzing.add(id, 0);
 
@@ -85,7 +90,7 @@ class ZestWorker extends Worker {
                         i += b.length;
                     }
 
-                    c.foundInput(id, bs, res != Result.INVALID, hints, coveragePercentage, numExecutions, score);
+                    c.foundInput(id, bs, res != Result.INVALID, hints, instructions, coveragePercentage, numExecutions, score);
 
 
                     synchronized (recommendations) {
@@ -140,12 +145,20 @@ class ZestWorker extends Worker {
                     // previously used hints
                     Coordinator.Input in = c.getInput(selected);
 
+                    //if((stringsToSend != null && stringsToSend.size() > 0) || (in.hints != null && in.hints.size() > 0)){
+                    //    System.out.println(in.id + " hints sent!");
+                    //    System.out.println(stringsToSend);
+                    //    System.out.println(in.hints);
+                    //}
                     // Send instructions
                     oos.writeObject(instructionsToSend);
                     oos.writeObject(stringsToSend);     // Strings that are new hints
-                    oos.writeObject(in.hints);          // Strings that are previously used hints that must be replicated
+                    oos.writeObject(new LinkedList<Integer>()); //TODO debugging without this right now
+                    //oos.writeObject(in.byteRangesUsedAsControlInGenerator);
+                    oos.writeObject(in.bytesFoundUsedInSUT);
+                    // Strings that are previously used hints that must be replicated - those are already saved on the client
 
-                    printSentStringHints(stringsToSend);
+                    //printSentStringHints(stringsToSend);
 
                     // Update state
                     fuzzing.set(selected, (toFuzz + 1) % inputs.get(selected).size());
@@ -164,7 +177,14 @@ class ZestWorker extends Worker {
 
                     oos.writeObject(next);
                     break;
-
+                case GETRECOMMENDATIONS:
+                    synchronized (recommendations){
+                        if(!newlyRecommendedInputsToQueue.isEmpty())
+                            System.out.println("Recommending inputs: " + newlyRecommendedInputsToQueue);
+                        oos.writeObject(newlyRecommendedInputsToQueue);
+                        newlyRecommendedInputsToQueue.clear();
+                    }
+                    break;
                 case GETSCOREUPDATES:
                     // Zest is asking if there's an Inputs whose scores we should update
                     Coordinator.Input n;
@@ -208,6 +228,9 @@ class ZestWorker extends Worker {
 
     public void recommend(int inputID, TreeSet<Integer> recommendation, HashMap<Integer, HashSet<Coordinator.StringHint>> eqs) {
         synchronized (recommendations) {
+            if(!(recommendation.isEmpty() && eqs.isEmpty()) && allRecommendedInputs.add(inputID)){
+                newlyRecommendedInputsToQueue.add(inputID);
+            }
             recommendations.set(inputID, recommendation);
             stringEqualsHints.set(inputID, eqs);
         }
