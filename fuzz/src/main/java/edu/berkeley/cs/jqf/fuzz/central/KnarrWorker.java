@@ -2,7 +2,7 @@ package edu.berkeley.cs.jqf.fuzz.central;
 
 import edu.berkeley.cs.jqf.fuzz.knarr.KnarrGuidance;
 import edu.gmu.swe.knarr.runtime.Coverage;
-import org.jgrapht.alg.util.Pair;
+import edu.gmu.swe.knarr.runtime.StringUtils;
 import za.ac.sun.cs.green.expr.Expression;
 import za.ac.sun.cs.green.expr.FunctionCall;
 import za.ac.sun.cs.green.expr.Operation;
@@ -99,37 +99,32 @@ public class KnarrWorker extends Worker {
         } else if (e instanceof Operation) {
             Operation op = (Operation) e;
             if (e.metadata != null && e.metadata instanceof HashSet) {
-                Iterator<Pair<String,String>> it = ((HashSet<Pair<String,String>>)e.metadata).iterator();
+                Iterator<StringUtils.StringComparisonRecord> it = ((HashSet<StringUtils.StringComparisonRecord>)e.metadata).iterator();
                 while(it.hasNext()) {
-                    Pair<String, String> cur = it.next();
-                    switch(cur.getFirst()) {
-                        case "EQUALS":
+                    StringUtils.StringComparisonRecord cur = it.next();
+                    switch(cur.getComparisionType()) {
+                        case EQUALS:
                             //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.EQUALS, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
-                            stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.EQUALS));
+                            stringEqualsArgs.add(new Coordinator.StringHint(cur.getStringCompared(), Coordinator.HintType.EQUALS));
                             break;
-                        case "INDEXOF":
+                        case INDEXOF:
                             //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.INDEXOF, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
                             //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.STARTSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
                             //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.ENDSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
 
-                            stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.INDEXOF));
-                            stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.STARTSWITH));
-                            stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.ENDSWITH));
+                            stringEqualsArgs.add(new Coordinator.StringHint(cur.getStringCompared(), Coordinator.HintType.INDEXOF));
+                            stringEqualsArgs.add(new Coordinator.StringHint(cur.getStringCompared(), Coordinator.HintType.STARTSWITH));
+                            stringEqualsArgs.add(new Coordinator.StringHint(cur.getStringCompared(), Coordinator.HintType.ENDSWITH));
                             break;
-                        case "STARTSWITH":
+                        case STARTSWITH:
                             //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.STARTSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
-                            stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.STARTSWITH));
+                            stringEqualsArgs.add(new Coordinator.StringHint(cur.getStringCompared(), Coordinator.HintType.STARTSWITH));
                             break;
-                        case "ENDSWITH":
-                            //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.ENDSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
-                            stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.ENDSWITH));
-                            break;
-                        case "ISEMPTY":
+                        //case ENDSWITH:
+                            //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.ENDSWITH));
+                            //break;
+                        case ISEMPTY:
                             stringEqualsArgs.add(new Coordinator.StringHint("", Coordinator.HintType.ISEMPTY));
-                            break;
-                        case "LENGTH":
-                            //TODO should we use length constraints??
-                            //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.LENGTH));
                             break;
                     }
 
