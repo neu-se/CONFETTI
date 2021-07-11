@@ -114,6 +114,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private long[] countOfInputsSavedByMutation = new long[MutationType.values().length];
 
     private long[] countOfSavedInputsBySeedSource = new long[SeedSource.values().length];
+    private long[] countOfFailingInputsBySeedSource = new long[SeedSource.values().length];
 
     private int[] countOfInputsSavedWithMutationCountsRanges = new int[]{0, 1, 5, 10, 20, 100, 1000, 10000};
     private long[] countOfInputsSavedWithMutationCounts = new long[countOfInputsSavedWithMutationCountsRanges.length];
@@ -742,6 +743,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         console.printf("    Hints             %,d\n", countOfSavedInputsBySeedSource[SeedSource.HINTS.ordinal()]);
         console.printf("    Z3                %,d\n", countOfSavedInputsBySeedSource[SeedSource.Z3.ordinal()]);
         console.printf("    Other             %,d\n", countOfSavedInputsBySeedSource[SeedSource.RANDOM.ordinal()]);
+        console.printf("Failure inducing inputs derived from:\n");
+        console.printf("    Hints             %,d\n", countOfFailingInputsBySeedSource[SeedSource.HINTS.ordinal()]);
+        console.printf("    Z3                %,d\n", countOfFailingInputsBySeedSource[SeedSource.Z3.ordinal()]);
+        console.printf("    Other             %,d\n", countOfFailingInputsBySeedSource[SeedSource.RANDOM.ordinal()]);
 
         String plotData = String.format("%d, %d, %d, %d, %d, %d, %.2f%%, %d, %d, %d, %.2f, %d, %d, %d, %d, %.2f%%, %d",
                 TimeUnit.MILLISECONDS.toSeconds(now.getTime()), cyclesCompleted, currentParentInputIdx,
@@ -853,28 +858,20 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     central != null && (inputFromCentral = central.getInput()) != null) {
                 // Central sent input, use that instead
 
-                byte[] newInputBytes  = new byte[Math.max(inputFromCentral.hints.size(), inputFromCentral.bytes.length)];
-                for(int i = 0; i < newInputBytes.length ; i++) {
-                    if( i < inputFromCentral.bytes.length) {
-                        newInputBytes[i] = inputFromCentral.bytes[i];
-                    }
-                    else {
-                        newInputBytes[i] = 0;
-                    }
-                }
-
-                // currentInput = new ZestGuidance.SeedInput(inputFromCentral.bytes, "From central");
-                currentInput = new ZestGuidance.SeedInput(newInputBytes, "From central");
+                currentInput = new ZestGuidance.SeedInput(inputFromCentral.bytes, "From central");
                 currentInput.seedSource = SeedSource.Z3;
                 currentInput.z3 = true; // the only inputs we get from the central this way are z3
-
-                currentInput.stringEqualsHints = inputFromCentral.hints;
-                currentInput.instructions = new LinkedList<>();
-                //TODO this is almost surely wrong - shouldn't this only be at places where there is a non-zero?
-                for (int i = 0 ; i < currentInput.stringEqualsHints.size() ; i++)
-                    // This input came from the central, so we don't know how the Random requests bytes
-                    // Treat each byte as a single request
-                    currentInput.instructions.addLast(new int[]{i,1});
+                if(!inputFromCentral.hintGroups.isEmpty()){
+                    if(inputFromCentral.hintGroups.size() > 1){
+                        System.err.println("Unexpected... shouldn't there be only one hint group per Z3 input for now?");
+                    }
+                    Coordinator.StringHintGroup hints = inputFromCentral.hintGroups.getFirst();
+                    currentInput.stringEqualsHints = new LinkedList<>();
+                    currentInput.instructions = hints.instructions;
+                    for(Coordinator.StringHint h : hints.hints){
+                        currentInput.stringEqualsHints.add(new Coordinator.StringHint[]{h});
+                    }
+                }
 
                 // Write it to disk for debugging
                 //try {
@@ -1218,6 +1215,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             }
         } else if (result == Result.FAILURE || result == Result.TIMEOUT) {
             String msg = error.getMessage();
+
+            if(currentInput.seedSource != null)
+                countOfFailingInputsBySeedSource[currentInput.seedSource.ordinal()]++;
 
             // Get the root cause of the failure
             Throwable rootCause = error;

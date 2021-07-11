@@ -168,7 +168,7 @@ class ZestWorker extends Worker {
                     }
                     if (next != null) {
                         //System.out.println("WIN");
-                        printSentStringHints(next.hints);
+                        System.out.println(next.hintGroups);
                     }
 
                     oos.writeObject(next);
@@ -202,24 +202,6 @@ class ZestWorker extends Worker {
                     break;
             }
         }
-    }
-
-    private void printSentStringHints(LinkedList<Coordinator.StringHint[]> stringHintsSent) {
-        if (stringHintsSent.isEmpty())
-            return;
-
-        System.out.print("\tSent strings: ");
-        for (Coordinator.StringHint[] s : stringHintsSent) {
-            if (s.length == 0)
-                continue;
-
-            System.out.print("[ ");
-            for (Coordinator.StringHint ss : s)
-                System.out.print(ss.getHint() + ", " + ss.getType().toString());
-            System.out.print("] ");
-        }
-
-        System.out.println();
     }
 
     public void recommend(int inputID, TreeSet<Integer> recommendation, HashMap<Integer, HashSet<Coordinator.StringHint>> eqs) {

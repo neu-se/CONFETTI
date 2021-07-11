@@ -1,6 +1,7 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
 import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
+import edu.berkeley.cs.jqf.fuzz.guidance.GuidanceException;
 import edu.berkeley.cs.jqf.fuzz.guidance.Result;
 import edu.berkeley.cs.jqf.fuzz.util.Coverage;
 
@@ -159,7 +160,7 @@ public class ZestClient extends Central {
         } catch (ClassNotFoundException e) {
             throw new Error(e);
         } catch (IOException e) {
-            return null;
+            throw new GuidanceException(e);
         }
     }
 

@@ -1,24 +1,10 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
-import com.microsoft.z3.BitVecNum;
-import com.microsoft.z3.BoolExpr;
-import com.microsoft.z3.Context;
-import com.microsoft.z3.Expr;
-import com.microsoft.z3.FuncDecl;
-import com.microsoft.z3.FuncInterp;
-import com.microsoft.z3.IntNum;
-import com.microsoft.z3.Model;
-import com.microsoft.z3.Params;
-import com.microsoft.z3.RatNum;
-import com.microsoft.z3.Solver;
-import com.microsoft.z3.Sort;
-import com.microsoft.z3.Status;
-import com.microsoft.z3.Z3Exception;
+import com.microsoft.z3.*;
 import edu.gmu.swe.knarr.runtime.Coverage;
 import edu.gmu.swe.knarr.server.ConstraintOptionGenerator;
 import edu.gmu.swe.knarr.server.HashMapStateStore;
 import edu.gmu.swe.knarr.server.StateStore;
-
 import za.ac.sun.cs.green.Green;
 import za.ac.sun.cs.green.expr.*;
 import za.ac.sun.cs.green.service.canonizer.ModelCanonizerService;
@@ -187,7 +173,13 @@ public class Z3Worker {
             HashMap<String, byte[]> genFuncs = new HashMap<>();
             Coordinator.Input ret = new Coordinator.Input();
             ret.bytes = solutionToInput(sat, genFuncs);
-            ret.hints = generatorsToHints(res.values(), genFuncs);
+            Coordinator.StringHintGroup hg = generatorsToHints(res.values(), genFuncs, t.originalInput);
+            if(hg != null){
+                if(ret.hintGroups == null){
+                    ret.hintGroups = new LinkedList<>();
+                }
+                ret.hintGroups.add(hg);
+            }
 
             // Add more bytes to maybe explore new paths
             if (EXTRA_ZEROES_FOR_Z3 > 0) {
@@ -205,7 +197,7 @@ public class Z3Worker {
                 Expression ex = res.remove(unsat.stream().findFirst().get());
 
                 // Maybe it's a String.equals without enough size?
-                Optional<Coordinator.Input> sol = replaceEqualsByStartsWith(res, ex);
+                Optional<Coordinator.Input> sol = replaceEqualsByStartsWith(res, ex, t);
 
                 // Put the expression back
                 res.put(unsat.stream().findFirst().get(), ex);
@@ -220,7 +212,7 @@ public class Z3Worker {
         }
     }
 
-    public static LinkedList<Coordinator.StringHint[]> generatorsToHints(Collection<Expression> exps, Map<String, byte[]> genFuncs) {
+    public static Coordinator.StringHintGroup generatorsToHints(Collection<Expression> exps, Map<String, byte[]> genFuncs, Coordinator.Input originalInput) {
         LinkedList<Coordinator.StringHint[]> ret = new LinkedList<>();
 
         HashMap<Integer, Set<String>> hints = new HashMap<>();
@@ -259,20 +251,26 @@ public class Z3Worker {
             }
         }
 
-        for (int i = 0 ; !hints.isEmpty() ; i++) {
-            Set<String> strings = hints.remove(i);
-            Coordinator.StringHint[] empty = new Coordinator.StringHint[0];
-            if (strings == null) {
-                ret.addLast(empty);
-            } else {
-                ret.addLast(strings.stream()
-                        .map(s -> new Coordinator.StringHint(s, Coordinator.HintType.Z3))
-                        .collect(Collectors.toList())
-                        .toArray(empty));
+        Coordinator.StringHintGroup hintGroup = new Coordinator.StringHintGroup();
+
+        int[] lastReqGroup = null;
+        for(int[] requestGroup : originalInput.requestsForRandom){
+            int offset = requestGroup[0];
+            int length = requestGroup[1];
+            if(hints.get(offset) != null){
+                Set<String> strings = hints.remove(offset);
+                if(strings.size() > 1){
+                    System.err.println("Found multiple strings from Z3 : " + strings);
+                    System.err.println("Jon didn't think this was possible, we should figure out what's happening");
+                }
+                String hint = strings.iterator().next();
+                hintGroup.instructions.add(requestGroup);
+                hintGroup.hints.add(new Coordinator.StringHint(hint, Coordinator.HintType.Z3));
             }
         }
+        System.out.println(hintGroup);
 
-        return ret;
+        return hintGroup;
     }
 
     private Set<Expression> hintsToConstraints(List<Expression> constraints, HashMap<Integer, HashSet<Coordinator.StringHint>> hints) {
@@ -624,7 +622,7 @@ public class Z3Worker {
         }
     }
 
-    private Optional<Coordinator.Input> replaceEqualsByStartsWith(Map<String, Expression> res, Expression cs) {
+    private Optional<Coordinator.Input> replaceEqualsByStartsWith(Map<String, Expression> res, Expression cs, Target target) {
         // Check if the constraint is EQUALS
 
         AtomicReference<String> hack = new AtomicReference<>();
@@ -687,21 +685,28 @@ public class Z3Worker {
 
             Map<String, Expression> resForHints = new HashMap<>();
             resForHints.put("special", newCS);
-            ret.hints = generatorsToHints(res.values(), genFuncs);
-
-            for (Coordinator.StringHint[] h : ret.hints) {
-                if (h == null)
-                    continue;
-
-                for (int i = 0 ; i < h.length ; i++)
-                    h[i].hint = hack.get();
+            Coordinator.StringHintGroup hints = generatorsToHints(res.values(), genFuncs, target.originalInput);
+            if (hints != null) {
+                if(ret.hintGroups == null){
+                    ret.hintGroups = new LinkedList<>();
+                }
+                ret.hintGroups.add(hints);
+                for (Coordinator.StringHint h : hints.hints) {
+                    if (h == null)
+                        continue;
+                    h.hint = hack.get();//TODO what is this for? - JSB
+                }
             }
 
+
             res.remove("special");
-            LinkedList<Coordinator.StringHint[]> hs = generatorsToHints(res.values(), genFuncs);
-            for (int i = 0 ; i < ret.hints.size() ; i++) {
-                if (ret.hints.get(i) == null)
-                    ret.hints.set(i, hs.get(i));
+            // TODO what is this? - JSB
+            Coordinator.StringHintGroup hintsAgain = generatorsToHints(res.values(), genFuncs, target.originalInput);
+            if (hintsAgain != null) {
+                for (int i = 0 ; i < hintsAgain.hints.size() ; i++) {
+                    if (hints.hints.get(i) == null)
+                        hints.hints.set(i, hintsAgain.hints.get(i));
+                }
             }
             return Optional.of(ret);
 //            // It worked, get the string and the solution
@@ -950,11 +955,13 @@ public class Z3Worker {
 
     public static class Target {
         Coordinator.Branch branch;
+        Coordinator.Input originalInput;
         byte[] input;
         List<Expression> constraints;
         HashMap<Integer, HashSet<Coordinator.StringHint>> hints;
 
-        public Target(Coordinator.Branch branch, byte[] input, List<Expression> constraints, HashMap<Integer, HashSet<Coordinator.StringHint>> hints) {
+        public Target(Coordinator.Input originalInput, Coordinator.Branch branch, byte[] input, List<Expression> constraints, HashMap<Integer, HashSet<Coordinator.StringHint>> hints) {
+            this.originalInput = originalInput;
             this.branch = branch;
             this.constraints = constraints;
             this.hints = hints;

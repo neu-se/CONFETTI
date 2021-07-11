@@ -436,7 +436,7 @@ public class Coordinator implements Runnable {
 
 
             // Set Z3 target
-            Z3Worker.Target target = new Z3Worker.Target(top, inputToTarget.bytes, constraints.get(inputToTarget).getExpressions(), perByteStringEqualsHints.get(inputToTarget));
+            Z3Worker.Target target = new Z3Worker.Target(inputToTarget, top, inputToTarget.bytes, constraints.get(inputToTarget).getExpressions(), perByteStringEqualsHints.get(inputToTarget));
 
             // Send target to Z3
             Optional<Coordinator.Input> newInput = z3.exploreTarget(target);
@@ -447,28 +447,7 @@ public class Coordinator implements Runnable {
             // Handle result
             if (newInput.isPresent()) {
                 System.out.println("Z3 found new input for " + inputToTarget.id + " " + target.branch.source);
-                for(StringHint[] hint : newInput.get().hints) {
-                    if(hint.length > 0)
-                        System.out.println(hint[0]);
-                }
-                Input _input = newInput.get();
-                if(!_input.hints.isEmpty()){
-
-                }
-//                try {
-//                    // Send input to knarr, check if we explore target
-//                    LinkedList<Expression> updatedConstraints = knarr.getConstraints(newInput.get().bytes, newInput.get().hints);
-//                    Optional<Expression> hit = updatedConstraints.stream().filter(e -> e.metadata instanceof Coverage.BranchData && ((Coverage.BranchData)e.metadata).source.equals(target.branch.source)).findFirst();
-//
-//                    if (hit.isPresent()) {
-//                        // This input hits the target, add it to JQF
-                        zest.addInputFromZ3(newInput.get());
-//                    }
-
-
-//                } catch (IOException e) {
-//
-//                }
+                zest.addInputFromZ3(newInput.get());
             }
         }
     }
@@ -477,7 +456,7 @@ public class Coordinator implements Runnable {
         return this.config;
     }
 
-    public static class Input implements Serializable {
+    public static class Input implements Externalizable {
         public int id;
         public byte[] bytes;
         public LinkedList<int[]> instructions;
@@ -491,6 +470,7 @@ public class Coordinator implements Runnable {
         public LinkedList<StringHint[]> hints;
         public Integer score = 0;
         public boolean isValid;
+        public LinkedList<StringHintGroup> hintGroups;
 
         public Input(){
 
@@ -508,15 +488,151 @@ public class Coordinator implements Runnable {
         public int hashCode() {
             return Objects.hash(id);
         }
+
+        @Override
+        public void writeExternal(ObjectOutput out) throws IOException {
+            out.writeInt(id);
+            out.writeInt(bytes.length);
+            out.write(bytes);
+            if(instructions == null){
+                out.writeInt(-1);
+            }else {
+                out.writeInt(instructions.size());
+                for (int[] inst : instructions) {
+                    out.writeObject(inst);
+                }
+            }
+            out.writeBoolean(recommendedBefore);
+            if (requestsForRandom == null) {
+                out.writeInt(-1);
+            } else {
+                out.writeInt(requestsForRandom.size());
+                for (int[] req : requestsForRandom) {
+                    out.writeObject(req);
+                }
+            }
+            out.writeBoolean(isNew);
+            out.writeDouble(coveragePercentage);
+            out.writeLong(numExecutions);
+            if (hints == null) {
+                out.writeInt(-1);
+            } else {
+                out.writeInt(hints.size());
+                for (StringHint[] h : hints) {
+                    out.writeObject(h);
+                }
+            }
+            out.writeInt(score);
+            out.writeBoolean(isValid);
+            if (hintGroups == null) {
+                out.writeInt(-1);
+            } else {
+                out.writeInt(hintGroups.size());
+                for (StringHintGroup g : hintGroups) {
+                    out.writeObject(g);
+                }
+            }
+        }
+
+        @Override
+        public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+            this.id = in.readInt();
+            this.bytes = new byte[in.readInt()];
+            in.readFully(this.bytes);
+            this.instructions = new LinkedList<>();
+            int nInsn = in.readInt();
+            for(int i = 0; i < nInsn; i++){
+                this.instructions.add((int[]) in.readObject());
+            }
+            this.recommendedBefore = in.readBoolean();
+            int nReqs = in.readInt();
+            this.requestsForRandom = new LinkedList<>();
+            for(int i = 0; i < nReqs; i++){
+                this.requestsForRandom.add((int[]) in.readObject());
+            }
+            this.isNew = in.readBoolean();
+            this.coveragePercentage = in.readDouble();
+            this.numExecutions = in.readLong();
+            int nHints = in.readInt();
+            this.hints = new LinkedList<>();
+            for(int i = 0; i < nHints; i++){
+                this.hints.add((StringHint[]) in.readObject());
+            }
+            this.score = in.readInt();
+            this.isValid = in.readBoolean();
+            int nHintGroups =in.readInt();
+            this.hintGroups = new LinkedList<>();
+            for(int i = 0; i < nHintGroups; i++){
+                this.hintGroups.add((StringHintGroup) in.readObject());
+            }
+        }
     }
 
 
-    public static class StringHint implements Serializable {
+    public static class StringHintGroup implements Externalizable{
+        public LinkedList<int[]> instructions = new LinkedList<>();
+        public LinkedList<StringHint> hints = new LinkedList<>();
+
+        public StringHintGroup(){
+
+        }
+        @Override
+        public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+            int nInsns = in.readInt();
+            for(int i = 0; i < nInsns; i++){
+                this.instructions.add((int[]) in.readObject());
+            }
+            int nHints = in.readInt();
+            for(int i = 0; i < nHints; i++){
+                this.hints.add((StringHint) in.readObject());
+            }
+        }
+
+        @Override
+        public void writeExternal(ObjectOutput out) throws IOException {
+            out.writeInt(instructions.size());
+            for(int[] insns : instructions){
+                out.writeObject(insns);
+            }
+            out.writeInt(hints.size());
+            for(StringHint h : hints){
+                out.writeObject(h);
+            }
+        }
+
+        @Override
+        public String toString() {
+            StringBuilder ret = new StringBuilder("StringHintGroup:\n");
+            for (int i = 0; i < instructions.size(); i++) {
+                ret.append('\t');
+                int[] insn = instructions.get(i);
+                ret.append(insn[0]);
+                ret.append('-');
+                ret.append(insn[0] + insn[1]);
+                ret.append(':');
+                ret.append('"');
+                ret.append(hints.get(i));
+                ret.append('"');
+                ret.append('\n');
+            }
+            return ret.toString();
+        }
+    }
+
+    /**
+     * A StringHint is a value that we want to try in a position in an input
+     * There is a parallel vector that tracks where each hint goes.
+     * StringHints are applied independently, unless they are part of a StringHintGroup
+     */
+    public static class StringHint implements Externalizable {
         private static final long serialVersionUID = -1812382770909515539L;
         String hint;
         HintType type;
         transient HashSet<String> debugSources;
 
+        public StringHint(){
+
+        }
         public StringHint(String hint, HintType type, HashSet<String> debugSources){
             this(hint, type);
             this.debugSources = debugSources;
@@ -556,6 +672,26 @@ public class Coordinator implements Runnable {
         public int hashCode() {
             return Objects.hash(hint, type);
         }
+
+        @Override
+        public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+            this.hint = in.readUTF();
+            int hintType = in.readInt();
+            if(hintType == -1)
+                this.type = null;
+            else
+                this.type = HintType.values()[hintType];
+        }
+
+        @Override
+        public void writeExternal(ObjectOutput out) throws IOException {
+            out.writeUTF(this.hint);
+            if(this.type == null){
+                out.writeInt(-1);
+            }else{
+                out.writeInt(this.type.ordinal());
+            }
+        }
     }
     public enum HintType {
         EQUALS,
@@ -566,7 +702,7 @@ public class Coordinator implements Runnable {
         ISEMPTY,
         Z3
     }
-    public static class Branch implements Serializable {
+    public static class Branch implements Externalizable {
         private static final long serialVersionUID = -6900391468143442577L;
         public int takenID, notTakenID;
         public boolean result, keep;
@@ -577,6 +713,9 @@ public class Coordinator implements Runnable {
         transient HashSet<Input> trueExplored;
         transient HashSet<Input> falseExplored;
 
+        public Branch(){
+
+        }
         @Override
         public boolean equals(Object o) {
             if (this == o) return true;
@@ -589,6 +728,36 @@ public class Coordinator implements Runnable {
         @Override
         public int hashCode() {
             return Objects.hash(takenID, notTakenID);
+        }
+
+        @Override
+        public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+            this.takenID = in.readInt();
+            this.notTakenID = in.readInt();
+            this.result = in.readBoolean();
+            this.keep = in.readBoolean();
+            int nBytes = in.readInt();
+            if(nBytes != -1)
+                this.controllingBytes = new HashSet<>();
+            for(int i = 0; i < nBytes; i++)
+                this.controllingBytes.add(in.readInt());
+            this.source = in.readUTF();
+        }
+
+        @Override
+        public void writeExternal(ObjectOutput out) throws IOException {
+            out.writeInt(this.takenID);
+            out.writeInt(this.notTakenID);
+            out.writeBoolean(this.result);
+            out.writeBoolean(this.keep);
+            if(this.controllingBytes == null)
+                out.writeInt(-1);
+            else{
+                out.writeInt(this.controllingBytes.size());
+                for(Integer i : this.controllingBytes)
+                    out.writeInt(i);
+            }
+            out.writeUTF(this.source);
         }
     }
 

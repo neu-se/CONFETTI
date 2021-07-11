@@ -9,8 +9,21 @@ import org.junit.runner.RunWith;
 @RunWith(JQF.class)
 
 public class MagicByteZ3Test {
+
     @Fuzz
-    public void testStringOnly(@From(MagicByteBranches.MagicInputGenerator.class)
+    public void testStringCharAtWithInts(@From(MagicByteBranches.MagicInputGenerator.class)
+                                 @Dictionary("dictionaries/maven-model.dict")
+                                         MagicByteBranches.MagicInput input) {
+        MagicByteBranches.examineInputCharAt(input);
+    }
+    @Fuzz
+    public void testStringCharAt(@From(MagicByteBranches.MagicInputGenerator.class)
+                             @Dictionary("dictionaries/maven-model.dict")
+                                     MagicByteBranches.MagicInput input) {
+        MagicByteBranches.examineInputStringOnlyCharAt(input);
+    }
+    @Fuzz
+    public void testStringConcatOnly(@From(MagicByteBranches.MagicInputGenerator.class)
                                   @Dictionary("dictionaries/maven-model.dict")
                                               MagicByteBranches.MagicInput input) {
         MagicByteBranches.examineInputStringOnly(input);

@@ -104,6 +104,9 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
                 }
             }
             //System.out.println("Hint word: " + word);
+            if (hints[0].getType() == Coordinator.HintType.Z3) {
+                StringEqualsHintingInputStream.z3HintsUsedInCurrentInput = true;
+            }
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         } else {
             choice = choice % dictionary.size();

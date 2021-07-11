@@ -3,6 +3,7 @@ package edu.berkeley.cs.jqf.examples.z3;
 import com.pholser.junit.quickcheck.generator.GenerationStatus;
 import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
+import edu.berkeley.cs.jqf.examples.common.AlphaStringGenerator;
 import edu.berkeley.cs.jqf.examples.common.AsciiStringGenerator;
 import edu.berkeley.cs.jqf.examples.common.Dictionary;
 import edu.berkeley.cs.jqf.examples.common.DictionaryBackedStringGenerator;
@@ -29,6 +30,25 @@ public class MagicByteBranches {
         }
     }
 
+    public static void examineInputStringOnlyCharAt(MagicInput input){
+        if(input.str2.charAt(0) == '!') {
+            if (input.str.charAt(0) == ':') {
+                throw new StringIndexOutOfBoundsException("You found it!");
+            }
+        }
+    }
+    public static void examineInputCharAt(MagicInput input){
+        if(input.i1 == 49505) {
+            if (input.str2.charAt(0) == '!') {
+                if(input.i2 < -1857490347) {
+                    if (input.str.charAt(0) == ':') {
+                        throw new StringIndexOutOfBoundsException("You found it!");
+                    }
+                }
+            }
+        }
+    }
+
     public static void examineInputStringOnly(MagicInput input) {
         String str3 = input.str.concat(input.str2);
         if (str3.equals("hello world!")) {
@@ -49,6 +69,17 @@ public class MagicByteBranches {
     public static class MagicInput {
         public String str;
         public String str2;
+
+        @Override
+        public String toString() {
+            return "MagicInput{" +
+                    "str='" + str + '\'' +
+                    ", str2='" + str2 + '\'' +
+                    ", i1=" + i1 +
+                    ", i2=" + i2 +
+                    '}';
+        }
+
         public int i1;
         public int i2;
 
@@ -63,7 +94,7 @@ public class MagicByteBranches {
 
         public void configure(Dictionary dict) {
             try {
-                stringGenerator = new DictionaryBackedStringGenerator(dict.value(), new AsciiStringGenerator());
+                stringGenerator = new DictionaryBackedStringGenerator(dict.value(), new AlphaStringGenerator());
             } catch (IOException e) {
                 e.printStackTrace();
             }
