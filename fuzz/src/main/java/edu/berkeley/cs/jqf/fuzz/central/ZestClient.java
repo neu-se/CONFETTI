@@ -141,11 +141,14 @@ public class ZestClient extends Central {
         }
     }
 
+    private static final int MIN_TIME_BEFORE_BUGGING_CENTRAL = 1000; //msec..
+    private long lastCentralGetInputCall;
+    private long lastCentralGetRecsCall;
     public Coordinator.Input getInput() {
-        if (hasSeenNullZ3Input)
+        long now = System.currentTimeMillis();
+        if(hasSeenNullZ3Input && now < lastCentralGetInputCall + MIN_TIME_BEFORE_BUGGING_CENTRAL)
             return null;
-        // TODO optimization: it would be nice if the central pushed down to the client z3 inputs,
-        // rather than forcing this message to get answered each time.
+        lastCentralGetInputCall = now;
 
         try {
             oos.writeObject(ZestMessageType.GETZ3INPUT);
@@ -165,6 +168,10 @@ public class ZestClient extends Central {
     }
 
     public LinkedList<Integer> getRecommendations() {
+        long now = System.currentTimeMillis();
+        if(now < lastCentralGetRecsCall + MIN_TIME_BEFORE_BUGGING_CENTRAL)
+            return new LinkedList<>();
+        lastCentralGetRecsCall = now;
         try {
             oos.writeObject(ZestMessageType.GETRECOMMENDATIONS);
             oos.flush();
