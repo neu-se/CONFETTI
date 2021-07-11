@@ -798,7 +798,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         int totalCoverageCount = totalCoverage.getNonZeroCount();
         infoLog("Total %d branches covered", totalCoverageCount);
         if (sumResponsibilities != totalCoverageCount) {
-            throw new AssertionError("Responsibilty mistmatch");
+            throw new AssertionError("Responsibilty mistmatch: " + sumResponsibilities + " vs " + totalCoverageCount);
         }
 
         // Refresh ecToInputLoc so that subsequent splices are only from favored inputs
@@ -921,8 +921,6 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                         central.selectInput(parent.id);
                         LinkedList<int[]> instructionsToTryInChildren = central.receiveInstructions();
                         LinkedList<Coordinator.StringHint[]> stringEqualsHintsToTryInChildren = central.receiveStringEqualsHints();
-                        LinkedList<int[]> byteRangesUsedAsControlInGenerator = central.receiveByteRangesUsedAsControlInGenerator();
-                        HashSet<Integer> bytesFoundUsedInSUT = central.receiveBytesFoundUsedBySUT();
                         if (!parent.alreadyReceivedHints) {
                             if(instructionsToTryInChildren.isEmpty()){
                                 throw new IllegalStateException("Central didn't send instructions for input "+ parent.id + " even though it suggested it!");
@@ -930,8 +928,6 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                             parent.alreadyReceivedHints = true;
                             parent.instructionsToTryInChildren = instructionsToTryInChildren;
                             parent.stringEqualsHintsToTryInChildren = stringEqualsHintsToTryInChildren;
-                            parent.byteRangesToMutateDirectlyInChildren = byteRangesUsedAsControlInGenerator;
-                            parent.bytesFoundUsedInSUT = bytesFoundUsedInSUT;
                             parent.addExtraRandomStringEqualsHints(random);
                             parent.bonusMutations = 0;
                             // CONFETTI will always get to generate its own set of children inputs
@@ -1749,6 +1745,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         }
 
         public void addSingleHintInPlace(Coordinator.StringHint hint, int[] insn) {
+            if(hint.getType() == Coordinator.HintType.LENGTH){
+                //TODO come back and implement some mutation for this...
+                return;
+            }
             if(this.instructions == null || this.stringEqualsHints == null){
                 this.instructions = new LinkedList<>();
                 this.stringEqualsHints = new LinkedList<>();
@@ -1955,7 +1955,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     //if(hint.getHint().equals("execution")){
                     //    System.out.println("Oh, we are almost there!");
                     //}
-                    newInput.desc += ",hint:" + hint.getHint() + "@" + insn[0];
+                    newInput.desc += ",hint:" + hint.getType() + "=" + hint.getHint() + "@" + insn[0];
                     newInput.mutationType = MutationType.APPLY_SINGLE_HINT;
                     newInput.seedSource = SeedSource.HINTS;
                     infoLog("Applied hint: %s", newInput.desc);

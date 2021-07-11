@@ -76,6 +76,7 @@ public class ZestClient extends Central {
     public void selectInput(int id) throws IOException {
         oos.writeObject(ZestMessageType.SELECTINPUT);
         oos.writeObject(new Integer(id));
+        oos.flush();
         hasSeenNullZ3Input = false;
     }
 
@@ -112,14 +113,6 @@ public class ZestClient extends Central {
         }
     }
 
-    public HashSet<Integer> receiveBytesFoundUsedBySUT() throws IOException {
-        try {
-            return (HashSet<Integer>) ois.readObject();
-        } catch (ClassNotFoundException e) {
-            throw new Error(e);
-        }
-    }
-
     public void sendCoverage(Coverage totalCoverage) {
         // TODO
     }
@@ -130,8 +123,8 @@ public class ZestClient extends Central {
 
             LinkedList<Coordinator.Input> ret = new LinkedList<>();
             oos.writeObject(ZestMessageType.GETSCOREUPDATES);
-            oos.reset();
             oos.flush();
+            oos.reset();
             Coordinator.Input i = (Coordinator.Input) ois.readObject();
             while(i != null) {
                 ret.add(i);
@@ -155,8 +148,8 @@ public class ZestClient extends Central {
 
         try {
             oos.writeObject(ZestMessageType.GETZ3INPUT);
-            oos.reset();
             oos.flush();
+            oos.reset();
             Coordinator.Input ret = (Coordinator.Input) ois.readObject();
 
             if (ret == null)
@@ -173,8 +166,8 @@ public class ZestClient extends Central {
     public LinkedList<Integer> getRecommendations() {
         try {
             oos.writeObject(ZestMessageType.GETRECOMMENDATIONS);
-            oos.reset();
             oos.flush();
+            oos.reset();
             LinkedList<Integer> ret = (LinkedList<Integer>) ois.readObject();
             if(ret == null)
                 ret = new LinkedList<>();

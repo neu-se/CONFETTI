@@ -32,7 +32,7 @@ public class Coordinator implements Runnable {
     }
 
 
-    protected final synchronized void foundInput(int id, byte[] bytes, boolean valid, LinkedList<StringHint[]>hints, LinkedList<int[]> instructions, Double coveragePercentage, long numExecutions, Integer score) {
+    protected final synchronized void foundInput(int id, byte[] bytes, boolean valid, LinkedList<StringHint[]>hints, LinkedList<int[]> instructions, Double coveragePercentage, long numExecutions, Integer score, LinkedList<int[]> requestOffsets) {
         Input in = new Input();
         in.bytes = bytes;
         in.id = id;
@@ -43,6 +43,7 @@ public class Coordinator implements Runnable {
         in.numExecutions = numExecutions;
         in.score = score;
         in.isValid = valid;
+        in.requestsForRandom = requestOffsets;
 
         this.inputs.addLast(in);
         this.notifyAll();
@@ -192,10 +193,12 @@ public class Coordinator implements Runnable {
                     // Compute coverage and branches from constraints
                     LinkedList<Branch> bs = new LinkedList<>();
                     HashMap<Integer, HashSet<StringHint>> eqs = new HashMap<>();
-                    HashSet<Integer> bytesUsedBySUT = new HashSet<>();
+                    long start = System.currentTimeMillis();
+                    KnarrWorker.constraintsProcessed = 0;
                     for (Expression e : cs)
-                        KnarrWorker.process(bs, eqs, e, bytesUsedBySUT, config.filter);
-                    input.bytesFoundUsedInSUT = bytesUsedBySUT;
+                        KnarrWorker.process(bs, eqs, e, config.filter);
+                    long end = System.currentTimeMillis();
+                    System.out.println("Processed " + KnarrWorker.constraintsProcessed + " constraints in " + (end - start));
 
                     update_score(bs, input);
                     // Adjust string hints
@@ -345,7 +348,7 @@ public class Coordinator implements Runnable {
 
     public final synchronized void startZ3Thread() {
         this.z3Started = true;
-        new Thread() {
+        new Thread("CONFETTI Z3 Worker") {
             @Override
             public void run() {
                 z3Thread();
@@ -444,6 +447,14 @@ public class Coordinator implements Runnable {
             // Handle result
             if (newInput.isPresent()) {
                 System.out.println("Z3 found new input for " + inputToTarget.id + " " + target.branch.source);
+                for(StringHint[] hint : newInput.get().hints) {
+                    if(hint.length > 0)
+                        System.out.println(hint[0]);
+                }
+                Input _input = newInput.get();
+                if(!_input.hints.isEmpty()){
+
+                }
 //                try {
 //                    // Send input to knarr, check if we explore target
 //                    LinkedList<Expression> updatedConstraints = knarr.getConstraints(newInput.get().bytes, newInput.get().hints);
@@ -454,10 +465,7 @@ public class Coordinator implements Runnable {
                         zest.addInputFromZ3(newInput.get());
 //                    }
 
-                    for(StringHint[] hint : newInput.get().hints) {
-                        if(hint.length > 0)
-                            System.out.println(hint[0]);
-                    }
+
 //                } catch (IOException e) {
 //
 //                }
@@ -474,8 +482,9 @@ public class Coordinator implements Runnable {
         public byte[] bytes;
         public LinkedList<int[]> instructions;
         public boolean recommendedBefore;
-        public LinkedList<int[]> byteRangesUsedAsControlInGenerator;
-        public HashSet<Integer> bytesFoundUsedInSUT;
+        //We store the set of random requests from the original input - if we use Z3
+        // to generate some hints, we'll need to position them using this
+        public LinkedList<int[]> requestsForRandom;
         boolean isNew;
         public double coveragePercentage;
         public long numExecutions;
@@ -553,6 +562,8 @@ public class Coordinator implements Runnable {
         INDEXOF, //Currently we will also add a startsWith and an endsWith
         STARTSWITH,
         ENDSWITH,
+        LENGTH,
+        ISEMPTY,
         Z3
     }
     public static class Branch implements Serializable {

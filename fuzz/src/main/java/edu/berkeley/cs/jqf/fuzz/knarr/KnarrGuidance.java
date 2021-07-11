@@ -23,7 +23,6 @@ import java.util.function.Consumer;
 public class KnarrGuidance implements Guidance {
     private Coordinator.Input input;
     private KnarrClient client;
-    private LinkedList<int[]> varsUsedInControlFlowOfGenerator;
     private TaintingInputStream currentTaintingInputStream;
 
     public KnarrGuidance() throws IOException  {
@@ -33,7 +32,6 @@ public class KnarrGuidance implements Guidance {
     @Override
     public InputStream getInput() throws IllegalStateException, GuidanceException {
         Symbolicator.reset();
-        this.varsUsedInControlFlowOfGenerator = null;
         this.currentTaintingInputStream =  new TaintingInputStream(new StringEqualsHintingInputStream(new ByteArrayInputStream(this.input.bytes), null, input.instructions, input.hints));
         return this.currentTaintingInputStream;
     }
@@ -84,8 +82,6 @@ public class KnarrGuidance implements Guidance {
         //for (int[] each : rangesUsedInControlPointsInGenerator) {
         //    System.out.println("TARGET: " + each[0] + "..." + (each[0] + each[1]));
         //}
-
-        varsUsedInControlFlowOfGenerator = rangesUsedInControlPointsInGenerator;
     }
     public static HashSet<Integer> extractVarNames(Expression exp) {
         LinkedList<Expression> toVisit = new LinkedList<>();
@@ -162,15 +158,13 @@ public class KnarrGuidance implements Guidance {
         // DEBUG strategy: look at hints in knarr process
         LinkedList<Coordinator.Branch> bs = new LinkedList<>();
         HashMap<Integer, HashSet<Coordinator.StringHint>> eqs = new HashMap<>();
-        HashSet<Integer> bytesUsedBySUT = new HashSet<>();
         for (Expression e : constraints)
-            KnarrWorker.process(bs, eqs, e, bytesUsedBySUT, new String[0]);
+            KnarrWorker.process(bs, eqs, e, new String[0]);
         System.out.println("^^^Hints for above input^^^^^");
         for(Integer i : eqs.keySet()){
             HashSet<Coordinator.StringHint> hints = eqs.get(i);
             System.out.println(i+": " + hints);
         }
-        System.out.println("Bytes used by SUT: " + bytesUsedBySUT.size());
         System.out.println("End hints");
 
         // END DEBUG help
@@ -193,7 +187,6 @@ public class KnarrGuidance implements Guidance {
                 Operation op = (Operation) exp;
                 exp = op.getOperand(0);
                 Expression e = op.getOperand(1);
-
                 constraints.addFirst(e);
             }
 
@@ -201,17 +194,17 @@ public class KnarrGuidance implements Guidance {
         }
 
         // DEBUG strategy: look at hints in knarr process
-        LinkedList<Coordinator.Branch> bs = new LinkedList<>();
-        HashMap<Integer, HashSet<Coordinator.StringHint>> eqs = new HashMap<>();
-        HashSet<Integer> bytesUsedBySUT = new HashSet<>();
-        for (Expression e : constraints)
-            KnarrWorker.process(bs, eqs, e, bytesUsedBySUT, new String[0]);
+        //LinkedList<Coordinator.Branch> bs = new LinkedList<>();
+        //HashMap<Integer, HashSet<Coordinator.StringHint>> eqs = new HashMap<>();
+        //HashSet<Integer> bytesUsedBySUT = new HashSet<>();
+        //for (Expression e : constraints)
+        //    KnarrWorker.process(bs, eqs, e, bytesUsedBySUT, new String[0]);
 
         // END DEBUG help
 
         // Send constraints
         try {
-            this.client.sendConstraints(constraints, this.varsUsedInControlFlowOfGenerator);
+            this.client.sendConstraints(constraints);
         } catch (IOException e) {
             throw new Error(e);
         }

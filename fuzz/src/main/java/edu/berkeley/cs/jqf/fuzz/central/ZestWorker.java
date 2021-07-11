@@ -85,12 +85,14 @@ class ZestWorker extends Worker {
                         size_sendinput += b.length;
                     byte[] bs = new byte[size_sendinput];
                     int i = 0;
+                    LinkedList<int[]> requestOffsets = new LinkedList<int[]>();
                     for (byte[] b : inputRequests) {
+                        requestOffsets.add(new int[]{i, b.length});
                         System.arraycopy(b, 0, bs, i, b.length);
                         i += b.length;
                     }
 
-                    c.foundInput(id, bs, res != Result.INVALID, hints, instructions, coveragePercentage, numExecutions, score);
+                    c.foundInput(id, bs, res != Result.INVALID, hints, instructions, coveragePercentage, numExecutions, score, requestOffsets);
 
 
                     synchronized (recommendations) {
@@ -153,12 +155,6 @@ class ZestWorker extends Worker {
                     // Send instructions
                     oos.writeObject(instructionsToSend);
                     oos.writeObject(stringsToSend);     // Strings that are new hints
-                    oos.writeObject(new LinkedList<Integer>()); //TODO debugging without this right now
-                    //oos.writeObject(in.byteRangesUsedAsControlInGenerator);
-                    oos.writeObject(in.bytesFoundUsedInSUT);
-                    // Strings that are previously used hints that must be replicated - those are already saved on the client
-
-                    //printSentStringHints(stringsToSend);
 
                     // Update state
                     fuzzing.set(selected, (toFuzz + 1) % inputs.get(selected).size());

@@ -1,9 +1,6 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -17,10 +14,10 @@ public class Central {
     protected ObjectOutputStream oos;
 
     protected Central() throws IOException {
-        Socket s = new Socket(InetAddress.getLocalHost(), PORT);
+        this.s = new Socket(InetAddress.getLocalHost(), PORT);
         s.setTcpNoDelay(true);
         ois = new ObjectInputStream(s.getInputStream());
-        oos = new ObjectOutputStream(s.getOutputStream());
+        oos = new ObjectOutputStream(new BufferedOutputStream(s.getOutputStream()));
     }
 
     protected enum Type { Zest_Initial, Zest, Knarr };
@@ -50,7 +47,7 @@ public class Central {
         Coordinator.Config config  = new Coordinator.Config(props);
         Coordinator c = new Coordinator(config);
 
-        new Thread(c).start();
+        new Thread(c, "CONFETTI Coordinator").start();
 
         while (true) {
             Socket s = ss.accept();
@@ -86,7 +83,7 @@ public class Central {
                         }
 
                         zest = new ZestWorker(ois, oos, c);
-                        new Thread(zest).start();
+                        new Thread(zest, "CONFETTI Zest Worker").start();
                     }
                     break;
                 default:

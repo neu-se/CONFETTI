@@ -35,19 +35,22 @@ public class KnarrWorker extends Worker {
 
         // Get constraints from Knarr process
         LinkedList<Expression> constraints;
-        LinkedList<int[]> byteRangesUsedAsControlInGenerator;
+        LinkedList<int[]> requestsForRandom;
         try {
-            constraints = ((LinkedList<Expression>)ois.readObject());
-            byteRangesUsedAsControlInGenerator = (LinkedList<int[]>) ois.readObject();
+            int nConstraints = ois.readInt();
+            constraints = new LinkedList<Expression>();
+            for(int i = 0; i < nConstraints; i++){
+                constraints.add((Expression) ois.readObject());
+            }
         } catch (ClassNotFoundException e) {
             throw new Error(e);
         }
-        input.byteRangesUsedAsControlInGenerator = byteRangesUsedAsControlInGenerator;
 
         return constraints;
     }
 
-    public static void process(LinkedList<Coordinator.Branch> bs, HashMap<Integer, HashSet<Coordinator.StringHint>> stringEqualsArgs, Expression e, HashSet<Integer> bytesUsedBySUT, String[] filter) {
+    static long constraintsProcessed;
+    public static void process(LinkedList<Coordinator.Branch> bs, HashMap<Integer, HashSet<Coordinator.StringHint>> stringEqualsArgs, Expression e, String[] filter) {
         Coverage.BranchData b = (Coverage.BranchData) e.metadata;
 
         if (b == null)
@@ -70,26 +73,7 @@ public class KnarrWorker extends Worker {
 
         HashSet<Coordinator.StringHint> eq = new HashSet<>();
 
-        findControllingBytes(e, bb.controllingBytes, eq);
-        if(b.source == null || !b.source.contains("edu/berkeley/cs/jqf/examples"))
-        {
-            boolean ignored = false;
-            if(filter != null)
-            {
-                for(String f : filter){
-                    if(b.source == null || b.source.contains(f)){
-                        ignored = true;
-                    }
-                }
-            }
-            //TODO make this a cleaner way to exclude bytes from the generator or driver
-            //We might still want to take hints for them, and collect them other ways,
-            //but for the purposes of targeting what subset of an input is worthwhile to fuzz
-            //, it seems pointless.
-            if(!ignored)
-                bytesUsedBySUT.addAll(bb.controllingBytes);
-        }
-
+        findControllingBytes(e, bb.controllingBytes, eq); //TODO this can block, it's really bad when it does...
         bs.add(bb);
 
         if (!eq.isEmpty()) {
@@ -106,6 +90,7 @@ public class KnarrWorker extends Worker {
     }
 
     public static void findControllingBytes(Expression e, HashSet<Integer> bytes, HashSet<Coordinator.StringHint> stringEqualsArgs) {
+        constraintsProcessed++;
         if (e instanceof Variable) {
             Variable v = (Variable) e;
             if (v.getName().startsWith("autoVar_")) {
@@ -138,6 +123,13 @@ public class KnarrWorker extends Worker {
                         case "ENDSWITH":
                             //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.ENDSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
                             stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.ENDSWITH));
+                            break;
+                        case "ISEMPTY":
+                            stringEqualsArgs.add(new Coordinator.StringHint("", Coordinator.HintType.ISEMPTY));
+                            break;
+                        case "LENGTH":
+                            //TODO should we use length constraints??
+                            //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.LENGTH));
                             break;
                     }
 
