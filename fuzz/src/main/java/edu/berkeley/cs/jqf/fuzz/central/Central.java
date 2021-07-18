@@ -16,8 +16,8 @@ public class Central {
     protected Central() throws IOException {
         this.s = new Socket(InetAddress.getLocalHost(), PORT);
         s.setTcpNoDelay(true);
-        ois = new ObjectInputStream(s.getInputStream());
         oos = new ObjectOutputStream(new BufferedOutputStream(s.getOutputStream()));
+        ois = new ObjectInputStream(new BufferedInputStream(s.getInputStream()));
     }
 
     protected enum Type { Zest_Initial, Zest, Knarr };
@@ -52,8 +52,9 @@ public class Central {
         while (true) {
             Socket s = ss.accept();
 
-            ObjectOutputStream oos = new ObjectOutputStream(s.getOutputStream());
-            ObjectInputStream ois = new ObjectInputStream(s.getInputStream());
+            ObjectOutputStream oos = new ObjectOutputStream(new BufferedOutputStream(s.getOutputStream()));
+            oos.flush();
+            ObjectInputStream ois = new ObjectInputStream(new BufferedInputStream(s.getInputStream()));
 
             Type t = (Type) ois.readObject();
             switch (t) {

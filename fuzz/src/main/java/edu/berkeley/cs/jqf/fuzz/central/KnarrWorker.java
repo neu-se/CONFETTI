@@ -23,7 +23,7 @@ public class KnarrWorker extends Worker {
         this.c = c;
     }
 
-    public synchronized LinkedList<Expression> getConstraints(Coordinator.Input input) throws IOException {
+    public LinkedList<Expression> getConstraints(Coordinator.Input input) throws IOException {
         // Send input to Knarr process
         oos.writeObject(input.bytes);
         oos.writeObject(input.hints);
@@ -35,7 +35,6 @@ public class KnarrWorker extends Worker {
 
         // Get constraints from Knarr process
         LinkedList<Expression> constraints;
-        LinkedList<int[]> requestsForRandom;
         try {
             int nConstraints = ois.readInt();
             constraints = new LinkedList<Expression>();

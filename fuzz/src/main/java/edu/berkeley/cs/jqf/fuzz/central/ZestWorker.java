@@ -30,6 +30,14 @@ class ZestWorker extends Worker {
         this.c = c;
     }
 
+    /**
+     * These are inputs that we WANT to recommend, but haven't yet because the client hasn't yet checked in
+     * @return
+     */
+    public LinkedList<Integer> getNewlyRecommendedInputsToQueue() {
+        return newlyRecommendedInputsToQueue;
+    }
+
     @Override
     public void work() throws IOException, ClassNotFoundException {
 

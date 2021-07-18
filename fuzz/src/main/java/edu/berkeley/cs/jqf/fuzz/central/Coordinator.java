@@ -1,19 +1,30 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
+import org.eclipse.collections.api.iterator.IntIterator;
+import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
+import org.eclipse.collections.impl.map.mutable.primitive.IntObjectHashMap;
+import org.eclipse.collections.impl.set.mutable.primitive.IntHashSet;
 import za.ac.sun.cs.green.expr.Expression;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeoutException;
 import java.util.function.BinaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class Coordinator implements Runnable {
-    private LinkedList<Input> inputs = new LinkedList<>();
+
+    private static final int BRANCH_SOLVES_TIMEOUT = 50; //Give up trying to solve negated constraints for a branch after this many UNSAT returns.
+
+    private IntObjectHashMap<Input> inputs = new IntObjectHashMap<Input>();
     private ConcurrentHashMap<Branch, Branch> branches = new ConcurrentHashMap<>();
     private HashMap<Input, HashSet<StringHint>> perInputStringEqualsHints = new HashMap<>();
-    private ConcurrentHashMap<Input, HashMap<Integer, HashSet<StringHint>>> perByteStringEqualsHints = new ConcurrentHashMap<>();
+    private IntObjectHashMap<HashMap<Integer, HashSet<StringHint>>> perByteStringEqualsHints = new IntObjectHashMap<>();
     private HashSet<StringHint> globalStringEqualsHints = new HashSet<>();
 
     private HashMap<Integer, Set<Branch>> seenBranches = new HashMap<>();
@@ -32,7 +43,7 @@ public class Coordinator implements Runnable {
     }
 
 
-    protected final synchronized void foundInput(int id, byte[] bytes, boolean valid, LinkedList<StringHint[]>hints, LinkedList<int[]> instructions, Double coveragePercentage, long numExecutions, Integer score, LinkedList<int[]> requestOffsets) {
+    protected final void foundInput(int id, byte[] bytes, boolean valid, LinkedList<StringHint[]>hints, LinkedList<int[]> instructions, Double coveragePercentage, long numExecutions, Integer score, LinkedList<int[]> requestOffsets) {
         Input in = new Input();
         in.bytes = bytes;
         in.id = id;
@@ -45,18 +56,17 @@ public class Coordinator implements Runnable {
         in.isValid = valid;
         in.requestsForRandom = requestOffsets;
 
-        this.inputs.addLast(in);
-        this.notifyAll();
+        synchronized (this.inputs){
+            this.inputs.put(in.id, in);
+            this.inputs.notifyAll();
+        }
     }
 
-    protected final synchronized Input getInput(int index) {
+    protected final Input getInput(int index) {
 
-        for(int i = 0; i < this.inputs.size(); i++) {
-
-            if (this.inputs.get(i).id == index)
-                return this.inputs.get(i) ;
+        synchronized (this.inputs){
+            return this.inputs.get(index);
         }
-        return null;
     }
 
     private void update_score( LinkedList<Branch> bs, Input input) {
@@ -95,45 +105,37 @@ public class Coordinator implements Runnable {
         HashMap<Integer, TreeSet<Integer>> lastRecommendation = new HashMap<>();
 
         while (true) {
-            ArrayList<Input> m;
+            IntObjectHashMap<Input> inputsToWorkOn = new IntObjectHashMap<>();
 
-            synchronized (this) {
-                boolean newInputs = false;
-
+            synchronized (this.inputs) {
                 if (this.knarr != null) {
-
                     // if for some reason z3 isn't started, start it here
                     if (config.usez3Hints && !z3Started) {
                         if (this.z3 == null)
                             this.z3 = new Z3Worker(zest, knarr, config.filter);
                         startZ3Thread();
                     }
-                    for (Input i : inputs) {
-                        if (i.isNew) {
-                            newInputs = true;
-                            break;
+                    for (Input i : this.inputs.values()) {
+                        if (i != null && i.isNew) {
+                            inputsToWorkOn.put(i.id, i);
                         }
                     }
                 }
-                if (!newInputs) {
+                if (inputsToWorkOn.isEmpty()) {
                     try {
-                        this.wait();
+                        this.inputs.wait();
                         continue;
                     } catch (InterruptedException e) {
                         continue;
                     }
                 }
 
-                m = new ArrayList<>(inputs);
-                //m.sort((o1, o2) -> o1.isValid && !o2.isValid ? -1 : o1.isValid == o2.isValid ? 0 : 1);
-                //don't sort, it will starve invalid inputs from being processed.
-
                 //DEBUG/profiling:
                 int numNewInputs = 0;
                 int numNewValidInputs = 0;
                 int numNewInvalidInputs = 0;
-                for(Input i : inputs){
-                    if(i.isNew){
+                for(Input i : inputs.values()){
+                    if(i != null && i.isNew){
                         numNewInputs++;
                         if(i.isValid){
                             numNewValidInputs++;
@@ -143,12 +145,11 @@ public class Coordinator implements Runnable {
                     }
                 }
                 System.out.println("Knarr queue size: " + numNewInputs + " ("+numNewValidInputs+" valid, " + numNewInvalidInputs+" invalid)");
-
             }
 
             int n = 0;
-            for (Input input : m) {
-                if (input.isNew) {
+            for (Input input : inputsToWorkOn.values()) {
+                if (input != null && input.isNew) {
                     if (n++ > 10)
                         break;
                     // Get constraints from Knarr
@@ -169,11 +170,12 @@ public class Coordinator implements Runnable {
                             try {
                                 file = new FileOutputStream(filename);
                                 ObjectOutputStream out = null;
-                                out = new ObjectOutputStream(file);
+                                out = new ObjectOutputStream(new BufferedOutputStream(file));
 
                                 // Serialize the constraints
                                 out.writeObject(cs);
 
+                                out.flush();
                                 out.close();
                                 file.close();
                             } catch (FileNotFoundException e) {
@@ -198,11 +200,10 @@ public class Coordinator implements Runnable {
                     for (Expression e : cs)
                         KnarrWorker.process(bs, eqs, e, config.filter);
                     long end = System.currentTimeMillis();
-                    System.out.println("Processed " + KnarrWorker.constraintsProcessed + " constraints in " + (end - start));
 
-                    update_score(bs, input);
+                    //update_score(bs, input);
                     // Adjust string hints
-                    if (!eqs.isEmpty()) {
+                     if (!eqs.isEmpty()) {
                         switch (config.hinting) {
                             case NONE:
                                 break;
@@ -217,7 +218,9 @@ public class Coordinator implements Runnable {
                                 perInputStringEqualsHints.put(input, ss);
                                 break;
                             case PER_BYTE:
-                                perByteStringEqualsHints.put(input, eqs);
+                                synchronized (perByteStringEqualsHints){
+                                    perByteStringEqualsHints.put(input.id, eqs);
+                                }
                                 break;
                             default:
                                 throw new Error("Not implemented");
@@ -237,32 +240,39 @@ public class Coordinator implements Runnable {
                         Branch existing;
                         if (!branches.containsKey(b)) {
                             existing = b;
-                            existing.trueExplored = new HashSet<>();
-                            existing.falseExplored = new HashSet<>();
-                            existing.control = new HashMap<>();
-                            existing.keep = b.keep;
-                            existing.source = (b.source == null ? "" : b.source);
-                            branches.put(b, b);
+                            synchronized (existing) {
+                                existing.trueExplored = new IntHashSet();
+                                existing.falseExplored = new IntHashSet();
+                                existing.control = new IntObjectHashMap<>();
+                                existing.keep = b.keep;
+                                existing.source = (b.source == null ? "" : b.source);
+                                branches.put(b, b);
+                            }
                         } else {
                             existing = branches.get(b);
                         }
 
                         synchronized (existing) {
                             if (b.result) {
-                                if (existing.trueExplored.isEmpty())
-                                    System.out.println("\tInput " + input.id + " explores T on " + existing.takenID + " (" + existing.source + ")");
-                                existing.trueExplored.add(input);
+                                //if (existing.trueExplored.isEmpty())
+                                //    System.out.println("\tInput " + input.id + " explores T on " + existing.takenID + " (" + existing.source + ")");
+                                existing.trueExplored.add(input.id);
+                                if(!existing.falseExplored.isEmpty())
+                                    existing.isSolved = true;
                             } else {
-                                if (existing.falseExplored.isEmpty())
-                                    System.out.println("\tInput " + input.id + " explores F on " + existing.takenID + " (" + existing.source + ")");
-                                existing.falseExplored.add(input);
+                                //if (existing.falseExplored.isEmpty())
+                                //    System.out.println("\tInput " + input.id + " explores F on " + existing.takenID + " (" + existing.source + ")");
+                                existing.falseExplored.add(input.id);
+                                if(!existing.trueExplored.isEmpty())
+                                    existing.isSolved = true;
                             }
                         }
 
-                        LinkedList<Integer> bytes = new LinkedList<>(b.controllingBytes);
-                        Collections.sort(bytes);
-
-                        existing.control.put(input, bytes.toArray(new Integer[0]));
+                        IntArrayList bytes = new IntArrayList();
+                        for(Integer i : b.controllingBytes)
+                            bytes.add(i);
+                        bytes.sortThis();
+                        existing.control.put(input.id, bytes.toArray());
                     }
 
                     input.isNew = false;
@@ -270,9 +280,9 @@ public class Coordinator implements Runnable {
             }
 
             // Make recommendations
-            synchronized (this) {
-                for (Input input : inputs) {
-                    if(input.isNew || input.recommendedBefore){
+            synchronized (this.inputs) {
+                for (Input input : inputs.values()) {
+                    if(input == null || input.isNew || input.recommendedBefore){
                         continue;
                     }
                     input.recommendedBefore = true;
@@ -281,8 +291,8 @@ public class Coordinator implements Runnable {
                         //We need to recommend things even if they weren't used in a branch that wasn't explored -
                         //otherwise we miss out big on ability to find new paths!!!!
                         //if (branch.falseExplored.isEmpty() || branch.trueExplored.isEmpty() || branch.keep) {
-                            if (branch.control.containsKey(input)) {
-                                for (int i : branch.control.get(input)){
+                            if (branch.control.containsKey(input.id)) {
+                                for (int i : branch.control.get(input.id)){
                                     recommendation.add(i);
                                 }
                             }
@@ -313,18 +323,24 @@ public class Coordinator implements Runnable {
                             }
                             break;
                         case PER_BYTE:
-                            stringEqualsHints.putAll(perByteStringEqualsHints.getOrDefault(input, new HashMap<>()));
+                            synchronized (perByteStringEqualsHints){
+                                HashMap<Integer,HashSet<StringHint>> hints = perByteStringEqualsHints.get(input.id);
+                                if(hints == null)
+                                    hints = new HashMap<>();
+                                stringEqualsHints.putAll(hints);
+                            }
                             break;
                         default:
                             throw new Error("Not implemented");
                     }
 
-                    if(recommendation.size() > 0){
-                        System.out.println("Recommendation for " + input.id);
-                        for(Integer i : recommendation){
-                            System.out.println("\t"+i+": " + stringEqualsHints.get(i));
-                        }
-                    }
+                    //DEBUGGING STRATEGY: print out hints for each rec
+                    //if(recommendation.size() > 0){
+                    //    System.out.println("Recommendation for " + input.id);
+                    //    for(Integer i : recommendation){
+                    //        System.out.println("\t"+i+": " + stringEqualsHints.get(i));
+                    //    }
+                    //}
                     //input.allHints = stringEqualsHints;
                     //input.recs = new LinkedList<>(recommendation);
                     if(recommendation.size() > 0){
@@ -335,13 +351,16 @@ public class Coordinator implements Runnable {
         }
     }
 
-    public final synchronized  void setKnarrWorker(KnarrWorker knarr, ZestWorker zest) {
-        this.knarr = knarr;
-        this.zest = zest;
+    public final void setKnarrWorker(KnarrWorker knarr, ZestWorker zest) {
+        synchronized (this.inputs) {
+            this.knarr = knarr;
+            this.zest = zest;
 
-        if(config.usez3Hints) {
-            this.z3 = new Z3Worker(zest, knarr, config.filter);
-            startZ3Thread();
+            if (config.usez3Hints) {
+                this.z3 = new Z3Worker(zest, knarr, config.filter);
+                startZ3Thread();
+            }
+            this.inputs.notifyAll();
         }
 
     }
@@ -354,7 +373,6 @@ public class Coordinator implements Runnable {
                 z3Thread();
             }
         }.start();
-        this.notifyAll();
 
     }
     private Boolean isInWhitelist(String branchname) {
@@ -381,73 +399,145 @@ public class Coordinator implements Runnable {
     }
 
     private void z3Thread() {
-        HashMap<Branch, Set<Input>> z3tried = new HashMap<>();
 
+        //July 18: Jon changed the workloop to be branch first: we'll explore all of the branches once, then start over, picking other inputs
+        //Previously, we kept pounding on a single branch, even if it was not possible to satisfy :'(
+        boolean hadWork = true;
         out: while (true) {
+            if(!hadWork){
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+            hadWork = false;
             // Figure out what is the branch that needs the most attention
             HashSet<Branch> triedTops = new HashSet<>();
             Branch top = null;
             Input inputToTarget = null;
+            long num = branches.values().stream()
+                    .filter(b -> b.source != null)
+                    .filter(b -> !triedTops.contains(b))
+                    .filter(b -> isInWhitelist(b.source))
+                    .filter(b -> !b.isSolved && !b.isTimedOut)
+                    .count();
+
+            System.out.println("NEW Z3Loop: number of potential branches:" + num);
             while (triedTops.size() < branches.size()) {
-                Set<Input> triedInputs;
+                //Garbage collect constraints that are not going to be useful
+                garbageCollect();
 
-                {
-                    Optional<Branch> maybeTop = branches.values().stream()
-                            .filter(b -> b.source != null)
-                            .filter(b -> !triedTops.contains(b))
-                            .filter(b -> isInWhitelist(b.source))
-                            .filter(b -> b.falseExplored.isEmpty() || b.trueExplored.isEmpty())
-                            .reduce(BinaryOperator.maxBy(Comparator.comparingInt(o -> o.trueExplored.size() + o.falseExplored.size())));
+                //Pick a branch to target
+                Optional<Branch> maybeTop = branches.values().stream()
+                        .filter(b -> b.source != null)
+                        .filter(b -> !triedTops.contains(b))
+                        .filter(b -> isInWhitelist(b.source))
+                        .filter(b -> !b.isSolved && !b.isTimedOut)
+                        .reduce(BinaryOperator.maxBy(Comparator.comparingInt(o -> o.trueExplored.size() + o.falseExplored.size())));
 
-                    if (!maybeTop.isPresent())
-                        continue out;
-                    else
-                        top = maybeTop.get();
-                }
-
-                triedInputs = z3tried.getOrDefault(top, new HashSet<>());
-                if (triedInputs.isEmpty())
-                    z3tried.put(top, triedInputs);
+                if (!maybeTop.isPresent()) {
+                    continue out; //Start over, allowing for repeated selection of branches
+                } else
+                    top = maybeTop.get();
 
                 // Create Z3 target
-                {
-                    Branch stupidLambdasInJavaDontCaptureTheEnvironment = top;
-                    Optional<Input> maybeInputToTarget;
-                    synchronized (this) {
-                        maybeInputToTarget = inputs.stream()
-                                .filter(i -> triedInputs != null && !triedInputs.contains(i))
-                                .filter(i -> stupidLambdasInJavaDontCaptureTheEnvironment.trueExplored.contains(i) || stupidLambdasInJavaDontCaptureTheEnvironment.falseExplored.contains(i))
-                                .reduce(BinaryOperator.maxBy(Comparator.comparingInt(o -> o.bytes.length)));
-                    }
+                Branch branchToTarget = top;
+                Optional<Input> maybeInputToTarget;
+                synchronized (this.inputs) {
+                    maybeInputToTarget = this.inputs.values().stream()
+                            .filter(i -> i != null && !i.evicted && (branchToTarget.inputsTried == null || !branchToTarget.inputsTried.contains(i.id)))
+                            .filter(i -> branchToTarget.trueExplored.contains(i.id) || branchToTarget.falseExplored.contains(i.id))
+                            .reduce(BinaryOperator.minBy(Comparator.comparingInt(o -> o.bytes.length)));
+                }
 
-                    if (!maybeInputToTarget.isPresent()) {
-                        triedTops.add(top);
-                        continue;
-                    } else {
-                        inputToTarget = maybeInputToTarget.get();
-                        break;
+                triedTops.add(top);
+                if (!maybeInputToTarget.isPresent()) {
+                    System.out.println("Z3 couldn't find an input to target for " + branchToTarget);
+                    continue;
+                }
+
+                inputToTarget = maybeInputToTarget.get();
+                if (top.inputsTried == null) {
+                    top.inputsTried = new IntHashSet();
+                }
+                top.inputsTried.add(inputToTarget.id);
+
+                hadWork = true;
+                // Set Z3 target
+                Z3Worker.Target target = new Z3Worker.Target(inputToTarget, top, inputToTarget.bytes, constraints.get(inputToTarget).getExpressions(), perByteStringEqualsHints.get(inputToTarget.id));
+
+                try {
+                    // Send target to Z3
+                    Optional<Coordinator.Input> newInput = z3.exploreTarget(target);
+
+                    // Handle result
+                    if (newInput.isPresent()) {
+                        System.out.println("Z3 found new input for " + inputToTarget.id + " " + target.branch.source);
+                        zest.addInputFromZ3(newInput.get());
                     }
+                } catch (TimeoutException ex) {
+                    ex.printStackTrace();
+                    top.trueExplored.remove(inputToTarget.id);
+                    top.falseExplored.remove(inputToTarget.id);
+                    ConstraintRepresentation cr = constraints.get(inputToTarget);
+                    long bytes = 0;
+                    if (cr != null)
+                        bytes = cr.destroy();
+                    inputToTarget.evicted = true;
+                    for (Branch b : this.branches.values()) {
+                        b.evict(inputToTarget.id);
+                    }
+                    System.err.println("Evicted " + bytes + " of constraints for input #" + inputToTarget.id);
+                }
+                if (target.branch.inputsTried.size() > BRANCH_SOLVES_TIMEOUT) {
+                    target.branch.isTimedOut = true;
                 }
             }
+        }
+    }
 
-            // We have no input, try again until we do
-            if (inputToTarget == null)
-                continue;
-
-
-            // Set Z3 target
-            Z3Worker.Target target = new Z3Worker.Target(inputToTarget, top, inputToTarget.bytes, constraints.get(inputToTarget).getExpressions(), perByteStringEqualsHints.get(inputToTarget));
-
-            // Send target to Z3
-            Optional<Coordinator.Input> newInput = z3.exploreTarget(target);
-
-            // Updated inputs/branches tried
-            z3tried.get(top).add(inputToTarget);
-
-            // Handle result
-            if (newInput.isPresent()) {
-                System.out.println("Z3 found new input for " + inputToTarget.id + " " + target.branch.source);
-                zest.addInputFromZ3(newInput.get());
+    private long lastGC = 0;
+    private void garbageCollect(){
+        long start = System.currentTimeMillis();
+        if(start - lastGC > 10000) {
+            lastGC = start;
+            synchronized (this) {
+                IntHashSet inputsToKeep = new IntHashSet();
+                LinkedList<Branch> branchesToPrune = new LinkedList<>();
+                for (Branch b : branches.values()) {
+                    if (b.source != null && isInWhitelist(b.source) && !b.isSolved && !b.isTimedOut) {
+                        inputsToKeep.addAll(b.getInputsStillUseful());
+                    } else {
+                        branchesToPrune.add(b);
+                    }
+                }
+                IntArrayList inputsToDelete = new IntArrayList();
+                int nActuallyRemoved = 0;
+                long bytesOnDisk = 0;
+                synchronized (inputs) {
+                    for (Input i : inputs.values()) {
+                        if (i != null && !inputsToKeep.contains(i.id) && !i.isNew)
+                            inputsToDelete.add(i.id);
+                    }
+                    IntIterator iter = inputsToDelete.intIterator();
+                    LinkedList<Integer> retainForRecs = zest.getNewlyRecommendedInputsToQueue();
+                    while (iter.hasNext()) {
+                        int id = iter.next();
+                        //Don't prune something if we haven't sent the hints out yet
+                        if (retainForRecs.contains(Integer.valueOf(id)))
+                            continue;
+                        Input input = inputs.get(id);
+                        inputs.remove(id);
+                        input.evicted = true;
+                        ConstraintRepresentation c = constraints.remove(input);
+                        bytesOnDisk += c.destroy();
+                        nActuallyRemoved++;
+                    }
+                }
+                long end = System.currentTimeMillis();
+                if(nActuallyRemoved > 0)
+                    System.out.println("GC freed " + nActuallyRemoved + " inputs and " + bytesOnDisk + " bytes saved on disk in " + (end - start));
             }
         }
     }
@@ -455,6 +545,8 @@ public class Coordinator implements Runnable {
     public Config getConfig() {
         return this.config;
     }
+
+    public static final int EVICT_INPUTS_AFTER_THRESHOLD = 5000;
 
     public static class Input implements Externalizable {
         public int id;
@@ -464,6 +556,8 @@ public class Coordinator implements Runnable {
         //We store the set of random requests from the original input - if we use Z3
         // to generate some hints, we'll need to position them using this
         public LinkedList<int[]> requestsForRandom;
+        //We might decide we are done with an input and don't want to explore it anymore, but will hang onto it for book keeping
+        public boolean evicted;
         boolean isNew;
         public double coveragePercentage;
         public long numExecutions;
@@ -709,9 +803,27 @@ public class Coordinator implements Runnable {
         public HashSet<Integer> controllingBytes;
         public String source = "";
 
-        transient HashMap<Input, Integer[]> control;
-        transient HashSet<Input> trueExplored;
-        transient HashSet<Input> falseExplored;
+        transient IntObjectHashMap<int[]> control;
+        transient IntHashSet trueExplored;
+        transient IntHashSet falseExplored;
+        transient boolean isSolved;
+        transient boolean isTimedOut;
+
+        @Override
+        public String toString() {
+            return "Branch{" +
+                    "takenID=" + takenID +
+                    ", notTakenID=" + notTakenID +
+                    ", source='" + source + '\'' +
+                    ", trueExplored#=" + (trueExplored == null ? 0 : trueExplored.size())+
+                    ", falseExplored#=" + (falseExplored == null ? 0 : falseExplored.size()) +
+                    ", inputsTried#=" + (inputsTried == null ? 0 : inputsTried.size()) +
+                    ", isTimedOut=" + isTimedOut +
+                    ", isSolved=" + isSolved +
+                    '}';
+        }
+
+        transient IntHashSet inputsTried;
 
         public Branch(){
 
@@ -725,9 +837,12 @@ public class Coordinator implements Runnable {
                     notTakenID == branch.notTakenID;
         }
 
+        private int hash = -1;
         @Override
         public int hashCode() {
-            return Objects.hash(takenID, notTakenID);
+            if(hash == -1)
+                hash = Objects.hash(takenID, notTakenID);
+            return hash;
         }
 
         @Override
@@ -758,6 +873,24 @@ public class Coordinator implements Runnable {
                     out.writeInt(i);
             }
             out.writeUTF(this.source);
+        }
+
+        public synchronized IntHashSet getInputsStillUseful() {
+            IntHashSet ret = new IntHashSet();
+            if(this.isSolved || this.isTimedOut)
+                return ret;
+            if(this.trueExplored != null)
+                ret.addAll(this.trueExplored);
+            if(this.falseExplored != null)
+                ret.addAll(this.falseExplored);
+            if(this.inputsTried != null)
+                ret.removeAll(this.inputsTried);
+            return ret;
+        }
+
+        public void evict(int inputID){
+            this.trueExplored.remove(inputID);
+            this.falseExplored.remove(inputID);
         }
     }
 
@@ -855,6 +988,7 @@ public class Coordinator implements Runnable {
     public static class ConstraintRepresentation {
         private  LinkedList<Expression> expr;
         private  String exprFile;
+        private boolean evicted;
 
         ConstraintRepresentation(LinkedList<Expression> e) {
             this.expr = e;
@@ -871,24 +1005,38 @@ public class Coordinator implements Runnable {
             FileInputStream fileIn = null;
             try {
                 fileIn = new FileInputStream(this.exprFile);
-                ObjectInputStream objectIn = new ObjectInputStream(fileIn);
+                ObjectInputStream objectIn = new ObjectInputStream(new BufferedInputStream(fileIn));
                 Object constraints = objectIn.readObject();
                 fileIn.close();
                 return (LinkedList<Expression>) constraints;
 
-            } catch (FileNotFoundException e) {
-                return null;
-            } catch (IOException e) {
-                return null;
-            } catch (ClassNotFoundException e) {
-                return null;
+            } catch (IOException | ClassNotFoundException e) {
+                return new LinkedList<Expression>();
             }
         }
 
         public LinkedList<Expression> getExpressions() {
-
+            if(evicted)
+                return new LinkedList<Expression>();
             return this.expr != null ? this.expr : readConstraintsFromFile();
         }
 
+        public long destroy() {
+            long ret = 0;
+            if (this.exprFile != null) {
+                Path p = Paths.get(this.exprFile);
+                if (Files.exists(p)){
+                    try {
+                        ret = Files.size(p);
+                        Files.delete(p);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+            this.expr = null;
+            evicted = true;
+            return ret;
+        }
     }
 }

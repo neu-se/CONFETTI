@@ -16,6 +16,15 @@ public class MagicByteZ3Test {
                                          MagicByteBranches.MagicInput input) {
         MagicByteBranches.examineInputCharAt(input);
     }
+
+    @Fuzz
+    public void testStringConcatCombos(@From(MagicByteBranches.MagicInputGenerator.class)
+                                 @Dictionary("dictionaries/maven-model.dict")
+                                         MagicByteBranches.MagicInput input) {
+        //Expect 7 failures...
+        MagicByteBranches.examineAllStrCombinations(input);
+    }
+
     @Fuzz
     public void testStringCharAt(@From(MagicByteBranches.MagicInputGenerator.class)
                              @Dictionary("dictionaries/maven-model.dict")
@@ -27,6 +36,24 @@ public class MagicByteZ3Test {
                                   @Dictionary("dictionaries/maven-model.dict")
                                               MagicByteBranches.MagicInput input) {
         MagicByteBranches.examineInputStringOnly(input);
+    }
+    @Fuzz
+    public void testStringConcatNestedIntFirst(@From(MagicByteBranches.MagicInputGenerator.class)
+                                     @Dictionary("dictionaries/maven-model.dict")
+                                             MagicByteBranches.MagicInput input) {
+        MagicByteBranches.examineInputIntFirst(input);
+    }
+    @Fuzz
+    public void testStringConcatDoubleSymbolic(@From(MagicByteBranches.MagicInputGenerator.class)
+                                               @Dictionary("dictionaries/maven-model.dict")
+                                                       MagicByteBranches.MagicInput input) {
+        MagicByteBranches.examineInputStringOnlyDoubleSymbolic(input);
+    }
+    @Fuzz
+    public void testStringConcatNestedStringFirst(@From(MagicByteBranches.MagicInputGenerator.class)
+                                               @Dictionary("dictionaries/maven-model.dict")
+                                                       MagicByteBranches.MagicInput input) {
+        MagicByteBranches.examineInputNestedStringFirst(input);
     }
     @Fuzz
     public void testIntsOnly(@From(MagicByteBranches.MagicInputGenerator.class)

@@ -1,10 +1,8 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
-import edu.gmu.swe.knarr.runtime.PathConditionWrapper;
 import za.ac.sun.cs.green.expr.Expression;
 
 import java.io.*;
-import java.util.HashSet;
 import java.util.LinkedList;
 
 public class KnarrClient extends Central {
@@ -40,16 +38,6 @@ public class KnarrClient extends Central {
         System.out.println("Write constraints to socket: " + (t2a-t2));
         oos.reset();
         oos.flush();
-        //if(t2a - t2 > 10000){
-        //    //Debug this one
-        //    FileOutputStream fos = new FileOutputStream("bigConstraints.ser");
-        //    ObjectOutputStream o2 = new ObjectOutputStream(fos);
-        //    o2.writeInt(constraints.size());
-        //    for(Expression expr : constraints){
-        //        o2.writeObject(expr);
-        //    }
-        //    o2.close();
-        //}
     }
 
 }

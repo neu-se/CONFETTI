@@ -17,10 +17,9 @@ import java.io.*;
 import java.math.BigInteger;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 public class Z3Worker {
     private Data data;
@@ -66,34 +65,7 @@ public class Z3Worker {
         data.optionGenerator = new ConstraintOptionGenerator();
     }
 
-    private boolean isTargetFeasible(Target t) {
-        Map<String, Expression> res = new HashMap<>();
-
-        boolean found = false;
-        for (Expression e : t.constraints) {
-            res.put("c" + res.size(), e);
-            if (e.metadata != null && e.metadata instanceof Coverage.BranchData) {
-                Coverage.BranchData data = (Coverage.BranchData) e.metadata;
-                if (data.takenCode == t.branch.takenID && data.notTakenCode == t.branch.notTakenID) {
-                    found = true;
-                    break;
-                }
-            }
-        }
-
-        // We couldn't find the target constraint
-        if (!found)
-            return false;
-
-        ArrayList<AbstractMap.SimpleEntry<String, Object>> sat = new ArrayList<>();
-        HashSet<String> unsat = new HashSet<>();
-
-        solve(res, sat, unsat);
-
-        return (unsat.isEmpty());
-    }
-
-    private byte[] solutionToInput(ArrayList<AbstractMap.SimpleEntry<String, Object>> sat, Map<String, byte[]> funcs) {
+    private static byte[] solutionToInput(ArrayList<AbstractMap.SimpleEntry<String, Object>> sat, Map<String, byte[]> funcs) {
         // Get size of solution
         int size = 0;
         for (AbstractMap.SimpleEntry<String, Object> e : sat) {
@@ -136,7 +108,7 @@ public class Z3Worker {
         return ret;
     }
 
-    private Optional<Coordinator.Input> negateConstraint(Target t, Set<Expression> hints) {
+    private Optional<Coordinator.Input> negateConstraint(Target t, Set<Expression> hints) throws TimeoutException {
 
         Map<String, Expression> res = new HashMap<>();
 
@@ -144,6 +116,7 @@ public class Z3Worker {
 
 //        for (Expression e : hints)
 //            res.put("c" + res.size(), e);
+        System.out.println("Trying to use Z3 to get to " + t.branch + " using input #" + t.originalInput.id);
 
         for (Expression e : t.constraints) {
             if (e.metadata != null && e.metadata instanceof Coverage.BranchData) {
@@ -158,6 +131,8 @@ public class Z3Worker {
 
         if (targetConstraint == null)
             throw new IllegalStateException();
+        System.out.println("To negate:");
+        System.out.println(targetConstraint);
 
         // Negate the target constraint
         Expression negatedTargetConstraint = new UnaryOperation(Operation.Operator.NOT, targetConstraint);
@@ -169,6 +144,7 @@ public class Z3Worker {
         solve(res, sat, unsat);
 
         if (unsat.isEmpty()) {
+            System.out.println("Z3 found solution for " + t.branch);
             // Solution found, generate input
             HashMap<String, byte[]> genFuncs = new HashMap<>();
             Coordinator.Input ret = new Coordinator.Input();
@@ -179,6 +155,7 @@ public class Z3Worker {
                     ret.hintGroups = new LinkedList<>();
                 }
                 ret.hintGroups.add(hg);
+                System.out.println(hg);
             }
 
             // Add more bytes to maybe explore new paths
@@ -190,6 +167,10 @@ public class Z3Worker {
 
             return Optional.of(ret);
         } else {
+            System.out.println("Z3 failed to solve for " + t.branch + unsat);
+            for(String each : unsat){
+                System.out.println("\t"+res.get(each));
+            }
             if (unsat.size() == 1) {
                 // Try to fix single UNSAT expression
 
@@ -197,14 +178,66 @@ public class Z3Worker {
                 Expression ex = res.remove(unsat.stream().findFirst().get());
 
                 // Maybe it's a String.equals without enough size?
-                Optional<Coordinator.Input> sol = replaceEqualsByStartsWith(res, ex, t);
+                StringEqualsFindingVisitor equalsFindingVisitor = new StringEqualsFindingVisitor();
+                try{
+                    ex.accept(equalsFindingVisitor);
+                } catch (VisitorException e) {
+                    e.printStackTrace();
+                    return Optional.empty();
+                }
+                LinkedList<BinaryOperation> strEqualsExprs = equalsFindingVisitor.getStrEqualsExprs();
+                if(!strEqualsExprs.isEmpty()) {
+                    System.out.println("Transforming unsat str equals exprs: " + ex);
+                    // Make a copy of this expression, replacing each of the String.equals operations with versions that
+                    // force the symbolic part to be of the right length
+                    Copier copier = new Copier() {
+                        @Override
+                        public Expression copy(BinaryOperation operation) {
+                            if (strEqualsExprs.contains(operation)) {
+                                Expression ret = replaceStringsInEqualsWithCorrectLength(res, operation, t);
+                                if (ret != null) {
+                                    return ret;
+                                }
+                            }
+                            return super.copy(operation);
+                        }
+                    };
+                    Expression withCorrectLength = copier.copy(ex);
+                    System.out.println(withCorrectLength);
+                    if (withCorrectLength != null) {
+                        res.put(unsat.stream().findFirst().get(), withCorrectLength);
+                        sat.clear();
+                        unsat.clear();
+                        solve(res, sat, unsat);
+                        if (unsat.isEmpty()) {
+                            System.out.println("Z3 found solution after failing w string hack for " + t.branch);
+                            // Solution found, generate input
+                            HashMap<String, byte[]> genFuncs = new HashMap<>();
+                            Coordinator.Input ret = new Coordinator.Input();
+                            ret.bytes = solutionToInput(sat, genFuncs);
+                            Coordinator.StringHintGroup hg = generatorsToHints(res.values(), genFuncs, t.originalInput);
+                            if (hg != null) {
+                                if (ret.hintGroups == null) {
+                                    ret.hintGroups = new LinkedList<>();
+                                }
+                                ret.hintGroups.add(hg);
+                            }
 
-                // Put the expression back
-                res.put(unsat.stream().findFirst().get(), ex);
+                            // Add more bytes to maybe explore new paths
+                            if (EXTRA_ZEROES_FOR_Z3 > 0) {
+                                byte[] bytes = new byte[ret.bytes.length + EXTRA_ZEROES_FOR_Z3];
+                                System.arraycopy(ret.bytes, 0, bytes, 0, ret.bytes.length);
+                                ret.bytes = bytes;
+                            }
 
-                // Did this work?
-                if (sol.isPresent())
-                    return sol;
+                            return Optional.of(ret);
+                        }else{
+                            System.out.println("Z3 failed even after string hacking: " + unsat);
+                            for(String each : unsat)
+                                System.out.println("\t"+res.get(each));
+                        }
+                    }
+                }
             }
             if (!hints.isEmpty())
                 return negateConstraint(t, new HashSet<>());
@@ -236,7 +269,15 @@ public class Z3Worker {
                                                     hs = new HashSet<>();
                                                     hints.put(idx, hs);
                                                 }
-                                                hs.add(new String(entry.getValue()));
+                                                byte[] bs = entry.getValue();
+                                                int length = bs.length;
+                                                for(int i = bs.length - 1; i > 0; i--)
+                                                {
+                                                    if(bs[i] == 0 && i < length){
+                                                        length = i;
+                                                    }
+                                                }
+                                                hs.add(new String(bs, 0, length));
                                             }
                                         }
                                     });
@@ -354,7 +395,7 @@ public class Z3Worker {
         return ret;
     }
 
-    public Optional<Coordinator.Input> exploreTarget(Target t) {
+    public Optional<Coordinator.Input> exploreTarget(Target t) throws TimeoutException {
         // Set timeout
         {
             String to;
@@ -376,6 +417,8 @@ public class Z3Worker {
             Optional<Coordinator.Input> input = negateConstraint(t, stringHintConstraints);
             return input;
 
+        } catch(TimeoutException ex){
+            throw ex;
         } catch (Z3Exception | ClassCastException e) {
             System.err.println(e.getMessage());
             e.printStackTrace();
@@ -387,383 +430,373 @@ public class Z3Worker {
         return Optional.empty();
     }
 
-//        LinkedList<Expression> csToSolve = new LinkedList<>();
-//            Map<String, Expression> res = new HashMap<>();
-//
-//            for (Expression e : t.constraints) {
-//                csToSolve.add(e);
-//                res.put("c" + res.size(), e);
-//                if (e.metadata != null && e.metadata instanceof Coverage.BranchData) {
-//                    Coverage.BranchData data = (Coverage.BranchData) e.metadata;
-//                    if (data.takenCode == t.branch.takenID && data.notTakenCode == t.branch.notTakenID)
-//                        break;
-//                }
-//            }
-//
-//            ArrayList<AbstractMap.SimpleEntry<String, Object>> sat = new ArrayList<>();
-//            HashSet<String> unsat = new HashSet<>();
-//
-//            sat.clear();
-//            unsat.clear();
-//
-//            try {
-//                solve(res, sat, unsat);
-//
-//                for (String s : unsat)
-//                    System.out.println(res.get(s));
-//
-//                if (unsat.isEmpty()) {
-//                    // Try negating constraints of branches
-//                    res.clear();
-//                    for (Expression cs : csToSolve) {
-//                        sat.clear();
-//                        unsat.clear();
-//                        if (cs.metadata instanceof Coverage.BranchData) {
-//                            Coverage.BranchData data = (Coverage.BranchData) cs.metadata;
-//                            res.put("c" + res.size(), new Operation(Operation.Operator.NOT, cs));
-//                            solve(res, sat, unsat);
-//
-//                            if (Z3_OUTPUT_DIR != null)
-//                                dumpToTXTFile(Paths.get(Z3_OUTPUT_DIR.getAbsolutePath(), "constraints" + solved + ".txt").toFile(), res);
-//
-//                            res.remove("c" + (res.size() - 1));
-//
-//                            if (!unsat.isEmpty()) {
-//                                // Unsat, try different things to make it SAT
-//
-//                                // Is it UNSAT because of a String.equals?
-//                                // Maybe it's because the lengths don't match perfectly
-//                                // Turn that into startsWith
-//                                LinkedList<Coordinator.StringHint> hints = new LinkedList<>();
-//                                byte[] sol = replaceEqualsByStartsWith(res, cs, hints);
-//                                if (sol != null) {
-//                                    // Give solution and hint to JQF
-//                                    HashSet<Integer> bytes = new HashSet<>();
-//                                    KnarrWorker.findControllingBytes(cs, bytes, new HashSet<>());
-//                                    for (Coordinator.StringHint hint : hints)
-//                                        System.out.println("Equals hint: " + hint.getHint() + " on bytes " + bytes);
-//                                    Coordinator.Input input = new Coordinator.Input();
-//                                    input.bytes = new byte[t.input.length * 2];
-//                                    System.arraycopy(sol, 0, input.bytes, 0, Math.min(sol.length, t.input.length));
-//                                    if (t.input.length * 2 > sol.length) {
-//                                        System.arraycopy(t.input, sol.length, input.bytes, sol.length, t.input.length - sol.length);
-//                                        System.arraycopy(t.input, 0, input.bytes, t.input.length, t.input.length);
-//                                    }
-//                                    input.hints = new LinkedList<>();
-//                                    Coordinator.StringHint[] empty = new Coordinator.StringHint[0];
-//                                    for (int i = 0; i < t.input.length; i++)
-//                                        input.hints.add(bytes.contains(i) ? hints.toArray(empty) : empty);
-//
-//                                    // Send input to knarr, check if we explore target
-//                                    LinkedList<Expression> updatedConstraints = knarr.getConstraints(input.bytes, input.hints);
-//                                    List<Expression> lst = updatedConstraints.stream().filter(e -> e.metadata != null).collect(Collectors.toList());
-//                                    zest.addInputFromZ3(input);
-//                                } else if ((sol = handleStringLength(res, cs, hints)) != null) {
-//                                    // Give hint to JQF
-//                                    System.out.println("String length hint: " + hints);
-//                                } else {
-//                                    // Failed, stop trying
-//                                    for (String s : unsat)
-//                                        System.out.println(res.get(s));
-//                                }
-//                            } // TODO It was SAT, generate input and send it to Zest
-//                        } else {
-//                            // Constraints were SAT, generate hint
-//                        }
-//                    }
-//                }
-//            } catch (Z3Exception | ClassCastException e) {
-//                System.err.println(e.getMessage());
-//                e.printStackTrace();
-//            } catch (Throwable e) {
-//                System.err.println(e.getMessage());
-//                e.printStackTrace();
-//            }
-//
-//
-//            continue;
-//        }
+    static class GeneratedCharacter {
+        public String functionName;
+        public int index;
+        public Expression source;
 
-    private byte[] handleStringLength(Map<String, Expression> res, Expression cs, LinkedList<Coordinator.StringHint> hints) {
-        // Check if the constraint is LENGTH
-
-        if (!(cs instanceof Operation && ((Operation)cs).getOperand(1) instanceof Operation))
-            return null;
-
-        Operation comparison = (Operation) cs;
-        Operation i2bv = (Operation) comparison.getOperand(1);
-
-        if (i2bv.getOperator() != Operation.Operator.I2BV || !(i2bv.getOperand(0) instanceof Operation))
-            return null;
-
-        Operation length = (Operation) i2bv.getOperand(0);
-
-        if (length.getOperator() != Operation.Operator.LENGTH)
-            return null;
-
-        // Is is a LENGTH constraint
-
-        // 1st figure out what length are we looking for
-        BVVariable bv = new BVVariable("expectedLength", 32);
-
-        res.put("expectedLength", new BinaryOperation(Operation.Operator.EQUALS, new UnaryOperation(Operation.Operator.I2BV, 32, comparison.getOperand(0)), bv));
-
-        ArrayList<AbstractMap.SimpleEntry<String, Object>> sat = new ArrayList<>();
-        HashSet<String> unsat = new HashSet<>();
-        solve(res, sat, unsat);
-
-        res.remove("expectedLength");
-
-        if (!unsat.isEmpty()) {
-            // No good, didn't work
-            res.remove("c" + (res.size()-1));
-            return null;
+        public GeneratedCharacter(String functionName, int index, Expression source) {
+            this.functionName = functionName;
+            this.index = index;
+            this.source = source;
         }
 
-        int expectedLength = -1;
-
-        for (AbstractMap.SimpleEntry<String, Object> e : sat) {
-            if (e.getKey().equals("expectedLength")) {
-                expectedLength = (int) e.getValue();
-                break;
+        public static GeneratedCharacter fromFunction(FunctionCall fn) {
+            if(fn.getName().startsWith("gen")){
+                return new GeneratedCharacter(fn.getName(), (int) ((IntConstant)fn.getArguments()[0]).getValueLong(), fn.getArguments()[1]);
             }
-        }
-
-        // Something went wrong
-        if (expectedLength == -1) {
             return null;
         }
 
-        // 2nd add/remove characters from the generated string
-
-        // Find string var
-        int actualLength = 0;
-        Expression concat = length.getOperand(0);
-        while (concat instanceof Operation) {
-            actualLength += 1;
-            concat = ((Operation) concat).getOperand(0);
+        @Override
+        public String toString() {
+            return "SymbChar{" +
+                    "gen='" + functionName + '\'' +
+                    ", index=" + index +
+                    '}';
         }
 
-        StringVariable generatedString;
-        if (concat instanceof StringVariable)
-            generatedString = (StringVariable) concat;
-        else
-            return null;
-
-        // Find generator function
-        Expression f = ((Operation)length.getOperand(0)).getOperand(1);
-        while (f instanceof Operation) {
-            f = ((Operation) f).getOperand(0);
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            GeneratedCharacter that = (GeneratedCharacter) o;
+            return index == that.index &&
+                    Objects.equals(functionName, that.functionName);
         }
 
-        FunctionCall gen;
-        if (f instanceof FunctionCall)
-            gen = (FunctionCall)f;
-        else
-            return null;
-
-        // Find the solution for the function
-        int[] genSol = null;
-        for (AbstractMap.SimpleEntry<String, Object> e : sat) {
-            if (e.getKey().equals(gen.getName())) {
-                genSol = (int[]) e.getValue();
-                break;
-            }
-        }
-
-        if (genSol == null)
-            return null;
-
-        // We are trying to negate this constraint, so generate a suitable hint
-        Operation.Operator op = comparison.getOperator();
-
-        if (op == Operation.Operator.NE) {
-            // Hint must be the same as expected length
-            if (expectedLength == actualLength)
-                return null;
-
-            if (expectedLength < actualLength) {
-                // Add characters
-                op = Operation.Operator.LT;
-            } else {
-                // Remove characters
-                op = Operation.Operator.GT;
-            }
-        }
-
-        switch (op) {
-            case GE:
-            case GT: {
-                // Hint must be smaller than expected length
-                if (expectedLength - 1 > genSol.length)
-                    return null;
-                byte[] hint = new byte[expectedLength - 1];
-                for (int i = 0 ; i < hint.length ; i++)
-                    hint[i] = (byte) genSol[i]; // Different types, cannot arrayCopy
-                hints.add(new Coordinator.StringHint(new String(hint), Coordinator.HintType.Z3));
-                // TODO
-                return new byte[0];
-            }
-            case EQ:
-                // Hint must be different than expected length
-            case LE:
-            case LT: {
-                // Hint must be larger than expected length
-                byte[] hint = new byte[expectedLength + 1];
-                for (int i = 0 ; i < genSol.length ; i++)
-                    hint[i] = (byte) genSol[i]; // Different types, cannot arrayCopy
-                hint[hint.length - 1] = 'a';
-                hints.add(new Coordinator.StringHint(new String(hint), Coordinator.HintType.Z3));
-                // TODO
-                return new byte[0];
-            }
-            default:
-                return null;
+        @Override
+        public int hashCode() {
+            return Objects.hash(functionName, index);
         }
     }
 
-    private Optional<Coordinator.Input> replaceEqualsByStartsWith(Map<String, Expression> res, Expression cs, Target target) {
-        // Check if the constraint is EQUALS
+    static class GeneratedCharacterFinder extends Visitor{
+        private GeneratedCharacter character;
+        private boolean invalid;
 
-        AtomicReference<String> hack = new AtomicReference<>();
+        public void reset(){
+            character = null;
+            invalid = false;
+        }
 
-        Expression newCS = cs.copy(new Copier() {
+        public GeneratedCharacter getCharacter() {
+            if(invalid)
+                return null;
+            return character;
+        }
 
+        @Override
+        public void preVisit(Expression expression) throws VisitorException {
+            super.preVisit(expression);
+            if(expression instanceof FunctionCall){
+                FunctionCall fn = (FunctionCall) expression;
+                if(fn.getName().startsWith("gen")){
+                    if(this.character != null){
+                        this.invalid = true;
+                    }
+                    this.character = GeneratedCharacter.fromFunction(fn);
+                }
+            }
+        }
+    }
+    static class StringEqualsFindingVisitor extends Visitor {
+        LinkedList<BinaryOperation> strEqualsExprs = new LinkedList<>();
+        @Override
+        public void preVisit(Operation operation) throws VisitorException {
+            super.preVisit(operation);
+            switch (operation.getOperator()) {
+                case EQUALS:
+                case EQUALSIGNORECASE:
+                case STARTSWITH:
+                case ENDSWITH:
+                    this.strEqualsExprs.add((BinaryOperation) operation);
+                    break;
+            }
+        }
+
+        public LinkedList<BinaryOperation> getStrEqualsExprs() {
+            return strEqualsExprs;
+        }
+    }
+    static class StringEqualsVisitor extends Visitor {
+        private StringVariable stringVariable;
+        private int numConcreteCharsInSymbolic;
+        private LinkedList<GeneratedCharacter> symbolicChars = new LinkedList<>();
+        private StringConstant stringConstant;
+        private Expression expression;
+
+        public StringEqualsVisitor(Expression expression) {
+            this.expression = expression;
+        }
+
+        public Expression getExpression() {
+            return expression;
+        }
+
+        public int getLength(){
+            if(this.stringConstant != null){
+                return this.stringConstant.getValue().length();
+            }
+            return numConcreteCharsInSymbolic + symbolicChars.size();
+        }
+
+        public boolean hasSymbolicVariable(){
+            return !this.symbolicChars.isEmpty();
+        }
+
+        public boolean hasStringConstant(){
+            return this.stringConstant != null;
+        }
+
+        public StringConstant getStringConstant() {
+            return stringConstant;
+        }
+
+        public StringVariable getStringVariable() {
+            return stringVariable;
+        }
+
+        public int getNumConcreteCharsInSymbolic() {
+            return numConcreteCharsInSymbolic;
+        }
+
+        public LinkedList<GeneratedCharacter> getSymbolicChars() {
+            return symbolicChars;
+        }
+
+        @Override
+        public void preVisit(Expression expression) throws VisitorException {
+            super.preVisit(expression);
+            if(expression instanceof FunctionCall){
+                FunctionCall fn = (FunctionCall) expression;
+                if(fn.getName().startsWith("gen")){
+                    this.symbolicChars.add(GeneratedCharacter.fromFunction(fn));
+                }
+            }
+        }
+
+        @Override
+        public void preVisit(Operation operation) throws VisitorException {
+            super.preVisit(operation);
+            if(operation.getOperator() == Operation.Operator.CONCAT){
+                if(operation.getOperand(0) instanceof IntConstant)
+                    numConcreteCharsInSymbolic++;
+                if(operation.getOperand(1) instanceof IntConstant)
+                    numConcreteCharsInSymbolic++;
+            }
+        }
+
+        @Override
+        public void preVisit(StringVariable stringVariable) throws VisitorException {
+            super.preVisit(stringVariable);
+            if(this.stringVariable != null)
+                throw new VisitorException("Found more than one string variable! " + this.stringVariable + " and " + stringVariable);
+            this.stringVariable = stringVariable;
+        }
+
+        @Override
+        public void preVisit(StringConstant stringConstant) throws VisitorException {
+            super.preVisit(stringConstant);
+            // If we concatenate a string constant into a string, it won't show up as a StringConstant,
+            // but instead will be concat of intconstants (each char)
+            this.stringConstant = stringConstant;
+        }
+
+    }
+
+    private static Expression replaceStringsInEqualsWithCorrectLength(Map<String, Expression> res, BinaryOperation strEqualsExpr, Target target) {
+        // NEW plan 7-13-21: Modify the string compared so that the ninput.str.equals("abc") && umber of characters matches exactly
+        // Add or delete characters from the end of the string
+        // If both sides are symbolic, then modify the left hand side to become the length of the right hand side
+
+        boolean isEquals = strEqualsExpr.getOperator() == Operation.Operator.EQUALS || strEqualsExpr.getOperator() == Operation.Operator.EQUALSIGNORECASE;
+
+        Expression leftExpr = strEqualsExpr.getOperand(0);
+        Expression rightExpr = strEqualsExpr.getOperand(1);
+        StringEqualsVisitor leftStrEquals = new StringEqualsVisitor(leftExpr);
+        StringEqualsVisitor rightStrEquals = new StringEqualsVisitor(rightExpr);
+        boolean adjustLeft = true;
+        try {
+            leftExpr.accept(leftStrEquals);
+            rightExpr.accept(rightStrEquals);
+        } catch (VisitorException e) {
+            e.printStackTrace();
+        }
+        StringEqualsVisitor exprToAdjust;
+        StringEqualsVisitor exprToSatisfy;
+        //TODO handle all of the cases of left + right
+        if(!leftStrEquals.hasSymbolicVariable() && !rightStrEquals.hasSymbolicVariable())
+            return null; //shouldn't even be possible, right?
+        else if(leftStrEquals.hasSymbolicVariable() && rightStrEquals.hasSymbolicVariable()){
+            //Heuristic: If both are symbolic, let's try to satisfy the *longer* one, so we aren't removing chars.
+            if(leftStrEquals.getLength() > rightStrEquals.getLength()){
+                adjustLeft = false;
+                exprToAdjust = rightStrEquals;
+                exprToSatisfy = leftStrEquals;
+            }else{
+                exprToAdjust = leftStrEquals;
+                exprToSatisfy = rightStrEquals;
+            }
+        } else if(leftStrEquals.hasSymbolicVariable()){
+            exprToAdjust = leftStrEquals;
+            exprToSatisfy = rightStrEquals;
+        } else {
+            adjustLeft = false;
+            exprToAdjust = rightStrEquals;
+            exprToSatisfy = leftStrEquals;
+        }
+
+        final GeneratedCharacter lastCharInExprToAdjust = exprToAdjust.getSymbolicChars().getLast();
+        final int delta = exprToSatisfy.getLength() - exprToAdjust.getLength();
+        final HashSet<GeneratedCharacter> callsToRemove = new HashSet<>();
+        final GeneratedCharacterFinder finder = new GeneratedCharacterFinder();
+        HashSet<String> constraintsToRemove = new HashSet<>();
+        if (delta < 0 && isEquals) {
+            //Determine which chars to drop
+            //Don't every try to drop chars for startsWith or endsWith
+            Iterator<GeneratedCharacter> iter = exprToAdjust.getSymbolicChars().descendingIterator();
+            while (callsToRemove.size() < 0 - delta && iter.hasNext()){
+                GeneratedCharacter each = iter.next();
+                if(each.index == 0)
+                    continue; //if we have multiple strings, try to always have at least one char in each
+                callsToRemove.add(each);
+            }
+
+            //Find + remove other constraints on those chars
+            for (Map.Entry<String, Expression> each : res.entrySet()) {
+                finder.reset();
+                try {
+                    each.getValue().accept(finder);
+                    GeneratedCharacter character = finder.getCharacter();
+                    if(callsToRemove.contains(character)){
+                        constraintsToRemove.add(each.getKey());
+                    }
+                } catch (VisitorException e) {
+                    e.printStackTrace();
+                }
+            }
+            for(String danglingConstraint : constraintsToRemove){
+                res.remove(danglingConstraint);
+            }
+        }
+        Copier transformer = new Copier() {
             @Override
             public Expression copy(BinaryOperation operation) {
-                if (operation.getOperator() != Operation.Operator.EQUALS)
+                if (operation.getOperator() != Operation.Operator.CONCAT)
                     return super.copy(operation);
 
-                if (operation.getOperand(1) instanceof StringConstant)
-                    hack.set(((StringConstant)operation.getOperand(1)).getValue());
+                if(delta != 0) {
+                    //With the recursive calls, we can only add more chars
+                    for (int i = 0; i < 2; i++) {
+                        try {
+                            finder.reset();
+                            operation.getOperand(i).accept(finder);
+                            GeneratedCharacter character = finder.getCharacter();
+                            if (delta > 0 && character != null && lastCharInExprToAdjust.equals(character)) {
+                                //Add delta new characters after this one
+                                int addedCount = 0;
+                                int otherIndex = i == 0 ? 1 : 0;
 
-                return postCopy(operation, new BinaryOperation(Operation.Operator.STARTSWITH, operation.getOperand(1), operation.getOperand(0)));
-            }
-        });
+                                Expression ret;
+                                if (i == 0) {
+                                    //We want to add the new chars after the LEFT side of this concat, replacing the right
+                                    //with a new concat that ultimately ends with the current right side of this concat
+                                    Expression leftExprToadd = operation.getOperand(0);
+                                    while (addedCount < delta) {
+                                        addedCount++;
+                                        leftExprToadd = new BinaryOperation(Operation.Operator.CONCAT, leftExprToadd,
+                                                new FunctionCall(lastCharInExprToAdjust.functionName,
+                                                        new Expression[]{
+                                                                new IntConstant(lastCharInExprToAdjust.index + addedCount),
+                                                                character.source}
+                                                ));
+                                        leftExprToadd.metadata = operation.metadata;
+                                    }
+                                    //TODO this isn't right if the right side has more concat's, right?
+                                    ret = new BinaryOperation(Operation.Operator.CONCAT, leftExprToadd,
+                                            operation.getOperand(1));
+                                    ret.metadata = operation.metadata;
 
-        // TODO try to find string
-        if (hack.get() == null)
-            return Optional.empty();
-
-        ArrayList<AbstractMap.SimpleEntry<String, Object>> sat = new ArrayList<>();
-        HashSet<String> unsat = new HashSet<>();
-
-        // Our new modified constraint
-        res.put("special", newCS);
-
-        Coordinator.StringHint hint = null;
-
-//        if (argumentToEquals instanceof StringConstant) {
-//            // We know what's the argument to equals
-//           hint = new Coordinator.StringHint(((StringConstant)argumentToEquals).getValue(), Coordinator.HintType.Z3);
-//        } else {
-//            // TODO we need to ask Z3 to give us what is the argument to equals
-//            // TODO the code below was a try but it doesn't quite work, it always gets UNSAT
-//            // TODO probably some silly reason
-////            // A string variable that is large enough for us to read what we just compared against
-////            int n = 50;
-////            Expression auxStringVar = new StringVariable("aux");
-////            for (int i = 0 ; i < 50 ; i++) {
-////                auxStringVar = new Operation(Operation.Operator.CONCAT, auxStringVar, new BVVariable("aux"+i, 32));
-////            }
-////
-////            res.put("aux1", new Operation(Operation.Operator.STARTSWITH, auxStringVar, argumentToEquals));
-//            return Optional.empty();
-//        }
-
-        solve(res, sat, unsat);
-
-
-        if (!unsat.isEmpty()) {
-            // No good, didn't work
-            res.remove("special");
-            return Optional.empty();
-        } else {
-            HashMap<String, byte[]> genFuncs = new HashMap<>();
-            Coordinator.Input ret = new Coordinator.Input();
-            ret.bytes = solutionToInput(sat, genFuncs);
-
-            Map<String, Expression> resForHints = new HashMap<>();
-            resForHints.put("special", newCS);
-            Coordinator.StringHintGroup hints = generatorsToHints(res.values(), genFuncs, target.originalInput);
-            if (hints != null) {
-                if(ret.hintGroups == null){
-                    ret.hintGroups = new LinkedList<>();
+                                }else{
+                                    //We want to add the new chars after the RIGHT side of this concat
+                                    ret = new BinaryOperation(Operation.Operator.CONCAT,
+                                            operation.getOperand(0), operation.getOperand(1));
+                                    ret.metadata = operation.metadata;
+                                    while (addedCount < delta) {
+                                        addedCount++;
+                                        ret = new BinaryOperation(Operation.Operator.CONCAT,
+                                                ret, new FunctionCall(lastCharInExprToAdjust.functionName, new Expression[]{new IntConstant(lastCharInExprToAdjust.index + addedCount), character.source}));
+                                        ret.metadata = operation.metadata;
+                                    }
+                                }
+                                return postCopy(operation, ret);
+                            } else if (character != null && callsToRemove.contains(character)) {
+                                //Remove this character
+                                int otherIndex = i == 0 ? 1 : 0;
+                                Expression ret =  this.copy(operation.getOperand(otherIndex));
+                                return ret;
+                            }
+                        } catch (VisitorException e) {
+                            e.printStackTrace();
+                        }
+                    }
                 }
-                ret.hintGroups.add(hints);
-                for (Coordinator.StringHint h : hints.hints) {
-                    if (h == null)
-                        continue;
-                    h.hint = hack.get();//TODO what is this for? - JSB
+                return super.copy(operation);
+            }
+        };
+        Expression adjustedExpr = transformer.copy(exprToAdjust.getExpression());
+        if(adjustLeft)
+            return new BinaryOperation(Operation.Operator.EQUALS, adjustedExpr, exprToSatisfy.getExpression());
+        else
+            return new BinaryOperation(Operation.Operator.EQUALS, exprToSatisfy.getExpression(), adjustedExpr);
+    }
+
+    static ExecutorService translatorService = Executors.newFixedThreadPool(1);
+    private static Map<String, BoolExpr> translate(Map<String, Expression> constraints, HashSet<Expr> variables, HashSet<FuncDecl> functions, Context ctx) throws VisitorException, TimeoutException {
+        Callable<Map<String, BoolExpr>> task = new Callable<Map<String, BoolExpr>>() {
+            @Override
+            public Map<String, BoolExpr> call() throws Exception {
+                try {
+                    Z3JavaTranslator translator = new Z3JavaTranslator(ctx);
+                    Map<String, BoolExpr> ret = new HashMap<>();
+
+                    for (Map.Entry<String, Expression> e : constraints.entrySet()) {
+                        try {
+                            e.getValue().accept(translator);
+                            ret.put(e.getKey(), (BoolExpr) translator.getTranslation());
+                        } catch (Throwable tr) {
+                            System.err.println("Unable to translate expression");
+                            //System.err.println(e);
+                            tr.printStackTrace();
+                        }
+                    }
+
+                    variables.addAll(translator.getVariableMap().values());
+                    functions.addAll(translator.getFunctions().values());
+
+                    return ret;
+                }catch(Throwable t){
+                    t.printStackTrace();
+                    throw t;
                 }
             }
-
-
-            res.remove("special");
-            // TODO what is this? - JSB
-            Coordinator.StringHintGroup hintsAgain = generatorsToHints(res.values(), genFuncs, target.originalInput);
-            if (hintsAgain != null) {
-                for (int i = 0 ; i < hintsAgain.hints.size() ; i++) {
-                    if (hints.hints.get(i) == null)
-                        hints.hints.set(i, hintsAgain.hints.get(i));
-                }
-            }
-            return Optional.of(ret);
-//            // It worked, get the string and the solution
-//            res.remove("c" + (res.size()-1));
-//
-//            // Get size of solution
-//            int size = 0;
-//            for (AbstractMap.SimpleEntry<String, Object> e : sat) {
-//                if (e.getKey().startsWith("autoVar_")) {
-//                    try {
-//                        int n = Integer.parseInt(e.getKey().replace("autoVar_", ""));
-//                        size = Math.max(size, n);
-//                    } catch (NumberFormatException ex) {
-//                        continue;
-//                    }
-//                }
-//            }
-//            byte ret[] = new byte[size+1];
-//            for (AbstractMap.SimpleEntry<String, Object> e : sat) {
-//                if (e.getKey().startsWith("autoVar_")) {
-//                    try {
-//                        int n = Integer.parseInt(e.getKey().replace("autoVar_", ""));
-//                        ret[n] = ((Integer) e.getValue()).byteValue();
-//                    } catch (NumberFormatException ex) {
-//                        continue;
-//                    }
-//                }
-//            }
-//
-//            hints.add(hint);
-//            return Optional.of(ret);
+        };
+        Future<Map<String, BoolExpr>> res = translatorService.submit(task);
+        try {
+            Map<String, BoolExpr> ret = res.get(Z3JavaTranslator.timeoutMS, TimeUnit.MILLISECONDS);
+            return ret;
+        } catch (InterruptedException | TimeoutException e) {
+            e.printStackTrace();
+            throw new TimeoutException(e.getMessage());
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+            throw new TimeoutException(e.getMessage());
         }
     }
 
-    private Map<String, BoolExpr> translate(Map<String, Expression> constraints, HashSet<Expr> variables, HashSet<FuncDecl> functions, Context ctx) throws VisitorException {
-        Z3JavaTranslator translator = new Z3JavaTranslator(ctx);
-        Map<String, BoolExpr> ret = new HashMap<>();
-
-        for (Map.Entry<String, Expression> e : constraints.entrySet()) {
-            try {
-                e.getValue().accept(translator);
-                ret.put(e.getKey(), (BoolExpr) translator.getTranslation());
-            }catch(Throwable tr){
-                //System.err.println("Unable to translate expression");
-                //System.err.println(e);
-                //tr.printStackTrace();
-            }
-        }
-
-        variables.addAll(translator.getVariableMap().values());
-        functions.addAll(translator.getFunctions().values());
-
-        return ret;
-    }
-
-    private int solved = 0;
-    private void solve(Map<String, Expression> constraints, ArrayList<AbstractMap.SimpleEntry<String, Object>> sat, HashSet<String> unsat) {
+    private static int solved = 0;
+    private static void solve(Map<String, Expression> constraints, ArrayList<AbstractMap.SimpleEntry<String, Object>> sat, HashSet<String> unsat) throws TimeoutException {
         solved += 1;
 
         if (Z3_OUTPUT_DIR != null) {
@@ -793,12 +826,14 @@ public class Z3Worker {
                 solver.setParameters(p);
             }
 
+            long start = System.currentTimeMillis();
             // Add all the constraints to the current context
             for (Map.Entry<String, BoolExpr> e : constraintsInZ3.entrySet())
                 solver.assertAndTrack(e.getValue(), ctx.mkBoolConst(e.getKey()));
 
             // Solve the constraints
             Status result = solver.check();
+            long solvingTime = System.currentTimeMillis() - start;
 
             if (Status.SATISFIABLE == result) {
                 // SAT
@@ -877,13 +912,16 @@ public class Z3Worker {
 
                     unsat.add(key);
                 }
+                if (solvingTime >= Z3JavaTranslator.timeoutMS) {
+                    throw new TimeoutException("Operation took " + solvingTime + ", timeout=" + Z3JavaTranslator.timeoutMS);
+                }
             }
         } catch (VisitorException e) {
             e.printStackTrace();
         }
     }
 
-    private void dumpToTXTFile(File file, Map<String, Expression> constraints) throws IOException {
+    private static void dumpToTXTFile(File file, Map<String, Expression> constraints) throws IOException {
         Map<String, Expression> res = new HashMap<>();
 
         try (PrintStream ps = new PrintStream(new BufferedOutputStream(new FileOutputStream(file)))) {
@@ -953,7 +991,7 @@ public class Z3Worker {
         ConstraintOptionGenerator optionGenerator;
     }
 
-    public static class Target {
+    public static class Target implements Serializable{
         Coordinator.Branch branch;
         Coordinator.Input originalInput;
         byte[] input;
