@@ -4,6 +4,7 @@ import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
+import java.util.HashMap;
 import java.util.LinkedList;
 
 public class SnoopInstructionMethodAdapter extends MethodVisitor implements Opcodes {
@@ -105,6 +106,8 @@ public class SnoopInstructionMethodAdapter extends MethodVisitor implements Opco
   private void addConditionalJumpInstrumentation(int opcode, Label finalBranchTarget,
                                                  String instMethodName, String instMethodDesc) {
     int iid = instrumentationState.incAndGetId();
+    instrumentationState.incAndGetId(); //reserver another counter for the other side of this branch
+
     Label intermediateBranchTarget = new Label();
     Label fallthrough = new Label();
 
@@ -190,7 +193,6 @@ public class SnoopInstructionMethodAdapter extends MethodVisitor implements Opco
   }
 
 
-
   @Override
   public void visitTableSwitchInsn(int min, int max, Label dflt, Label... labels) {
     // Save operand value
@@ -202,16 +204,15 @@ public class SnoopInstructionMethodAdapter extends MethodVisitor implements Opco
     addBipushInsn(mv, max);
     addBipushInsn(mv, getLabelNum(dflt));
 
-    addBipushInsn(mv, labels.length);
-    mv.visitIntInsn(NEWARRAY, T_INT);
     for (int i = 0; i < labels.length; i++) {
-      mv.visitInsn(DUP);
-      addBipushInsn(mv, i);
-      addBipushInsn(mv, getLabelNum(labels[i]));
-      mv.visitInsn(IASTORE);
+      //create a coverage probe for each of the arms, we'll refer to it by offset
+      instrumentationState.incAndGetId();
     }
 
-    mv.visitMethodInsn(INVOKESTATIC, Config.instance.analysisClass, "LOGTABLESWITCH", "(IIIII[I)V", false);
+
+    //create a coverage probe for the default case
+    //instrumentationState.incAndGetId();
+    mv.visitMethodInsn(INVOKESTATIC, Config.instance.analysisClass, "LOGTABLESWITCH", "(IIIII)V", false);
     mv.visitTableSwitchInsn(min, max, dflt, labels);
   }
 
@@ -231,18 +232,14 @@ public class SnoopInstructionMethodAdapter extends MethodVisitor implements Opco
       addBipushInsn(mv, i);
       addBipushInsn(mv, keys[i]);
       mv.visitInsn(IASTORE);
+      //create a coverage probe for each of the arms, we'll refer to it by offset
+      instrumentationState.incAndGetId();
     }
 
-    addBipushInsn(mv, labels.length);
-    mv.visitIntInsn(NEWARRAY, T_INT);
-    for (int i = 0; i < labels.length; i++) {
-      mv.visitInsn(DUP);
-      addBipushInsn(mv, i);
-      addBipushInsn(mv, getLabelNum(labels[i]));
-      mv.visitInsn(IASTORE);
-    }
 
-    mv.visitMethodInsn(INVOKESTATIC, Config.instance.analysisClass, "LOGLOOKUPSWITCH", "(III[I[I)V", false);
+    //create a coverage probe for the default case
+    instrumentationState.incAndGetId();
+    mv.visitMethodInsn(INVOKESTATIC, Config.instance.analysisClass, "LOGLOOKUPSWITCH", "(III[I)V", false);
     mv.visitLookupSwitchInsn(dflt, keys, labels);
   }
 

@@ -50,7 +50,7 @@ public class KnarrWorker extends Worker {
 
     static long constraintsProcessed;
     public static void process(LinkedList<Coordinator.Branch> bs, HashMap<Integer, HashSet<Coordinator.StringHint>> stringEqualsArgs, Expression e, String[] filter) {
-        Coverage.BranchData b = (Coverage.BranchData) e.metadata;
+        Coverage.CoverageData b = (Coverage.CoverageData) e.metadata;
 
         if (b == null)
             return;
@@ -61,14 +61,8 @@ public class KnarrWorker extends Worker {
             }
         }
 
-        Coordinator.Branch bb = new Coordinator.Branch();
-
-        bb.takenID = b.takenCode;
-        bb.notTakenID = b.notTakenCode;
-        bb.keep = b.breaksLoop;
-        bb.result = b.taken;
+        Coordinator.Branch bb = new Coordinator.Branch(b);
         bb.controllingBytes = new HashSet<>();
-        bb.source = b.source;
 
         HashSet<Coordinator.StringHint> eq = new HashSet<>();
 

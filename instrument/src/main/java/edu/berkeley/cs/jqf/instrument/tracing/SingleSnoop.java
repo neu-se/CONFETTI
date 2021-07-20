@@ -1044,23 +1044,25 @@ public final class SingleSnoop {
         coverageListener.logCoverage(iid, branch);
     }
 
-    public static void LOGLOOKUPSWITCH(int value, int iid, int dflt, int[] cases, int[] labels) {
+    public static void LOGLOOKUPSWITCH(int value, int iid, int dflt, int[] cases) {
         // Compute arm index or else default
-        int arm = -1;
+        int arm = cases.length;
         for (int i = 0; i < cases.length; i++) {
             if (value == cases[i]) {
                 arm = i;
                 break;
             }
         }
+        arm++;
         coverageListener.logCoverage(iid, arm);
     }
 
-    public static void LOGTABLESWITCH(int value, int iid, int min, int max, int dflt, int[] labels) {
-        int arm = -1;
-        if (value >= 0 && value < labels.length) {
-            arm = value;
+    public static void LOGTABLESWITCH(int value, int iid, int min, int max, int dflt) {
+        int arm = 1 + max - min;
+        if (value >= min && value <= max) {
+            arm = value - min;
         }
+        arm++;
         coverageListener.logCoverage(iid, arm);
     }
 

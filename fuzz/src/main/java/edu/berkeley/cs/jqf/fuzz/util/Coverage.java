@@ -232,6 +232,6 @@ public class Coverage implements TraceEventVisitor, CoverageListener {
 
     @Override
     public void logCoverage(int iid, int arm) {
-        counter.increment((iid << 2) + arm);
+        counter.increment(iid  + arm);
     }
 }

@@ -1,5 +1,6 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
+import edu.gmu.swe.knarr.runtime.Coverage;
 import org.eclipse.collections.api.iterator.IntIterator;
 import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
 import org.eclipse.collections.impl.map.mutable.primitive.IntObjectHashMap;
@@ -239,32 +240,78 @@ public class Coordinator implements Runnable {
 
                         Branch existing;
                         if (!branches.containsKey(b)) {
-                            existing = b;
-                            synchronized (existing) {
-                                existing.trueExplored = new IntHashSet();
-                                existing.falseExplored = new IntHashSet();
-                                existing.control = new IntObjectHashMap<>();
-                                existing.keep = b.keep;
-                                existing.source = (b.source == null ? "" : b.source);
-                                branches.put(b, b);
+                            synchronized (branches) {
+                                existing = branches.get(b);
+                                if(existing == null) {
+                                    existing = b;
+                                    existing.inputsTried = new IntHashSet();
+                                    if(b.isSwitch()){
+                                        //it's a switch branch
+                                        existing.armsExplored = new IntHashSet[b.armsExplored.length];
+                                        existing.armsNotExplored = new IntHashSet[b.armsExplored.length];
+                                        existing.armsSolved = new boolean[b.armsExplored.length];
+                                        existing.inputsTriedPerArm = new IntHashSet[b.armsExplored.length];
+                                        for(int i = 0; i < b.armsExplored.length; i++){
+                                            existing.armsExplored[i] = new IntHashSet();
+                                            existing.armsNotExplored[i] = new IntHashSet();
+                                            existing.inputsTriedPerArm[i] = new IntHashSet();
+                                        }
+                                    }else {
+                                        existing.trueExplored = new IntHashSet();
+                                        existing.falseExplored = new IntHashSet();
+                                    }
+                                    existing.control = new IntObjectHashMap<>();
+                                    existing.keep = b.keep;
+                                    existing.source = (b.source == null ? "" : b.source);
+                                    branches.put(b, b);
+                                }
                             }
                         } else {
                             existing = branches.get(b);
                         }
 
                         synchronized (existing) {
-                            if (b.result) {
-                                //if (existing.trueExplored.isEmpty())
-                                //    System.out.println("\tInput " + input.id + " explores T on " + existing.takenID + " (" + existing.source + ")");
-                                existing.trueExplored.add(input.id);
-                                if(!existing.falseExplored.isEmpty())
-                                    existing.isSolved = true;
+                            if (b.isSwitch()) {
+                                for (int i = 0; i < b.armsExplored.length; i++) {
+                                    if (b.armsExplored[i] != null) {
+                                        if(b.result) {
+                                            existing.armsExplored[i].add(input.id);
+                                            if(!existing.armsNotExplored[i].isEmpty())
+                                                existing.armsSolved[i] = true;
+                                        }
+                                        else {
+                                            existing.armsNotExplored[i].add(input.id);
+                                            if(!existing.armsExplored[i].isEmpty())
+                                                existing.armsSolved[i] = true;
+                                        }
+                                        if (existing.armsSolved[i]) {
+                                            //Check to see if it's fully solved.
+                                            boolean solved = true;
+                                            for (int j = 0; j < existing.armsSolved.length; j++) {
+                                                if (!existing.armsSolved[j]) {
+                                                    solved = false;
+                                                    break;
+                                                }
+                                            }
+                                            existing.isSolved = solved;
+                                        }
+                                        break;
+                                    }
+                                }
                             } else {
-                                //if (existing.falseExplored.isEmpty())
-                                //    System.out.println("\tInput " + input.id + " explores F on " + existing.takenID + " (" + existing.source + ")");
-                                existing.falseExplored.add(input.id);
-                                if(!existing.trueExplored.isEmpty())
-                                    existing.isSolved = true;
+                                if (b.result) {
+                                    if (existing.trueExplored.isEmpty())
+                                        System.out.println("\tInput " + input.id + " explores T on " + existing.takenID + " (" + existing.source + ")");
+                                    existing.trueExplored.add(input.id);
+                                    if (!existing.falseExplored.isEmpty())
+                                        existing.isSolved = true;
+                                } else {
+                                    if (existing.falseExplored.isEmpty())
+                                        System.out.println("\tInput " + input.id + " explores F on " + existing.takenID + " (" + existing.source + ")");
+                                    existing.falseExplored.add(input.id);
+                                    if (!existing.trueExplored.isEmpty())
+                                        existing.isSolved = true;
+                                }
                             }
                         }
 
@@ -434,7 +481,7 @@ public class Coordinator implements Runnable {
                         .filter(b -> !triedTops.contains(b))
                         .filter(b -> isInWhitelist(b.source))
                         .filter(b -> !b.isSolved && !b.isTimedOut)
-                        .reduce(BinaryOperator.maxBy(Comparator.comparingInt(o -> o.trueExplored.size() + o.falseExplored.size())));
+                        .reduce(BinaryOperator.minBy(Comparator.comparingInt(o -> o.inputsTried.size())));
 
                 if (!maybeTop.isPresent()) {
                     continue out; //Start over, allowing for repeated selection of branches
@@ -446,8 +493,7 @@ public class Coordinator implements Runnable {
                 Optional<Input> maybeInputToTarget;
                 synchronized (this.inputs) {
                     maybeInputToTarget = this.inputs.values().stream()
-                            .filter(i -> i != null && !i.evicted && (branchToTarget.inputsTried == null || !branchToTarget.inputsTried.contains(i.id)))
-                            .filter(i -> branchToTarget.trueExplored.contains(i.id) || branchToTarget.falseExplored.contains(i.id))
+                            .filter(i -> branchToTarget.isUsefulInputForNegation(i))
                             .reduce(BinaryOperator.minBy(Comparator.comparingInt(o -> o.bytes.length)));
                 }
 
@@ -457,25 +503,40 @@ public class Coordinator implements Runnable {
                     continue;
                 }
 
+                System.out.println("Targeting: " + branchToTarget);
                 inputToTarget = maybeInputToTarget.get();
-                if (top.inputsTried == null) {
-                    top.inputsTried = new IntHashSet();
-                }
                 top.inputsTried.add(inputToTarget.id);
 
+
                 hadWork = true;
-                // Set Z3 target
-                Z3Worker.Target target = new Z3Worker.Target(inputToTarget, top, inputToTarget.bytes, constraints.get(inputToTarget).getExpressions(), perByteStringEqualsHints.get(inputToTarget.id));
 
                 try {
-                    // Send target to Z3
-                    Optional<Coordinator.Input> newInput = z3.exploreTarget(target);
+                    if(top.isSwitch()){
+                        //Try to target each of the arms that haven't been yet fully covered
+                        for(int i = 0; i < top.armsSolved.length; i++){
+                            if(!top.armsSolved[i]){
+                                Z3Worker.Target target = new Z3Worker.Target(inputToTarget, top, i,  inputToTarget.bytes, constraints.get(inputToTarget).getExpressions(), perByteStringEqualsHints.get(inputToTarget.id));
+                                Optional<Coordinator.Input> newInput = z3.exploreTarget(target);
 
-                    // Handle result
-                    if (newInput.isPresent()) {
-                        System.out.println("Z3 found new input for " + inputToTarget.id + " " + target.branch.source);
-                        zest.addInputFromZ3(newInput.get());
+                                // Handle result
+                                if (newInput.isPresent()) {
+                                    System.out.println("Z3 found new input for " + inputToTarget.id + " " + target.branch.source);
+                                    zest.addInputFromZ3(newInput.get());
+                                }
+                            }
+                        }
                     }
+                    else{
+                        Z3Worker.Target target = new Z3Worker.Target(inputToTarget, top, inputToTarget.bytes, constraints.get(inputToTarget).getExpressions(), perByteStringEqualsHints.get(inputToTarget.id));
+                        Optional<Coordinator.Input> newInput = z3.exploreTarget(target);
+
+                        // Handle result
+                        if (newInput.isPresent()) {
+                            System.out.println("Z3 found new input for " + inputToTarget.id + " " + target.branch.source);
+                            zest.addInputFromZ3(newInput.get());
+                        }
+                    }
+
                 } catch (TimeoutException ex) {
                     ex.printStackTrace();
                     top.trueExplored.remove(inputToTarget.id);
@@ -490,8 +551,8 @@ public class Coordinator implements Runnable {
                     }
                     System.err.println("Evicted " + bytes + " of constraints for input #" + inputToTarget.id);
                 }
-                if (target.branch.inputsTried.size() > BRANCH_SOLVES_TIMEOUT) {
-                    target.branch.isTimedOut = true;
+                if (top.inputsTried.size() > BRANCH_SOLVES_TIMEOUT) {
+                    top.isTimedOut = true;
                 }
             }
         }
@@ -757,6 +818,7 @@ public class Coordinator implements Runnable {
         public String toString() {
             return "StringHint{" +
                     "hint='" + hint + '\'' +
+                    "hintLength=" + hint.length() +
                     ", type=" + type +
                     ", debugSources=" + debugSources +
                     '}';
@@ -798,19 +860,75 @@ public class Coordinator implements Runnable {
     }
     public static class Branch implements Externalizable {
         private static final long serialVersionUID = -6900391468143442577L;
-        public int takenID, notTakenID;
+        public int takenID, //For switches, `takenID` will be the switch ID, the same regarldess of whether it's taken or not.
+                notTakenID;
         public boolean result, keep;
         public HashSet<Integer> controllingBytes;
         public String source = "";
 
         transient IntObjectHashMap<int[]> control;
+        transient IntHashSet inputsTried;
         transient IntHashSet trueExplored;
         transient IntHashSet falseExplored;
+        transient IntHashSet[] armsExplored;
+        transient IntHashSet[] armsNotExplored;
+        transient IntHashSet[] inputsTriedPerArm;
+        transient boolean[] armsSolved;
         transient boolean isSolved;
         transient boolean isTimedOut;
 
+
+        public boolean isUsefulInputForNegation(Input input) {
+            if (input == null || input.evicted)
+                return false;
+            if (!this.isSwitch()) {
+                return !this.inputsTried.contains(input.id) &&
+                        (this.trueExplored.contains(input.id) || this.falseExplored.contains(input.id));
+            } else {
+                for (int i = 0; i < armsExplored.length; i++) {
+                    if (!armsSolved[i] && !this.inputsTriedPerArm[i].contains(input.id) && (
+                            armsExplored[i].contains(input.id) || armsNotExplored[i].contains(input.id)))
+                        return true;
+                }
+                return false;
+            }
+        }
+        public boolean isSwitch(){
+            return this.armsExplored != null;
+        }
+        public Branch(Coverage.CoverageData b) {
+            this.result = b.taken;
+            this.source = b.source;
+            if (b instanceof Coverage.BranchData) {
+                Coverage.BranchData branch = (Coverage.BranchData) b;
+                this.takenID = branch.takenCode;
+                this.notTakenID = branch.notTakenCode;
+            } else if (b instanceof Coverage.SwitchData) {
+                this.armsExplored = new IntHashSet[((Coverage.SwitchData) b).numArms + 1];
+                this.armsNotExplored = new IntHashSet[((Coverage.SwitchData) b).numArms + 1];
+                this.takenID = ((Coverage.SwitchData) b).switchID;
+                this.armsExplored[((Coverage.SwitchData) b).arm] = new IntHashSet();
+            } else {
+                throw new UnsupportedOperationException();
+            }
+        }
+
+
         @Override
         public String toString() {
+            if(this.armsSolved != null){
+                return "Switch{" +
+                        "takenID=" + takenID +
+                        ", keep=" + keep +
+                        ", source='" + source + '\'' +
+                        ", armsExplored=" + Arrays.toString(armsExplored) +
+                        ", armsNotExplored=" + Arrays.toString(armsNotExplored) +
+                        ", inputsTriedPerArm=" + Arrays.toString(inputsTriedPerArm) +
+                        ", armsSolved=" + Arrays.toString(armsSolved) +
+                        ", isSolved=" + isSolved +
+                        ", isTimedOut=" + isTimedOut +
+                        '}';
+            }
             return "Branch{" +
                     "takenID=" + takenID +
                     ", notTakenID=" + notTakenID +
@@ -823,7 +941,6 @@ public class Coordinator implements Runnable {
                     '}';
         }
 
-        transient IntHashSet inputsTried;
 
         public Branch(){
 
@@ -889,8 +1006,15 @@ public class Coordinator implements Runnable {
         }
 
         public void evict(int inputID){
-            this.trueExplored.remove(inputID);
-            this.falseExplored.remove(inputID);
+            if(this.isSwitch()){
+                for(int i = 0; i < this.armsExplored.length; i++){
+                    this.armsExplored[i].remove(inputID);
+                    this.armsNotExplored[i].remove(inputID);
+                }
+            }else {
+                this.trueExplored.remove(inputID);
+                this.falseExplored.remove(inputID);
+            }
         }
     }
 

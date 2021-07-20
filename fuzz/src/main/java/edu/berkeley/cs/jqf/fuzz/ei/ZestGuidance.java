@@ -40,6 +40,7 @@ import edu.berkeley.cs.jqf.instrument.tracing.events.CallEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.ReturnEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEventVisitor;
+import janala.instrument.SnoopInstructionMethodAdapter;
 import org.apache.bcel.classfile.JavaClass;
 import org.eclipse.collections.api.iterator.IntIterator;
 import org.eclipse.collections.api.list.primitive.IntList;
@@ -731,6 +732,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 countOfInputsCreatedByMutation[MutationType.APPLY_SINGLE_HINT.ordinal()]);
         console.printf("    An Z3 hint:           %,d/%,d\n", countOfInputsSavedByMutation[MutationType.APPLY_Z3_HINT.ordinal()],
                 countOfInputsCreatedByMutation[MutationType.APPLY_Z3_HINT.ordinal()]);
+        console.printf("    An Z3 hint, extended: %,d/%,d\n", countOfInputsSavedByMutation[MutationType.APPLY_Z3_HINT_EXTENDED.ordinal()],
+                countOfInputsCreatedByMutation[MutationType.APPLY_Z3_HINT_EXTENDED.ordinal()]);
         console.printf("    Mutating before hints:%,d/%,d\n", countOfInputsSavedByMutation[MutationType.BEFORE_HINTS.ordinal()],
                 countOfInputsCreatedByMutation[MutationType.BEFORE_HINTS.ordinal()]);
         console.printf("    Mutating after hints: %,d/%,d\n", countOfInputsSavedByMutation[MutationType.AFTER_HINTS.ordinal()],
@@ -883,6 +886,15 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     for(Coordinator.StringHint h : hints.hints){
                         currentInput.stringEqualsHints.add(new Coordinator.StringHint[]{h});
                     }
+                    //Heuristic: We might be getting strings out of Z3 that are too short ot process. Try also running the same input with longer strings
+                    Coordinator.StringHintGroup doubled = new Coordinator.StringHintGroup();
+                    for(int i = 0; i < hints.instructions.size(); i++){
+                        doubled.instructions.add(hints.instructions.get(i));
+                        Coordinator.StringHint h = hints.hints.get(i);
+                        doubled.hints.add(new Coordinator.StringHint(h.getHint()+"a", h.getType()));
+                    }
+                    currentInput.bonusMutations++;
+                    currentInput.stringHintGroupsToTryInChildren.add(doubled);
                 }
 
                 // Write it to disk for debugging
@@ -1643,6 +1655,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
          */
         public LinkedList<Coordinator.StringHint[]> stringEqualsHints = new LinkedList<>();
         public LinkedList<int[]> instructions = new LinkedList<>();
+        public LinkedList<Coordinator.StringHintGroup> stringHintGroupsToTryInChildren = new LinkedList<>();
 
 
         /**
@@ -1850,7 +1863,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         BEFORE_HINTS,
         AFTER_HINTS,
         TARGETED_RANDOM,
-        AFTER_HINTS_BUT_NEAR;
+        AFTER_HINTS_BUT_NEAR, APPLY_Z3_HINT_EXTENDED;
     }
 
     public class LinearInput extends Input<Integer> {
@@ -1935,7 +1948,23 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             LinearInput newInput = new LinearInput(this);
 
             boolean setToZero = random.nextDouble() < 0.1; // one out of 10 times
-            if(this.instructionsToTryInChildren != null && !this.instructionsToTryInChildren.isEmpty())
+            if(!this.stringHintGroupsToTryInChildren.isEmpty()){
+                //Before doing any random mutations or one-off hints, first try to apply any SETS of hints that we have
+                //The main source of these right now is from one-off character adding for Z3 inputs
+                Coordinator.StringHintGroup hints = this.stringHintGroupsToTryInChildren.pop();
+                newInput.desc += ",z3ExtendedHints";
+                newInput.mutationType = MutationType.APPLY_Z3_HINT_EXTENDED;
+                newInput.seedSource = SeedSource.Z3;
+                infoLog("Applied hint: %s", newInput.desc);
+                newInput.instructions = hints.instructions;
+                newInput.stringEqualsHints = new LinkedList<>();
+                for(Coordinator.StringHint h : hints.hints){
+                    newInput.stringEqualsHints.add(new Coordinator.StringHint[]{h});
+                }
+                return newInput;
+
+            }
+            else if(this.instructionsToTryInChildren != null && !this.instructionsToTryInChildren.isEmpty())
             {
                 // Before doing any random mutations, first try to generate a new input that simply uses one of the hints
                 // We'll try each hint independently, and only once: if it's useful, then a new input can be derived from
@@ -2603,7 +2632,6 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
          * @param desc
          */
         public SeedInput(byte[] seedBytes, String desc) {
-            super();
             this.seedFile = Optional.empty();
             this.in = new ByteArrayInputStream(seedBytes);
             this.desc = desc;

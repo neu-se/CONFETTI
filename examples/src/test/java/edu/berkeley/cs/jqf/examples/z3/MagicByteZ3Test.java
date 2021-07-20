@@ -31,6 +31,21 @@ public class MagicByteZ3Test {
                                      MagicByteBranches.MagicInput input) {
         MagicByteBranches.examineInputStringOnlyCharAt(input);
     }
+
+    @Fuzz
+    public void testStringCharsLookupSwitch(@From(MagicByteBranches.MagicInputGenerator.class)
+                                 @Dictionary("dictionaries/maven-model.dict")
+                                         MagicByteBranches.MagicInput input) {
+        MagicByteBranches.examineInputCharAtSwitch(input);
+    }
+
+    @Fuzz
+    public void testStringCharsTableCase(@From(MagicByteBranches.MagicInputGenerator.class)
+                                    @Dictionary("dictionaries/maven-model.dict")
+                                            MagicByteBranches.MagicInput input) {
+        MagicByteBranches.examineInputCharAtSwitchTable(input);
+    }
+
     @Fuzz
     public void testStringConcatOnly(@From(MagicByteBranches.MagicInputGenerator.class)
                                   @Dictionary("dictionaries/maven-model.dict")

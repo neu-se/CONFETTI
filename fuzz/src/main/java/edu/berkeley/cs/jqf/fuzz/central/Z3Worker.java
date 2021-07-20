@@ -68,6 +68,7 @@ public class Z3Worker {
     private static byte[] solutionToInput(ArrayList<AbstractMap.SimpleEntry<String, Object>> sat, Map<String, byte[]> funcs) {
         // Get size of solution
         int size = 0;
+        HashMap<String, Integer> solvedStringLengths = new HashMap<>();
         for (AbstractMap.SimpleEntry<String, Object> e : sat) {
             if (e.getKey().startsWith("autoVar_")) {
                 try {
@@ -76,7 +77,24 @@ public class Z3Worker {
                 } catch (NumberFormatException ex) {
                     continue;
                 }
+            } else if (e.getKey().startsWith("solved_gen")) {
+                String str = e.getKey().substring("solved_".length());
+                String genName = str.substring(0, str.indexOf('_'));
+                int idx = Integer.valueOf(str.substring(str.indexOf('_') + 1));
+                if (!solvedStringLengths.containsKey(genName)) {
+                    solvedStringLengths.put(genName, idx);
+                }
+                if (idx > solvedStringLengths.get(genName)) {
+                    solvedStringLengths.put(genName, idx);
+                }
             }
+        }
+
+
+        for(String genFunc : solvedStringLengths.keySet()){
+            int strLen = solvedStringLengths.get(genFunc);
+            byte[] bs = new byte[strLen + 1];
+            funcs.put(genFunc, bs);
         }
 
         // Copy bytes from solution
@@ -89,12 +107,18 @@ public class Z3Worker {
                 } catch (NumberFormatException ex) {
                     continue;
                 }
+            } else if(e.getKey().startsWith("solved_gen")){
+                String str = e.getKey().substring("solved_".length());
+                String genName = str.substring(0, str.indexOf('_'));
+                int idx = Integer.valueOf(str.substring(str.indexOf('_') + 1));
+                funcs.get(genName)[idx] = ((Integer) e.getValue()).byteValue();
             }
         }
 
+
         // Handle solutions to generator functions
-        sat.stream().filter(entry -> entry.getKey().startsWith("gen"))
-                .forEach(entry -> funcs.put(entry.getKey(), intArrToByteArr((int[])entry.getValue())));
+        //sat.stream().filter(entry -> entry.getKey().startsWith("gen"))
+        //        .forEach(entry -> funcs.put(entry.getKey(), intArrToByteArr((int[])entry.getValue())));
 
         return ret;
     }
@@ -107,7 +131,47 @@ public class Z3Worker {
 
         return ret;
     }
+    private static LinkedList<Expression> createCaptureVariables(Iterable<Expression> constraints){
+        HashSet<String> capturedVariables = new HashSet<>();
+        LinkedList<Expression> ret = new LinkedList<>();
+        for(Expression e : constraints){
+            try {
+                e.accept(new Visitor() {
+                    @Override
+                    public void postVisit(FunctionCall function) throws VisitorException {
+                        super.postVisit(function);
+                        if(function.getName().startsWith("gen")){
+                            int idx = (int) ((IntConstant)function.getArguments()[0]).getValueLong();
+                            String varName = "solved_"+function.getName()+"_"+idx;
+                            if(capturedVariables.add(varName)){
+                                ret.add(new BinaryOperation(Operation.Operator.EQ, new BVVariable(varName, 32), new FunctionCall(function.getName(), function.getArguments())));
+                            }
+                        }
+                    }
+                });
+            } catch (VisitorException visitorException) {
+                visitorException.printStackTrace();
+            }
+        }
 
+        System.out.println(ret);
+        return ret;
+    }
+
+    static class CharEqualityFindingVisitor extends Visitor{
+        private HashSet<FunctionCall> generatorCalls = new HashSet<>();
+        @Override
+        public void postVisit(FunctionCall function) throws VisitorException {
+            if(function.getName().startsWith("gen")){
+                generatorCalls.add(function);
+            }
+            super.postVisit(function);
+        }
+
+        public HashSet<FunctionCall> getGeneratorCalls() {
+            return generatorCalls;
+        }
+    }
     private Optional<Coordinator.Input> negateConstraint(Target t, Set<Expression> hints) throws TimeoutException {
 
         Map<String, Expression> res = new HashMap<>();
@@ -116,23 +180,49 @@ public class Z3Worker {
 
 //        for (Expression e : hints)
 //            res.put("c" + res.size(), e);
-        System.out.println("Trying to use Z3 to get to " + t.branch + " using input #" + t.originalInput.id);
+        System.out.println("Trying to use Z3 to get to " + t.branch + (t.arm != -1 ? " arm#" + t.arm : "") + " using input #" + t.originalInput.id);
 
         for (Expression e : t.constraints) {
-            if (e.metadata != null && e.metadata instanceof Coverage.BranchData) {
+            if (e.metadata instanceof Coverage.BranchData) {
                 Coverage.BranchData data = (Coverage.BranchData) e.metadata;
-                if (data.takenCode == t.branch.takenID && data.notTakenCode == t.branch.notTakenID) {
+                if (data.takenCode == t.branch.takenID) {
                     targetConstraint = e;
                     break;
                 }
+            } else if (e.metadata instanceof Coverage.SwitchData) {
+                Coverage.SwitchData data = (Coverage.SwitchData) e.metadata;
+                if (data.switchID == t.branch.takenID) {
+                    if (data.arm == t.arm) {
+                        targetConstraint = e;
+                        break;
+                    } else {
+                        continue; //Don't add constraints for other arms.
+                    }
+                }
             }
             res.put("c" + res.size(), e);
+        }
+        //Add string function captures
+        for(Expression e : createCaptureVariables(t.constraints)){
+            res.put("stringSolve"+res.size(), e);
         }
 
         if (targetConstraint == null)
             throw new IllegalStateException();
         System.out.println("To negate:");
         System.out.println(targetConstraint);
+
+        // If we are negating something like char == 'A', we might end up solving it to char == '\0', which has a special
+        // meaning, and will likely not end up making any sense.
+        try {
+            CharEqualityFindingVisitor v = new CharEqualityFindingVisitor();
+            targetConstraint.accept(v);
+            for (FunctionCall strChar : v.getGeneratorCalls()) {
+                res.put("c" + res.size(), new BinaryOperation(Operation.Operator.NE, strChar, new IntConstant(0)));
+            }
+        } catch (VisitorException e) {
+            e.printStackTrace();
+        }
 
         // Negate the target constraint
         Expression negatedTargetConstraint = new UnaryOperation(Operation.Operator.NOT, targetConstraint);
@@ -752,32 +842,42 @@ public class Z3Worker {
             return new BinaryOperation(Operation.Operator.EQUALS, exprToSatisfy.getExpression(), adjustedExpr);
     }
 
+    static final File Z3_TRANSLATOR_FAILED_DIR = (System.getenv("FAILED_TRANSLATOR_DUMP") == null ? null : new File(System.getenv("FAILED_TRANSLATOR_DUMP")));
+    static int numFailedTranslations = 0;
     static ExecutorService translatorService = Executors.newFixedThreadPool(1);
     private static Map<String, BoolExpr> translate(Map<String, Expression> constraints, HashSet<Expr> variables, HashSet<FuncDecl> functions, Context ctx) throws VisitorException, TimeoutException {
         Callable<Map<String, BoolExpr>> task = new Callable<Map<String, BoolExpr>>() {
             @Override
             public Map<String, BoolExpr> call() throws Exception {
+                String lastExpr = null;
                 try {
                     Z3JavaTranslator translator = new Z3JavaTranslator(ctx);
                     Map<String, BoolExpr> ret = new HashMap<>();
 
                     for (Map.Entry<String, Expression> e : constraints.entrySet()) {
-                        try {
+                            lastExpr = e.getKey();
                             e.getValue().accept(translator);
                             ret.put(e.getKey(), (BoolExpr) translator.getTranslation());
-                        } catch (Throwable tr) {
-                            System.err.println("Unable to translate expression");
-                            //System.err.println(e);
-                            tr.printStackTrace();
-                        }
                     }
 
                     variables.addAll(translator.getVariableMap().values());
                     functions.addAll(translator.getFunctions().values());
 
+
                     return ret;
                 }catch(Throwable t){
+                    numFailedTranslations++;
+
                     t.printStackTrace();
+                    if(Z3_TRANSLATOR_FAILED_DIR != null){
+                        if(!Z3_TRANSLATOR_FAILED_DIR.exists())
+                            Z3_TRANSLATOR_FAILED_DIR.mkdirs();
+                        File outputFile = new File(Z3_TRANSLATOR_FAILED_DIR, numFailedTranslations+"_"+lastExpr+".ser");
+                        FileOutputStream fos = new FileOutputStream(outputFile);
+                        ObjectOutputStream oos = new ObjectOutputStream(fos);
+                        oos.writeObject(constraints);
+                        fos.close();
+                    }
                     throw t;
                 }
             }
@@ -997,13 +1097,23 @@ public class Z3Worker {
         byte[] input;
         List<Expression> constraints;
         HashMap<Integer, HashSet<Coordinator.StringHint>> hints;
+        int arm;
 
+        public Target(Coordinator.Input originalInput, Coordinator.Branch branch, int arm, byte[] input, List<Expression> constraints, HashMap<Integer, HashSet<Coordinator.StringHint>> hints) {
+            this.originalInput = originalInput;
+            this.branch = branch;
+            this.constraints = constraints;
+            this.hints = hints;
+            this.input = input;
+            this.arm = arm;
+        }
         public Target(Coordinator.Input originalInput, Coordinator.Branch branch, byte[] input, List<Expression> constraints, HashMap<Integer, HashSet<Coordinator.StringHint>> hints) {
             this.originalInput = originalInput;
             this.branch = branch;
             this.constraints = constraints;
             this.hints = hints;
             this.input = input;
+            this.arm = -1;
         }
     }
 }

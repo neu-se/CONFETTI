@@ -7,6 +7,7 @@ import edu.berkeley.cs.jqf.examples.common.AlphaStringGenerator;
 import edu.berkeley.cs.jqf.examples.common.AsciiStringGenerator;
 import edu.berkeley.cs.jqf.examples.common.Dictionary;
 import edu.berkeley.cs.jqf.examples.common.DictionaryBackedStringGenerator;
+import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
 
 import java.io.IOException;
 
@@ -119,6 +120,70 @@ public class MagicByteBranches {
         }
     }
 
+    public static void examineInputCharAtSwitch(MagicInput input){
+        char[] chars = input.str.toCharArray();
+        if(chars[0] == 'A'){
+            boolean lastWasEquals = false;
+            int idx = 1;
+            while(idx < chars.length) {
+                switch (chars[idx]) {
+                    case 'b':
+                        throw new StringIndexOutOfBoundsException("b");
+                    case 'd':
+                        throw new StringIndexOutOfBoundsException("d");
+                    case '!':
+                        throw new StringIndexOutOfBoundsException("!");
+                    case '=':
+                        if(lastWasEquals){
+                            throw new StringIndexOutOfBoundsException("==");
+                        }
+                        lastWasEquals = true;
+                        idx++;
+                        break;
+                    case '\n':
+                    default:
+                        idx++;
+                        lastWasEquals = false;
+
+                }
+            }
+        }
+    }
+
+    public static void examineInputCharAtSwitchTable(MagicInput input){
+        char[] chars = input.str.toCharArray();
+        if(chars[0] == 'A'){
+            boolean lastWasEquals = false;
+            int idx = 1;
+            while(idx < chars.length) {
+                switch (chars[idx]) {
+                    case 'a':
+                        throw new StringIndexOutOfBoundsException("b");
+                    case 'b':
+                        throw new StringIndexOutOfBoundsException("d");
+                    case 'c':
+                        throw new StringIndexOutOfBoundsException("!");
+                    case 'd':
+                        if(lastWasEquals){
+                            throw new StringIndexOutOfBoundsException("==");
+                        }
+                        lastWasEquals = true;
+                        idx++;
+                        break;
+                    //case 'e':
+                    case 'f':
+                        ZestGuidance.DEBUG_THIS_INPUT = true;
+                        idx++;
+                        throw new StringIndexOutOfBoundsException("f");
+                    default:
+                        idx++;
+                        lastWasEquals = false;
+
+                }
+            }
+        }
+    }
+
     public static void examineInputIntFirst(MagicInput input) {
         if(input.i1 == 99){
             String str3 = input.str.concat(input.str2);
@@ -138,6 +203,7 @@ public class MagicByteBranches {
         public String toString() {
             return "MagicInput{" +
                     "str='" + str + '\'' +
+                    "str1Len=" + (str != null ? str.length() : "null") +
                     ", str2='" + str2 + '\'' +
                     ", str3='" + str3 + '\'' +
                     ", i1=" + i1 +

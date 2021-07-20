@@ -28,11 +28,6 @@
  */
 package edu.berkeley.cs.jqf.examples.xml;
 
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
-import java.io.IOException;
-
 import com.pholser.junit.quickcheck.generator.GenerationStatus;
 import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.generator.Size;
@@ -41,19 +36,16 @@ import com.pholser.junit.quickcheck.random.SourceOfRandomness;
 import edu.berkeley.cs.jqf.examples.common.AlphaStringGenerator;
 import edu.berkeley.cs.jqf.examples.common.Dictionary;
 import edu.berkeley.cs.jqf.examples.common.DictionaryBackedStringGenerator;
-import edu.berkeley.cs.jqf.fuzz.central.KnarrWorker;
-import edu.columbia.cs.psl.phosphor.PreMain;
-import edu.columbia.cs.psl.phosphor.TaintUtils;
-import edu.columbia.cs.psl.phosphor.runtime.MultiTainter;
-import edu.columbia.cs.psl.phosphor.runtime.Taint;
-import edu.gmu.swe.knarr.runtime.ExpressionTaint;
-import edu.gmu.swe.knarr.runtime.Symbolicator;
 import org.junit.Assume;
 import org.w3c.dom.DOMException;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Text;
-import za.ac.sun.cs.green.expr.Expression;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import java.io.IOException;
 
 /**
  * A generator for XML documents.
@@ -84,20 +76,7 @@ public class XmlDocumentGenerator extends Generator<Document> {
                         return 0;
                     } else {
                         double uniform = random.nextDouble();
-                        if(PreMain.RUNTIME_INST) {
-                            Taint tag = MultiTainter.getTaint(uniform);
-                            //TODO check if this is doing anything, i don't think it is but don't want to delete it right now
-                            int ret = (int) Math.ceil(Math.log(1.0D - uniform) / Math.log(1.0D - p));
-                            ret = Symbolicator.symbolic(ret, tag);
-                            Expression exp = (Expression) tag.getSingleLabel();
-                            Exception loc = new Exception();
-                            loc.fillInStackTrace();
-                            exp.metadata = loc;
-
-                            return ret;
-                        }else{
-                            return (int) Math.ceil(Math.log(1.0D - uniform) / Math.log(1.0D - p));
-                        }
+                        return (int) Math.ceil(Math.log(1.0D - uniform) / Math.log(1.0D - p));
                     }
                 }
                 private void ensureProbability(double p) {
