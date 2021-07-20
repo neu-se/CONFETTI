@@ -172,7 +172,6 @@ public class MagicByteBranches {
                         break;
                     //case 'e':
                     case 'f':
-                        ZestGuidance.DEBUG_THIS_INPUT = true;
                         idx++;
                         throw new StringIndexOutOfBoundsException("f");
                     default:
