@@ -1007,6 +1007,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                             if (parent.byteRangesToMutateDirectlyInChildren != null) {
                                 parent.bonusMutations += MUTATIONS_PER_REQUESTED_MUTATION_LOCATION * parent.byteRangesToMutateDirectlyInChildren.size();
                             }
+                            parent.bonusMutations = Math.min(parent.bonusMutations, MAX_HINTS_APPLIED_PER_INPUT_PER_FUZZING_CYCLE);
                         }
 
                     } catch (IOException e) {
@@ -2016,7 +2017,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             if(!skipHints && !this.stringHintGroupsToTryInChildren.isEmpty()){
                 //Before doing any random mutations or one-off hints, first try to apply any SETS of hints that we have
                 //The main source of these right now is from one-off character adding for Z3 inputs
-                Coordinator.StringHintGroup hints = this.stringHintGroupsToTryInChildren.pop();
+                Coordinator.StringHintGroup hints = this.stringHintGroupsToTryInChildren.removeLast();
                 newInput.desc += ",z3ExtendedHints";
                 newInput.mutationType = MutationType.APPLY_Z3_HINT_EXTENDED;
                 newInput.seedSource = SeedSource.Z3;
@@ -2036,12 +2037,12 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 // We'll try each hint independently, and only once: if it's useful, then a new input can be derived from
                 // that one, which will always use that hint.
 
-                Coordinator.StringHint[] hints = this.stringEqualsHintsToTryInChildren.peek();
-                int[] insn = this.instructionsToTryInChildren.peek();
+                Coordinator.StringHint[] hints = this.stringEqualsHintsToTryInChildren.getLast();
+                int[] insn = this.instructionsToTryInChildren.getLast();
                 Coordinator.StringHint hint;
                 if(hints.length == 0){ //TODO what the heck causes this!?
-                    this.stringEqualsHintsToTryInChildren.pop();
-                    this.instructionsToTryInChildren.pop();
+                    this.stringEqualsHintsToTryInChildren.removeLast();
+                    this.instructionsToTryInChildren.removeLast();
                     if(insn.length == 2){
                         //Just to be cute, let's keep it as-is but do a single random mutation at the location indicated
                         //if this check fails, then we just do a random mutation
@@ -2060,13 +2061,13 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 else {
                     if (hints.length == 1) {
                         hint = hints[0];
-                        this.stringEqualsHintsToTryInChildren.pop();
-                        this.instructionsToTryInChildren.pop();
+                        this.stringEqualsHintsToTryInChildren.removeLast();
+                        this.instructionsToTryInChildren.removeLast();
                     } else {
                         hint = hints[0];
                         Coordinator.StringHint[] remainingStringHints = new Coordinator.StringHint[hints.length - 1];
                         System.arraycopy(hints, 1, remainingStringHints, 0, remainingStringHints.length);
-                        this.stringEqualsHintsToTryInChildren.set(0, remainingStringHints);
+                        this.stringEqualsHintsToTryInChildren.set(this.stringEqualsHintsToTryInChildren.size() - 1, remainingStringHints);
                     }
                     //if(hint.getHint().equals("execution")){
                     //    System.out.println("Oh, we are almost there!");
