@@ -224,9 +224,24 @@ class ZestWorker extends Worker {
         }
     }
 
-    public void addInputFromZ3(Coordinator.Input i) {
+    public void addInputFromZ3(Coordinator.Input z3Input, Coordinator.Input originalInput) {
         synchronized (fromZ3) {
-            fromZ3.add(i);
+            // z3 might have lost constraints on the strings besides the ones that we wanted.
+            // as a heuristic: we'll try to execute the exact input we got from z3, but then also try each string
+            // one by one
+            fromZ3.add(z3Input);
+            for(Coordinator.StringHintGroup sh : z3Input.hintGroups){
+                if(sh.hints.size() == 1)
+                    continue;
+                for(int i = 0; i < sh.hints.size(); i++){
+                    Coordinator.Input originalWithOneHint = new Coordinator.Input();
+                    originalWithOneHint.hints = new LinkedList<>(originalInput.hints);
+                    originalWithOneHint.instructions = new LinkedList<>(originalInput.instructions);
+                    originalWithOneHint.bytes = originalInput.bytes;
+                    originalWithOneHint.addOrReplaceHint(sh.hints.get(i), sh.instructions.get(i));
+                    fromZ3.add(originalWithOneHint);
+                }
+            }
         }
     }
 
