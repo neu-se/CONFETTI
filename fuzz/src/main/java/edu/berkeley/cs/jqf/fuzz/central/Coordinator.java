@@ -529,7 +529,7 @@ public class Coordinator implements Runnable {
                                 // Handle result
                                 if (newInput.isPresent()) {
                                     System.out.println("Z3 found new input for " + inputToTarget.id + " " + target.branch.source);
-                                    zest.addInputFromZ3(newInput.get());
+                                    zest.addInputFromZ3(newInput.get(), inputToTarget);
                                 }
                             }
                         }
@@ -541,7 +541,7 @@ public class Coordinator implements Runnable {
                         // Handle result
                         if (newInput.isPresent()) {
                             System.out.println("Z3 found new input for " + inputToTarget.id + " " + target.branch.source);
-                            zest.addInputFromZ3(newInput.get());
+                            zest.addInputFromZ3(newInput.get(), inputToTarget);
                         }
                     }
 
@@ -748,6 +748,38 @@ public class Coordinator implements Runnable {
                 }
             }
         }
+
+        public void addOrReplaceHint(StringHint hint, int[] insn) {
+            if (this.instructions.isEmpty()) {
+                this.instructions.add(insn);
+                this.hints.add(new StringHint[]{hint});
+                return;
+            }
+            Iterator<Coordinator.StringHint[]> newInputHintIter = this.hints.iterator();
+            Iterator<int[]> newInputInsnIter = this.instructions.iterator();
+            int pos = 0;
+            boolean inserted = false;
+            while(newInputInsnIter.hasNext()){
+                newInputHintIter.next();
+                int[] insns = newInputInsnIter.next();
+                if(insns[0] == insn[0]){
+                    inserted = true;
+                    this.hints.set(pos, new Coordinator.StringHint[]{hint});
+                    break;
+                }
+                if(insns[0] > insn[0]){
+                    inserted = true;
+                    this.hints.add(pos, new Coordinator.StringHint[]{hint});
+                    this.instructions.add(pos, insn);
+                    break;
+                }
+                pos++;
+            }
+            if(!inserted){
+                this.hints.add(new Coordinator.StringHint[]{hint});
+                this.instructions.add(insn);
+            }
+        }
     }
 
     public static abstract class TargetedHint implements Externalizable {
@@ -897,8 +929,11 @@ public class Coordinator implements Runnable {
         @Override
         public void apply(ZestGuidance.Input parentInput) {
             //Look to see if we already have a string hint at this position, if so add this char at the right spot
-            if(this.originalString == null){
-                this.originalString = "aaaaaaa"; //TODO figure out how this happens, fix...
+            if(this.originalString == null) {
+                //this.originalString = "aaaaaaa"; //TODO figure out how this happens that it's null, fix...
+                return;
+            } else if (this.originalString.charAt(this.offsetOfCharInString) == this.hint) {
+                return;
             }
             String newStr;
             if(this.offsetOfCharInString >= this.originalString.length())
