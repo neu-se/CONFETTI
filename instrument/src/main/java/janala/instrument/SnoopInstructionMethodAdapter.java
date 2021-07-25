@@ -211,7 +211,7 @@ public class SnoopInstructionMethodAdapter extends MethodVisitor implements Opco
 
 
     //create a coverage probe for the default case
-    //instrumentationState.incAndGetId();
+    instrumentationState.incAndGetId();
     mv.visitMethodInsn(INVOKESTATIC, Config.instance.analysisClass, "LOGTABLESWITCH", "(IIIII)V", false);
     mv.visitTableSwitchInsn(min, max, dflt, labels);
   }
