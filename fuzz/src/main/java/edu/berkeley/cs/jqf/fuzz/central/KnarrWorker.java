@@ -1,12 +1,8 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
-import edu.berkeley.cs.jqf.fuzz.knarr.KnarrGuidance;
 import edu.gmu.swe.knarr.runtime.Coverage;
 import edu.gmu.swe.knarr.runtime.StringUtils;
-import za.ac.sun.cs.green.expr.Expression;
-import za.ac.sun.cs.green.expr.FunctionCall;
-import za.ac.sun.cs.green.expr.Operation;
-import za.ac.sun.cs.green.expr.Variable;
+import za.ac.sun.cs.green.expr.*;
 
 import java.io.IOException;
 import java.io.ObjectInputStream;
@@ -28,6 +24,7 @@ public class KnarrWorker extends Worker {
         oos.writeObject(input.bytes);
         oos.writeObject(input.hints);
         oos.writeObject(input.instructions);
+        oos.writeObject(input.targetedHints);
         oos.writeInt(input.id);
         oos.writeBoolean(input.isValid);
         oos.reset();
@@ -47,9 +44,17 @@ public class KnarrWorker extends Worker {
 
         return constraints;
     }
+    public HashMap<String, String> getGeneratedStrings() throws IOException {
+        int nEntries = ois.readInt();
+        HashMap<String, String> ret = new HashMap<>();
+        for(int i = 0; i < nEntries; i++){
+            ret.put(ois.readUTF(), ois.readUTF());
+        }
+        return ret;
+    }
 
     static long constraintsProcessed;
-    public static void process(LinkedList<Coordinator.Branch> bs, HashMap<Integer, HashSet<Coordinator.StringHint>> stringEqualsArgs, Expression e, String[] filter) {
+    public static void process(LinkedList<Coordinator.Branch> bs, HashMap<Integer, HashSet<Coordinator.StringHint>> stringEqualsArgs, Expression e, String[] filter, Coordinator.Input input) {
         Coverage.CoverageData b = (Coverage.CoverageData) e.metadata;
 
         if (b == null)
@@ -66,7 +71,7 @@ public class KnarrWorker extends Worker {
 
         HashSet<Coordinator.StringHint> eq = new HashSet<>();
 
-        findControllingBytes(e, bb.controllingBytes, eq); //TODO this can block, it's really bad when it does...
+        findControllingBytes(e, bb.controllingBytes, eq, input); //TODO this can block, it's really bad when it does...
         bs.add(bb);
 
         if (!eq.isEmpty()) {
@@ -82,7 +87,7 @@ public class KnarrWorker extends Worker {
 
     }
 
-    public static void findControllingBytes(Expression e, HashSet<Integer> bytes, HashSet<Coordinator.StringHint> stringEqualsArgs) {
+    public static void findControllingBytes(Expression e, HashSet<Integer> bytes, HashSet<Coordinator.StringHint> stringEqualsArgs, Coordinator.Input input) {
         constraintsProcessed++;
         if (e instanceof Variable) {
             Variable v = (Variable) e;
@@ -91,6 +96,36 @@ public class KnarrWorker extends Worker {
             }
         } else if (e instanceof Operation) {
             Operation op = (Operation) e;
+            if(e.metadata != null && op.getOperator() == Operation.Operator.EQ || op.getOperator() == Operation.Operator.NE){
+                //is this a char comparison?
+                Z3Worker.StringEqualsVisitor leftOfEQ = new Z3Worker.StringEqualsVisitor(op.getOperand(0));
+                Z3Worker.StringEqualsVisitor rightOfEQ = new Z3Worker.StringEqualsVisitor(op.getOperand(1));
+                try {
+                    op.getOperand(0).accept(leftOfEQ);
+                    op.getOperand(1).accept(rightOfEQ);
+                } catch (VisitorException visitorException) {
+                    //visitorException.printStackTrace();
+                }
+
+                Z3Worker.StringEqualsVisitor symbolicString = null;
+                int comparedChar = 0;
+                if(leftOfEQ.hasSymbolicVariable() && leftOfEQ.isSimpleGeneratorFunctionExpression() && op.getOperand(1) instanceof IntConstant){
+                    symbolicString = leftOfEQ;
+                    comparedChar = (int) ((IntConstant) op.getOperand(1)).getValueLong();
+                }else if(rightOfEQ.hasSymbolicVariable() && rightOfEQ.isSimpleGeneratorFunctionExpression() && op.getOperand(0) instanceof IntConstant){
+                    symbolicString = rightOfEQ;
+                    comparedChar = (int) ((IntConstant) op.getOperand(0)).getValueLong();
+                }
+
+                if(op.getOperator() == Operation.Operator.NE && comparedChar == 0){
+                    //skip, this is just some check to make sure it's not a null char, we'll never generate that anyway...
+                }
+                else if(symbolicString != null) {
+                    Z3Worker.GeneratedCharacter symbChar = symbolicString.getSymbolicChars().getFirst();
+                    input.targetedHints.add(new Coordinator.CharHint(comparedChar,input.generatedStrings.get(symbolicString.getFunctionName()), Coordinator.HintType.EQUALS,
+                            symbChar.bytePositionInRandomGen, symbChar.numBytesInRandomGen, symbChar.index));
+                }
+            }
             if (e.metadata != null && e.metadata instanceof HashSet) {
                 Iterator<StringUtils.StringComparisonRecord> it = ((HashSet<StringUtils.StringComparisonRecord>)e.metadata).iterator();
                 while(it.hasNext()) {
@@ -125,11 +160,11 @@ public class KnarrWorker extends Worker {
 
             }
             for (int i = 0 ; i < op.getArity() ; i++)
-                findControllingBytes(op.getOperand(i), bytes, stringEqualsArgs);
+                findControllingBytes(op.getOperand(i), bytes, stringEqualsArgs, input);
         } else if (e instanceof FunctionCall) {
             FunctionCall f = (FunctionCall) e;
             for (Expression arg : f.getArguments())
-                findControllingBytes(arg, bytes, stringEqualsArgs);
+                findControllingBytes(arg, bytes, stringEqualsArgs, input);
         }
     }
 

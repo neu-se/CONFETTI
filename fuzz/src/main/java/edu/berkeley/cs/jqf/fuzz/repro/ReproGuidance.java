@@ -143,15 +143,20 @@ public class ReproGuidance implements Guidance {
                 ois.readFully(input);
                 LinkedList<int[]> instructions = (LinkedList<int[]>) ois.readObject();
                 LinkedList<Coordinator.StringHint[]> stringHints = (LinkedList<Coordinator.StringHint[]>) ois.readObject();
+                LinkedList<Coordinator.TargetedHint> targetedHints = (LinkedList<Coordinator.TargetedHint>) ois.readObject();
                 int offsetOfLastAppliedHint = ois.readInt();
                 this.inputStream = new ByteArrayInputStream(input);
+                KnarrGuidance.InputWithOnlyHints zestInput = new KnarrGuidance.InputWithOnlyHints();
+                zestInput.instructions = instructions;
+                zestInput.stringEqualsHints = stringHints;
+                zestInput.appliedTargetedHints = targetedHints;
                 System.out.println("Running: " + inputFile.getName());
                 System.out.println("Input size: " + input.length);
                 System.out.println("Hint count: " + stringHints.size());
                 if(instructions != null && stringHints != null){
                     if(instructions.size() != stringHints.size())
                         throw new IllegalStateException();
-                    this.inputStream = new StringEqualsHintingInputStream(this.inputStream, null, instructions, stringHints);
+                    this.inputStream = new StringEqualsHintingInputStream(this.inputStream, null, zestInput);
                 }
                 if(PreMain.RUNTIME_INST == true)
                 {

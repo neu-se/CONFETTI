@@ -5,6 +5,9 @@ import edu.gmu.swe.knarr.runtime.Coverage;
 import edu.gmu.swe.knarr.server.ConstraintOptionGenerator;
 import edu.gmu.swe.knarr.server.HashMapStateStore;
 import edu.gmu.swe.knarr.server.StateStore;
+import org.eclipse.collections.api.iterator.IntIterator;
+import org.eclipse.collections.api.list.primitive.IntList;
+import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
 import za.ac.sun.cs.green.Green;
 import za.ac.sun.cs.green.expr.*;
 import za.ac.sun.cs.green.service.canonizer.ModelCanonizerService;
@@ -218,7 +221,10 @@ public class Z3Worker {
             CharEqualityFindingVisitor v = new CharEqualityFindingVisitor();
             targetConstraint.accept(v);
             for (FunctionCall strChar : v.getGeneratorCalls()) {
-                res.put("c" + res.size(), new BinaryOperation(Operation.Operator.NE, strChar, new IntConstant(0)));
+                //res.put("c" + res.size(), new BinaryOperation(Operation.Operator.NE, strChar, new IntConstant(0)));
+                res.put("c" + res.size(), new BinaryOperation(Operation.Operator.AND, new BinaryOperation(Operation.Operator.GT, new IntConstant(128), strChar),
+                        new BinaryOperation(Operation.Operator.GT, strChar, new IntConstant(0))));
+
             }
         } catch (VisitorException e) {
             e.printStackTrace();
@@ -519,16 +525,54 @@ public class Z3Worker {
 
         return Optional.empty();
     }
+    static class AutoVarVisitor extends Visitor {
+        private IntArrayList autoVars = new IntArrayList(4);
+        @Override
+        public void postVisit(BVVariable variable) throws VisitorException {
+            if(variable.getName().startsWith("autoVar_")){
+                int idx = Integer.parseInt(variable.getName().substring("autoVar_".length()));
+                autoVars.add(idx);
+            }
+        }
+        public boolean hasAutoVars(){
+            return autoVars.size() > 0;
+        }
+        public int getFirstAutoVar(){
+            IntIterator iter = autoVars.intIterator();
+            int min = Integer.MAX_VALUE;
+            while(iter.hasNext()){
+                int x = iter.next();
+                if(x < min)
+                    min = x;
+            }
+            return min;
+        }
+        public int getNumAutoVars(){
+            return autoVars.size();
+        }
+    }
 
     static class GeneratedCharacter {
         public String functionName;
         public int index;
         public Expression source;
+        public int bytePositionInRandomGen;
+        public int numBytesInRandomGen;
 
         public GeneratedCharacter(String functionName, int index, Expression source) {
             this.functionName = functionName;
             this.index = index;
             this.source = source;
+            AutoVarVisitor autoVarVisitor = new AutoVarVisitor();
+            try{
+                source.accept(autoVarVisitor);
+                if(autoVarVisitor.hasAutoVars()){
+                    this.bytePositionInRandomGen = autoVarVisitor.getFirstAutoVar();
+                    this.numBytesInRandomGen = autoVarVisitor.getNumAutoVars();
+                }
+            } catch (VisitorException e) {
+                e.printStackTrace();
+            }
         }
 
         public static GeneratedCharacter fromFunction(FunctionCall fn) {
@@ -561,7 +605,7 @@ public class Z3Worker {
         }
     }
 
-    static class GeneratedCharacterFinder extends Visitor{
+    static class GeneratedCharacterFinder extends Visitor {
         private GeneratedCharacter character;
         private boolean invalid;
 
@@ -574,6 +618,14 @@ public class Z3Worker {
             if(invalid)
                 return null;
             return character;
+        }
+
+        @Override
+        public void postVisit(Operation operation) throws VisitorException {
+            super.postVisit(operation);
+            //for(int i = 0; i < operation.getArity(); i++){
+            //    operation.getOperand(i).accept(this);
+            //}
         }
 
         @Override
@@ -611,10 +663,13 @@ public class Z3Worker {
     }
     static class StringEqualsVisitor extends Visitor {
         private StringVariable stringVariable;
-        private int numConcreteCharsInSymbolic;
+        private LinkedList<Integer> concreteChars = new LinkedList<>();
         private LinkedList<GeneratedCharacter> symbolicChars = new LinkedList<>();
         private StringConstant stringConstant;
+        private String generatorFunctionName;
         private Expression expression;
+        private boolean containsConcatOrStringEquals;
+
 
         public StringEqualsVisitor(Expression expression) {
             this.expression = expression;
@@ -628,7 +683,11 @@ public class Z3Worker {
             if(this.stringConstant != null){
                 return this.stringConstant.getValue().length();
             }
-            return numConcreteCharsInSymbolic + symbolicChars.size();
+            return concreteChars.size() + symbolicChars.size();
+        }
+
+        public boolean isSimpleGeneratorFunctionExpression() {
+            return !containsConcatOrStringEquals && symbolicChars.size() == 1 && this.stringVariable == null;
         }
 
         public boolean hasSymbolicVariable(){
@@ -637,6 +696,10 @@ public class Z3Worker {
 
         public boolean hasStringConstant(){
             return this.stringConstant != null;
+        }
+
+        public LinkedList<Integer> getConcreteChars() {
+            return concreteChars;
         }
 
         public StringConstant getStringConstant() {
@@ -648,7 +711,7 @@ public class Z3Worker {
         }
 
         public int getNumConcreteCharsInSymbolic() {
-            return numConcreteCharsInSymbolic;
+            return concreteChars.size();
         }
 
         public LinkedList<GeneratedCharacter> getSymbolicChars() {
@@ -661,6 +724,7 @@ public class Z3Worker {
             if(expression instanceof FunctionCall){
                 FunctionCall fn = (FunctionCall) expression;
                 if(fn.getName().startsWith("gen")){
+                    this.generatorFunctionName = fn.getName();
                     this.symbolicChars.add(GeneratedCharacter.fromFunction(fn));
                 }
             }
@@ -669,11 +733,14 @@ public class Z3Worker {
         @Override
         public void preVisit(Operation operation) throws VisitorException {
             super.preVisit(operation);
+            if(operation.getOperator() == Operation.Operator.EQUALS)
+                this.containsConcatOrStringEquals = true;
             if(operation.getOperator() == Operation.Operator.CONCAT){
+                this.containsConcatOrStringEquals = true;
                 if(operation.getOperand(0) instanceof IntConstant)
-                    numConcreteCharsInSymbolic++;
+                    concreteChars.add((int) ((IntConstant) operation.getOperand(0)).getValueLong());
                 if(operation.getOperand(1) instanceof IntConstant)
-                    numConcreteCharsInSymbolic++;
+                    concreteChars.add((int) ((IntConstant) operation.getOperand(1)).getValueLong());
             }
         }
 
@@ -693,6 +760,9 @@ public class Z3Worker {
             this.stringConstant = stringConstant;
         }
 
+        public String getFunctionName() {
+            return this.generatorFunctionName;
+        }
     }
 
     private static Expression replaceStringsInEqualsWithCorrectLength(Map<String, Expression> res, BinaryOperation strEqualsExpr, Target target) {
@@ -837,9 +907,9 @@ public class Z3Worker {
         };
         Expression adjustedExpr = transformer.copy(exprToAdjust.getExpression());
         if(adjustLeft)
-            return new BinaryOperation(Operation.Operator.EQUALS, adjustedExpr, exprToSatisfy.getExpression());
+            return new BinaryOperation(strEqualsExpr.getOperator(), adjustedExpr, exprToSatisfy.getExpression());
         else
-            return new BinaryOperation(Operation.Operator.EQUALS, exprToSatisfy.getExpression(), adjustedExpr);
+            return new BinaryOperation(strEqualsExpr.getOperator(), exprToSatisfy.getExpression(), adjustedExpr);
     }
 
     static final File Z3_TRANSLATOR_FAILED_DIR = (System.getenv("FAILED_TRANSLATOR_DUMP") == null ? null : new File(System.getenv("FAILED_TRANSLATOR_DUMP")));

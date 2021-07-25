@@ -1,6 +1,7 @@
 package edu.berkeley.cs.jqf.fuzz.guidance;
 
 import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
+import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -28,37 +29,16 @@ public class StringEqualsHintingInputStream extends InputStream {
 
     private static LinkedList<Coordinator.StringHint[]> aggregatedHints =  new LinkedList<>();
 
-
     public static Coordinator.StringHint[] getHintsForCurrentInput() {
         Coordinator.StringHint[] ret = hintsForCurrentInput;
         hintsForCurrentInput = EMPTY;
         return ret;
     }
 
-
-    public static Coordinator.StringHint[] getHintsForCurrentInputGlobal() {
-
-        if(globalHints == null || globalHints.isEmpty())
-            return EMPTY;
-        else
-            return globalHints.removeFirst();
-
-    }
-
-
-    // This will only be called in the Knarr process - we use this class to hold the hints.
-    public StringEqualsHintingInputStream(LinkedList<Coordinator.StringHint[]> hints) {
-        this.hints = hints;
-        this.is = null;
-        this.reqs = null;
-        this.ris = null;
-        globalHints = new LinkedList<>(hints);
-    }
-
-    public StringEqualsHintingInputStream(InputStream is, RecordingInputStream ris, LinkedList<int[]> _reqs, LinkedList<Coordinator.StringHint[]> _hints) {
+    public StringEqualsHintingInputStream(InputStream is, RecordingInputStream ris, ZestGuidance.Input input) {
         this.is = is;
-        this.reqs = new LinkedList<>(_reqs);
-        this.hints = new LinkedList<>(_hints);
+        this.reqs = new LinkedList<>(input.instructions);
+        this.hints = new LinkedList<>(input.stringEqualsHints);
         this.ris = ris;
 
         globalHints = new LinkedList<>(hints);

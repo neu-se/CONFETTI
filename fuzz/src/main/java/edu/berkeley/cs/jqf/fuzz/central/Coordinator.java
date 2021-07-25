@@ -1,5 +1,6 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
+import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
 import edu.gmu.swe.knarr.runtime.Coverage;
 import org.eclipse.collections.api.iterator.IntIterator;
 import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
@@ -21,6 +22,7 @@ import java.util.regex.Pattern;
 public class Coordinator implements Runnable {
 
     private static final int BRANCH_SOLVES_TIMEOUT = 50; //Give up trying to solve negated constraints for a branch after this many UNSAT returns.
+    private static final int MAXIMUM_STRING_EXTENDED_LENGTH = 20; // When building up strings char-by-char, stop adding chars once we reach this point
 
     private IntObjectHashMap<Input> inputs = new IntObjectHashMap<Input>();
     private ConcurrentHashMap<Branch, Branch> branches = new ConcurrentHashMap<>();
@@ -44,7 +46,7 @@ public class Coordinator implements Runnable {
     }
 
 
-    protected final void foundInput(int id, byte[] bytes, boolean valid, LinkedList<StringHint[]>hints, LinkedList<int[]> instructions, Double coveragePercentage, long numExecutions, Integer score, LinkedList<int[]> requestOffsets) {
+    protected final void foundInput(int id, byte[] bytes, boolean valid, LinkedList<StringHint[]> hints, LinkedList<int[]> instructions, LinkedList<TargetedHint> targetedHints, Double coveragePercentage, long numExecutions, Integer score, LinkedList<int[]> requestOffsets) {
         Input in = new Input();
         in.bytes = bytes;
         in.id = id;
@@ -56,6 +58,7 @@ public class Coordinator implements Runnable {
         in.score = score;
         in.isValid = valid;
         in.requestsForRandom = requestOffsets;
+        in.targetedHints = new HashSet<>(targetedHints);
 
         synchronized (this.inputs){
             this.inputs.put(in.id, in);
@@ -155,8 +158,11 @@ public class Coordinator implements Runnable {
                         break;
                     // Get constraints from Knarr
                     LinkedList<Expression> cs;
+                    HashMap<String, String> generatedStrings;
                     try {
                         cs = knarr.getConstraints(input);
+                        generatedStrings = knarr.getGeneratedStrings();
+                        input.generatedStrings = generatedStrings;
                     } catch (IOException e) {
                         throw new Error(e);
                     }
@@ -196,10 +202,12 @@ public class Coordinator implements Runnable {
                     // Compute coverage and branches from constraints
                     LinkedList<Branch> bs = new LinkedList<>();
                     HashMap<Integer, HashSet<StringHint>> eqs = new HashMap<>();
+
+                    input.targetedHints = new HashSet<>();
                     long start = System.currentTimeMillis();
                     KnarrWorker.constraintsProcessed = 0;
                     for (Expression e : cs)
-                        KnarrWorker.process(bs, eqs, e, config.filter);
+                        KnarrWorker.process(bs, eqs, e, config.filter, input);
                     long end = System.currentTimeMillis();
 
                     //update_score(bs, input);
@@ -619,6 +627,7 @@ public class Coordinator implements Runnable {
         public LinkedList<int[]> requestsForRandom;
         //We might decide we are done with an input and don't want to explore it anymore, but will hang onto it for book keeping
         public boolean evicted;
+        public HashSet<TargetedHint> targetedHints;
         boolean isNew;
         public double coveragePercentage;
         public long numExecutions;
@@ -626,6 +635,9 @@ public class Coordinator implements Runnable {
         public Integer score = 0;
         public boolean isValid;
         public LinkedList<StringHintGroup> hintGroups;
+
+        //Map from generator functions to the concrete values that we made.
+        public transient HashMap<String, String> generatedStrings;
 
         public Input(){
 
@@ -687,6 +699,14 @@ public class Coordinator implements Runnable {
                     out.writeObject(g);
                 }
             }
+            if(targetedHints == null){
+                out.writeInt(-1);
+            }else{
+                out.writeInt(targetedHints.size());
+                for(TargetedHint h : targetedHints){
+                    out.writeObject(h);
+                }
+            }
         }
 
         @Override
@@ -720,9 +740,32 @@ public class Coordinator implements Runnable {
             for(int i = 0; i < nHintGroups; i++){
                 this.hintGroups.add((StringHintGroup) in.readObject());
             }
+            int nTargetedHints = in.readInt();
+            if (nTargetedHints >= 0) {
+                this.targetedHints = new HashSet<>(nTargetedHints);
+                for (int i = 0; i < nTargetedHints; i++) {
+                    this.targetedHints.add((TargetedHint) in.readObject());
+                }
+            }
         }
     }
 
+    public static abstract class TargetedHint implements Externalizable {
+
+        private static final long serialVersionUID = 2196987482810090535L;
+
+        @Override
+        public void writeExternal(ObjectOutput out) throws IOException {
+
+        }
+
+        @Override
+        public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+
+        }
+
+        public abstract void apply(ZestGuidance.Input newInput);
+    }
 
     public static class StringHintGroup implements Externalizable{
         public LinkedList<int[]> instructions = new LinkedList<>();
@@ -771,6 +814,101 @@ public class Coordinator implements Runnable {
                 ret.append('\n');
             }
             return ret.toString();
+        }
+    }
+
+    public static class CharHint extends TargetedHint implements Externalizable{
+        private static final long serialVersionUID = -4015984743755862044L;
+        int hint;
+        HintType type;
+        int positionOfStringInInput;
+        int lengthOfStringInInput;
+        int offsetOfCharInString;
+        String originalString;
+
+        public CharHint(){
+
+        }
+
+        public CharHint(int hint, String originalString, HintType type, int positionOfStringInInput, int lengthOfStringInInput, int offsetOfCharInString) {
+            this.hint = hint;
+            this.type = type;
+            this.positionOfStringInInput = positionOfStringInInput;
+            this.lengthOfStringInInput = lengthOfStringInInput;
+            this.offsetOfCharInString = offsetOfCharInString;
+            this.originalString = originalString;
+        }
+
+        @Override
+        public void writeExternal(ObjectOutput out) throws IOException {
+            out.writeInt(hint);
+            out.writeInt(type.ordinal());
+            out.writeInt(positionOfStringInInput);
+            out.writeInt(lengthOfStringInInput);
+            out.writeInt(offsetOfCharInString);
+            if(originalString == null)
+                out.writeBoolean(false);
+            else{
+                out.writeBoolean(true);
+                out.writeUTF(originalString);
+            }
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            CharHint charHint = (CharHint) o;
+            return hint == charHint.hint &&
+                    positionOfStringInInput == charHint.positionOfStringInInput &&
+                    lengthOfStringInInput == charHint.lengthOfStringInInput &&
+                    offsetOfCharInString == charHint.offsetOfCharInString &&
+                    type == charHint.type;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(hint, type, positionOfStringInInput, lengthOfStringInInput, offsetOfCharInString);
+        }
+
+        @Override
+        public String toString() {
+            return "CharHint{" +
+                    "hint=" + hint +
+                    ", type=" + type +
+                    ", positionOfStringInInput=" + positionOfStringInInput +
+                    ", lengthOfStringInInput=" + lengthOfStringInInput +
+                    ", offsetOfCharInString=" + offsetOfCharInString +
+                    ", originalString=" + originalString +
+                    '}';
+        }
+
+        @Override
+        public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+            this.hint = in.readInt();
+            this.type = HintType.values()[in.readInt()];
+            this.positionOfStringInInput = in.readInt();
+            this.lengthOfStringInInput = in.readInt();
+            this.offsetOfCharInString = in.readInt();
+            if(in.readBoolean())
+                this.originalString = in.readUTF();
+        }
+
+        @Override
+        public void apply(ZestGuidance.Input parentInput) {
+            //Look to see if we already have a string hint at this position, if so add this char at the right spot
+            if(this.originalString == null){
+                this.originalString = "aaaaaaa"; //TODO figure out how this happens, fix...
+            }
+            String newStr = this.originalString.substring(0,this.offsetOfCharInString) + ((char) this.hint) + this.originalString.substring(this.offsetOfCharInString+1);
+            StringHint newHint = new StringHint(newStr, HintType.CHAR);
+
+            if(newHint.hint.length() < MAXIMUM_STRING_EXTENDED_LENGTH){
+                parentInput.stringEqualsHintsToTryInChildren.add(new StringHint[]{newHint, new StringHint(newHint.hint+'a', HintType.CHAR)});
+            }else{
+                parentInput.stringEqualsHintsToTryInChildren.add(new StringHint[]{newHint});
+            }
+            parentInput.instructionsToTryInChildren.add(new int[]{this.positionOfStringInInput, this.lengthOfStringInInput});
         }
     }
 
@@ -856,7 +994,8 @@ public class Coordinator implements Runnable {
         ENDSWITH,
         LENGTH,
         ISEMPTY,
-        Z3
+        Z3,
+        CHAR
     }
     public static class Branch implements Externalizable {
         private static final long serialVersionUID = -6900391468143442577L;

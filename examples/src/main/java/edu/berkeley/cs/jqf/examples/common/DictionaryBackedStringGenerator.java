@@ -33,6 +33,7 @@ import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
 import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
 import edu.berkeley.cs.jqf.fuzz.guidance.StringEqualsHintingInputStream;
+import edu.berkeley.cs.jqf.fuzz.knarr.KnarrGuidance;
 import edu.columbia.cs.psl.phosphor.runtime.Taint;
 import edu.columbia.cs.psl.phosphor.struct.LazyCharArrayObjTags;
 import edu.columbia.cs.psl.phosphor.struct.TaintedObjectWithObjTag;
@@ -44,6 +45,7 @@ import za.ac.sun.cs.green.expr.IntConstant;
 
 import java.io.*;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 public class DictionaryBackedStringGenerator extends Generator<String> {
@@ -136,9 +138,8 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
                         "gen" + currentFunctionNumber,
                         new Expression[]{ new IntConstant(i), t}));
             }
-
+            KnarrGuidance.generatedStrings.put("gen"+currentFunctionNumber, result);
             currentFunctionNumber += 1;
-
         }
 
         // New string so that Phosphor can compute the tag for the string itself based on the tag for each character
@@ -146,6 +147,5 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
 
         return ret;
     }
-
 
 }

@@ -3,21 +3,22 @@ package edu.berkeley.cs.jqf.fuzz.knarr;
 import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
 import edu.berkeley.cs.jqf.fuzz.central.KnarrClient;
 import edu.berkeley.cs.jqf.fuzz.central.KnarrWorker;
+import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
 import edu.berkeley.cs.jqf.fuzz.guidance.Guidance;
 import edu.berkeley.cs.jqf.fuzz.guidance.GuidanceException;
 import edu.berkeley.cs.jqf.fuzz.guidance.Result;
 import edu.berkeley.cs.jqf.fuzz.guidance.StringEqualsHintingInputStream;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEvent;
+import edu.columbia.cs.psl.phosphor.struct.TaintedWithObjTag;
 import edu.gmu.swe.knarr.runtime.PathUtils;
+import edu.gmu.swe.knarr.runtime.StringUtils;
 import edu.gmu.swe.knarr.runtime.Symbolicator;
 import za.ac.sun.cs.green.expr.*;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
+import java.util.*;
 import java.util.function.Consumer;
 
 public class KnarrGuidance implements Guidance {
@@ -29,10 +30,44 @@ public class KnarrGuidance implements Guidance {
         this.client = new KnarrClient();
     }
 
+    public static class InputWithOnlyHints extends ZestGuidance.Input{
+
+        @Override
+        public int getOrGenerateFresh(Object key, Random random) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public int size() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ZestGuidance.Input fuzz(Random random) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void gc() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Iterator iterator() {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    public static HashMap<String, String> generatedStrings = new HashMap<>();
     @Override
     public InputStream getInput() throws IllegalStateException, GuidanceException {
         Symbolicator.reset();
-        this.currentTaintingInputStream =  new TaintingInputStream(new StringEqualsHintingInputStream(new ByteArrayInputStream(this.input.bytes), null, input.instructions, input.hints));
+        generatedStrings.clear();
+        ZestGuidance.Input zestInput = new InputWithOnlyHints();
+        zestInput.instructions = input.instructions;
+        zestInput.stringEqualsHints = input.hints;
+        zestInput.appliedTargetedHints = new LinkedList<>(input.targetedHints);
+        this.currentTaintingInputStream =  new TaintingInputStream(new StringEqualsHintingInputStream(new ByteArrayInputStream(this.input.bytes), null, zestInput));
         return this.currentTaintingInputStream;
     }
 
@@ -158,8 +193,11 @@ public class KnarrGuidance implements Guidance {
         // DEBUG strategy: look at hints in knarr process
         LinkedList<Coordinator.Branch> bs = new LinkedList<>();
         HashMap<Integer, HashSet<Coordinator.StringHint>> eqs = new HashMap<>();
+        Coordinator.Input fakeInput = new Coordinator.Input();
+        fakeInput.generatedStrings = generatedStrings;
+        fakeInput.targetedHints = new HashSet<>();
         for (Expression e : constraints)
-            KnarrWorker.process(bs, eqs, e, new String[0]);
+            KnarrWorker.process(bs, eqs, e, new String[0], fakeInput);
         System.out.println("^^^Hints for above input^^^^^");
         for(Integer i : eqs.keySet()){
             HashSet<Coordinator.StringHint> hints = eqs.get(i);
@@ -204,7 +242,7 @@ public class KnarrGuidance implements Guidance {
 
         // Send constraints
         try {
-            this.client.sendConstraints(constraints);
+            this.client.sendConstraints(constraints, generatedStrings);
         } catch (IOException e) {
             throw new Error(e);
         }

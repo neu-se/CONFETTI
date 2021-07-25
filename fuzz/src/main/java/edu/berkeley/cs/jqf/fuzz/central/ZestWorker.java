@@ -72,6 +72,7 @@ class ZestWorker extends Worker {
 
                     LinkedList<Coordinator.StringHint[]> hints = (LinkedList<Coordinator.StringHint[]>) ois.readObject();
                     LinkedList<int[]> instructions = (LinkedList<int[]>) ois.readObject();
+                    LinkedList<Coordinator.TargetedHint> targetedHints = (LinkedList<Coordinator.TargetedHint>) ois.readObject();
 
                     Double coveragePercentage = ois.readDouble();
                     Long numExecutions = ois.readLong();
@@ -100,7 +101,7 @@ class ZestWorker extends Worker {
                         i += b.length;
                     }
 
-                    c.foundInput(id, bs, res != Result.INVALID, hints, instructions, coveragePercentage, numExecutions, score, requestOffsets);
+                    c.foundInput(id, bs, res != Result.INVALID, hints, instructions, targetedHints, coveragePercentage, numExecutions, score, requestOffsets);
 
 
                     synchronized (recommendations) {
@@ -163,6 +164,7 @@ class ZestWorker extends Worker {
                     // Send instructions
                     oos.writeObject(instructionsToSend);
                     oos.writeObject(stringsToSend);     // Strings that are new hints
+                    oos.writeObject(in == null || in.targetedHints == null ? new HashSet<>() : in.targetedHints);
 
                     // Update state
                     fuzzing.set(selected, (toFuzz + 1) % inputs.get(selected).size());

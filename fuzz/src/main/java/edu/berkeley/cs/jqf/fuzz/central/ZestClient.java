@@ -65,6 +65,7 @@ public class ZestClient extends Central {
         oos.writeInt(input.id);
         oos.writeObject(input.stringEqualsHints == null ? new LinkedList<Coordinator.StringHint[]>() : input.stringEqualsHints);
         oos.writeObject(input.instructions == null ? new LinkedList<int[]>() : input.instructions);
+        oos.writeObject((input.appliedTargetedHints == null ? new LinkedList<Coordinator.TargetedHint>() : input.appliedTargetedHints));
         oos.writeDouble(coveragePercentage);
         oos.writeLong(totalExecutions);
         oos.writeInt(input.score);
@@ -109,6 +110,14 @@ public class ZestClient extends Central {
     public LinkedList<int[]> receiveByteRangesUsedAsControlInGenerator() throws IOException {
         try {
             return (LinkedList<int[]>) ois.readObject();
+        } catch (ClassNotFoundException e) {
+            throw new Error(e);
+        }
+    }
+
+    public HashSet<Coordinator.TargetedHint> receiveTargetedHints() throws IOException {
+        try {
+            return (HashSet<Coordinator.TargetedHint>) ois.readObject();
         } catch (ClassNotFoundException e) {
             throw new Error(e);
         }
