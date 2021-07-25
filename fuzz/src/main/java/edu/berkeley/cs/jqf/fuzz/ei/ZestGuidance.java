@@ -40,7 +40,6 @@ import edu.berkeley.cs.jqf.instrument.tracing.events.CallEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.ReturnEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEventVisitor;
-import janala.instrument.SnoopInstructionMethodAdapter;
 import org.apache.bcel.classfile.JavaClass;
 import org.eclipse.collections.api.iterator.IntIterator;
 import org.eclipse.collections.api.list.primitive.IntList;
@@ -422,6 +421,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
      */
     static final int MUTATIONS_PER_REQUESTED_MUTATION_LOCATION = 5;
 
+    static final int MAX_HINTS_APPLIED_PER_INPUT_PER_FUZZING_CYCLE = 2000;
+
     private static ZestClient central;
     private ZestClient triggerClient;
     private RecordingInputStream ris;
@@ -582,8 +583,27 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             file.delete();
         }
 
-        appendLineToFile(statsFile,"# unix_time, cycles_done, cur_path, paths_total, pending_total, " +
-                "pending_favs, map_size, unique_crashes, unique_hangs, max_depth, execs_per_sec, total_inputs, mutated_bytes, valid_inputs, invalid_inputs, valid_cov, z3");
+        /*
+                        countOfInputsSavedByMutation[MutationType.APPLY_SINGLE_HINT.ordinal()],
+                countOfInputsCreatedByMutation[MutationType.APPLY_SINGLE_HINT.ordinal()],
+                countOfInputsSavedByMutation[MutationType.APPLY_SINGLE_CHAR_HINT.ordinal()],
+                countOfInputsCreatedByMutation[MutationType.APPLY_SINGLE_CHAR_HINT.ordinal()],
+                countOfInputsSavedByMutation[MutationType.APPLY_Z3_HINT.ordinal()],
+                countOfInputsCreatedByMutation[MutationType.APPLY_Z3_HINT.ordinal()],
+                numinputsSavedWithoutHints,numInputsCreatedWithoutHints,
+                countOfSavedInputsBySeedSource[SeedSource.HINTS.ordinal()],
+                countOfSavedInputsBySeedSource[SeedSource.Z3.ordinal()],
+                countOfSavedInputsBySeedSource[SeedSource.RANDOM.ordinal()]);
+         */
+        appendLineToFile(statsFile, "# unix_time, cycles_done, cur_path, paths_total, pending_total, " +
+                "pending_favs, map_size, unique_crashes, unique_hangs, max_depth, execs_per_sec, total_inputs, " +
+                "mutated_bytes, valid_inputs, invalid_inputs, valid_cov, z3, " +
+                "inputsSavedBy_StrHint, inputsCreatedBy_StrHint, inputsSavedBy_CharHint, inputsCreatedBy_CharHint, " +
+                "inputsSavedBy_Z3, inputsCreatedBy_Z3, " +
+                "inputsSavedBy_Random, inputsCreatedBy_Random, " +
+                "inputsSavedWith_Hints, " +
+                "inputsSavedWith_Z3Origin, " +
+                "inputsSavedWithoutHintsOrZ3");
 
 
     }
@@ -764,11 +784,28 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         console.printf("    Z3                %,d\n", countOfFailingInputsBySeedSource[SeedSource.Z3.ordinal()]);
         console.printf("    Other             %,d\n", countOfFailingInputsBySeedSource[SeedSource.RANDOM.ordinal()]);
 
-        String plotData = String.format("%d, %d, %d, %d, %d, %d, %.2f%%, %d, %d, %d, %.2f, %d, %d, %d, %d, %.2f%%, %d",
+        long numinputsSavedWithoutHints =  savedInputs.size() - countOfInputsSavedByMutation[MutationType.APPLY_Z3_HINT.ordinal()]
+                - countOfInputsSavedByMutation[MutationType.APPLY_SINGLE_HINT.ordinal()]
+                - countOfInputsSavedByMutation[MutationType.APPLY_SINGLE_CHAR_HINT.ordinal()];
+        long numInputsCreatedWithoutHints = numTrials - countOfInputsCreatedByMutation[MutationType.APPLY_Z3_HINT.ordinal()]
+                - countOfInputsCreatedByMutation[MutationType.APPLY_SINGLE_HINT.ordinal()]
+                - countOfInputsCreatedByMutation[MutationType.APPLY_SINGLE_CHAR_HINT.ordinal()];
+
+        String plotData = String.format("%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %.2f, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",
                 TimeUnit.MILLISECONDS.toSeconds(now.getTime()), cyclesCompleted, currentParentInputIdx,
-                savedInputs.size(), 0, 0, nonZeroFraction, uniqueFailures.size(), 0, 0, intervalExecsPerSecDouble,
-                numTrials, mutatedBytes/numTrials, numValid, numTrials-numValid, nonZeroValidFraction,
-                (z3ThreadStartedInputNum != -1) && (numTrials >= z3ThreadStartedInputNum) ? 1: 0);
+                savedInputs.size(), 0, 0, nonZeroCount, uniqueFailures.size(), 0, 0, intervalExecsPerSecDouble,
+                numTrials, mutatedBytes/numTrials, numValid, numTrials-numValid, nonZeroValidCount,
+                (z3ThreadStartedInputNum != -1) && (numTrials >= z3ThreadStartedInputNum) ? 1: 0,
+                countOfInputsSavedByMutation[MutationType.APPLY_SINGLE_HINT.ordinal()],
+                countOfInputsCreatedByMutation[MutationType.APPLY_SINGLE_HINT.ordinal()],
+                countOfInputsSavedByMutation[MutationType.APPLY_SINGLE_CHAR_HINT.ordinal()],
+                countOfInputsCreatedByMutation[MutationType.APPLY_SINGLE_CHAR_HINT.ordinal()],
+                countOfInputsSavedByMutation[MutationType.APPLY_Z3_HINT.ordinal()],
+                countOfInputsCreatedByMutation[MutationType.APPLY_Z3_HINT.ordinal()],
+                numinputsSavedWithoutHints,numInputsCreatedWithoutHints,
+                countOfSavedInputsBySeedSource[SeedSource.HINTS.ordinal()],
+                countOfSavedInputsBySeedSource[SeedSource.Z3.ordinal()],
+                countOfSavedInputsBySeedSource[SeedSource.RANDOM.ordinal()]);
         appendLineToFile(statsFile, plotData);
 
     }
@@ -938,6 +975,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 }
                 Input parent = savedInputs.get(currentParentInputIdx);
 
+                if(newParent){
+                    parent.numHintsAppliedThisRound = 0;
+                }
 
                 if (newParent && getRecommendations && central != null) {
                     try {
@@ -1587,6 +1627,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
         public int bonusMutations;
 
+        public int numHintsAppliedThisRound;
+
         /**
          * The file where this input is saved.
          *
@@ -1970,7 +2012,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             LinearInput newInput = new LinearInput(this);
 
             boolean setToZero = random.nextDouble() < 0.1; // one out of 10 times
-            if(!this.stringHintGroupsToTryInChildren.isEmpty()){
+            boolean skipHints = this.numHintsAppliedThisRound > MAX_HINTS_APPLIED_PER_INPUT_PER_FUZZING_CYCLE;
+            if(!skipHints && !this.stringHintGroupsToTryInChildren.isEmpty()){
                 //Before doing any random mutations or one-off hints, first try to apply any SETS of hints that we have
                 //The main source of these right now is from one-off character adding for Z3 inputs
                 Coordinator.StringHintGroup hints = this.stringHintGroupsToTryInChildren.pop();
@@ -1983,10 +2026,11 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 for(Coordinator.StringHint h : hints.hints){
                     newInput.stringEqualsHints.add(new Coordinator.StringHint[]{h});
                 }
+                this.numHintsAppliedThisRound++;
                 return newInput;
 
             }
-            else if(this.instructionsToTryInChildren != null && !this.instructionsToTryInChildren.isEmpty())
+            else if(!skipHints && this.instructionsToTryInChildren != null && !this.instructionsToTryInChildren.isEmpty())
             {
                 // Before doing any random mutations, first try to generate a new input that simply uses one of the hints
                 // We'll try each hint independently, and only once: if it's useful, then a new input can be derived from
@@ -2009,6 +2053,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                         }
                         newInput.mutationType = MutationType.TARGETED_RANDOM;
                         newInput.seedSource = SeedSource.RANDOM;
+                        this.numHintsAppliedThisRound++;
                         return newInput;
                     }
                 }
@@ -2034,6 +2079,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     if(hint.getType() == Coordinator.HintType.CHAR)
                         newInput.mutationType = MutationType.APPLY_SINGLE_CHAR_HINT;
 
+                    this.numHintsAppliedThisRound++;
                     return newInput;
                 }
             }

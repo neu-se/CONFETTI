@@ -900,7 +900,13 @@ public class Coordinator implements Runnable {
             if(this.originalString == null){
                 this.originalString = "aaaaaaa"; //TODO figure out how this happens, fix...
             }
-            String newStr = this.originalString.substring(0,this.offsetOfCharInString) + ((char) this.hint) + this.originalString.substring(this.offsetOfCharInString+1);
+            String newStr;
+            if(this.offsetOfCharInString >= this.originalString.length())
+                newStr = this.originalString + (char) this.hint;
+            else if (this.offsetOfCharInString < 0)
+                newStr = "" + (char) this.hint;
+            else
+                newStr = this.originalString.substring(0,this.offsetOfCharInString) + ((char) this.hint) + this.originalString.substring(this.offsetOfCharInString+1);
             StringHint newHint = new StringHint(newStr, HintType.CHAR);
 
             if(newHint.hint.length() < MAXIMUM_STRING_EXTENDED_LENGTH){
