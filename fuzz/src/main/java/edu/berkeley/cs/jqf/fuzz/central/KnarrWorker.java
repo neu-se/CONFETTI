@@ -130,10 +130,31 @@ public class KnarrWorker extends Worker {
                 Iterator<StringUtils.StringComparisonRecord> it = ((HashSet<StringUtils.StringComparisonRecord>)e.metadata).iterator();
                 while(it.hasNext()) {
                     StringUtils.StringComparisonRecord cur = it.next();
+                    String originalString = null;
+                    if (input.generatedStrings != null) {
+                        //Find the right genName for this...
+                        Z3Worker.StringEqualsVisitor leftOfEQ = new Z3Worker.StringEqualsVisitor(op.getOperand(0));
+                        Z3Worker.StringEqualsVisitor rightOfEQ = new Z3Worker.StringEqualsVisitor(op.getOperand(1));
+                        try {
+                            op.getOperand(0).accept(leftOfEQ);
+                            op.getOperand(1).accept(rightOfEQ);
+                        } catch (VisitorException visitorException) {
+                            //visitorException.printStackTrace();
+                        }
+                        Z3Worker.StringEqualsVisitor v = leftOfEQ;
+                        if (v.getFunctionName() == null) {
+                            v = rightOfEQ;
+                        }
+                        if (v.getFunctionName() != null) {
+                            originalString = input.generatedStrings.get(v.getFunctionName());
+                        }
+                    }
                     switch(cur.getComparisionType()) {
                         case EQUALS:
-                            //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.EQUALS, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
-                            stringEqualsArgs.add(new Coordinator.StringHint(cur.getStringCompared(), Coordinator.HintType.EQUALS));
+                            if(originalString == null || !originalString.equals(cur.getStringCompared())) {
+                                //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.EQUALS, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
+                                stringEqualsArgs.add(new Coordinator.StringHint(cur.getStringCompared(), Coordinator.HintType.EQUALS));
+                            }
                             break;
                         case INDEXOF:
                             //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.INDEXOF, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
@@ -145,14 +166,18 @@ public class KnarrWorker extends Worker {
                             stringEqualsArgs.add(new Coordinator.StringHint(cur.getStringCompared(), Coordinator.HintType.ENDSWITH));
                             break;
                         case STARTSWITH:
-                            //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.STARTSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
-                            stringEqualsArgs.add(new Coordinator.StringHint(cur.getStringCompared(), Coordinator.HintType.STARTSWITH));
+                            if(originalString == null || !originalString.startsWith(cur.getStringCompared())) {
+                                //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.STARTSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
+                                stringEqualsArgs.add(new Coordinator.StringHint(cur.getStringCompared(), Coordinator.HintType.STARTSWITH));
+                            }
                             break;
                         //case ENDSWITH:
                             //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.ENDSWITH));
                             //break;
                         case ISEMPTY:
-                            stringEqualsArgs.add(new Coordinator.StringHint("", Coordinator.HintType.ISEMPTY));
+                            if(originalString == null || !originalString.isEmpty()) {
+                                stringEqualsArgs.add(new Coordinator.StringHint("", Coordinator.HintType.ISEMPTY));
+                            }
                             break;
                     }
 
