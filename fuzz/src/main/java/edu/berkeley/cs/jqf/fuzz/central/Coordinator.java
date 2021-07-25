@@ -930,8 +930,7 @@ public class Coordinator implements Runnable {
         public void apply(ZestGuidance.Input parentInput) {
             //Look to see if we already have a string hint at this position, if so add this char at the right spot
             if(this.originalString == null) {
-                //this.originalString = "aaaaaaa"; //TODO figure out how this happens that it's null, fix...
-                return;
+                return; //Should no longer occur...
             } else if (this.originalString.charAt(this.offsetOfCharInString) == this.hint) {
                 return;
             }

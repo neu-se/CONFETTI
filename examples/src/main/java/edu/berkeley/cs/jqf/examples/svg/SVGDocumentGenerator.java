@@ -269,19 +269,19 @@ public class SVGDocumentGenerator extends Generator<Document> {
 
 
         // New string to avoid adding taints to the dictionary itself
-        String ret = new String(result);
+        String ret = new String(result.getBytes(), 0, result.length());
 
         Expression t = (Expression) ((Taint)((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG()).getSingleLabel();
 
-        if (Symbolicator.getTaints(result) instanceof LazyCharArrayObjTags) {
-            LazyCharArrayObjTags taints = (LazyCharArrayObjTags) Symbolicator.getTaints(result);
-            taints.taints = new Taint[result.length()];
+        if (Symbolicator.getTaints(ret) instanceof LazyCharArrayObjTags) {
+            LazyCharArrayObjTags taints = (LazyCharArrayObjTags) Symbolicator.getTaints(ret);
+            taints.taints = new Taint[ret.length()];
             for (int i = 0 ; i< taints.taints.length ; i++) {
                 taints.taints[i] = new ExpressionTaint(new FunctionCall(
                         "gen" + currentFunctionNumber,
                         new Expression[]{ new IntConstant(i), t}));
             }
-            KnarrGuidance.generatedStrings.put("gen"+currentFunctionNumber, result);
+            KnarrGuidance.generatedStrings.put("gen"+currentFunctionNumber, ret);
             currentFunctionNumber += 1;
 
         }
