@@ -70,8 +70,6 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         List<String> items = new ArrayList<>(len);
 
         for (int i = 0; i < len; i++) {
-            int choice = random.nextInt(0, Integer.MAX_VALUE);
-
             String item;
                 item = genMethod.apply(random);
             items.add(item);
@@ -281,10 +279,6 @@ public class JavaScriptCodeGenerator extends Generator<String> {
 
     private String generateCallNode(SourceOfRandomness random) {
         String func;
-
-        int choice = random.nextInt(0, Integer.MAX_VALUE);
-
-
 
         func = generateExpression(random);
 
