@@ -459,109 +459,115 @@ public class Coordinator implements Runnable {
         //Previously, we kept pounding on a single branch, even if it was not possible to satisfy :'(
         boolean hadWork = true;
         out: while (true) {
-            if(!hadWork){
-                try {
-                    Thread.sleep(2000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
+            try {
+                if (!hadWork) {
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
                 }
-            }
-            hadWork = false;
-            // Figure out what is the branch that needs the most attention
-            HashSet<Branch> triedTops = new HashSet<>();
-            Branch top = null;
-            Input inputToTarget = null;
-            long num = branches.values().stream()
-                    .filter(b -> b.source != null)
-                    .filter(b -> !triedTops.contains(b))
-                    .filter(b -> isInWhitelist(b.source))
-                    .filter(b -> !b.isSolved && !b.isTimedOut)
-                    .count();
-
-            System.out.println("NEW Z3Loop: number of potential branches:" + num);
-            while (triedTops.size() < branches.size()) {
-                //Garbage collect constraints that are not going to be useful
-                garbageCollect();
-
-                //Pick a branch to target
-                Optional<Branch> maybeTop = branches.values().stream()
+                hadWork = false;
+                // Figure out what is the branch that needs the most attention
+                HashSet<Branch> triedTops = new HashSet<>();
+                Branch top = null;
+                Input inputToTarget = null;
+                long num = branches.values().stream()
                         .filter(b -> b.source != null)
                         .filter(b -> !triedTops.contains(b))
                         .filter(b -> isInWhitelist(b.source))
                         .filter(b -> !b.isSolved && !b.isTimedOut)
-                        .reduce(BinaryOperator.minBy(Comparator.comparingInt(o -> o.inputsTried.size())));
+                        .count();
 
-                if (!maybeTop.isPresent()) {
-                    continue out; //Start over, allowing for repeated selection of branches
-                } else
-                    top = maybeTop.get();
+                System.out.println("NEW Z3Loop: number of potential branches:" + num);
+                while (triedTops.size() < branches.size()) {
+                    //Garbage collect constraints that are not going to be useful
+                    garbageCollect();
 
-                // Create Z3 target
-                Branch branchToTarget = top;
-                Optional<Input> maybeInputToTarget;
-                synchronized (this.inputs) {
-                    maybeInputToTarget = this.inputs.values().stream()
-                            .filter(i -> branchToTarget.isUsefulInputForNegation(i))
-                            .reduce(BinaryOperator.minBy(Comparator.comparingInt(o -> o.bytes.length)));
-                }
+                    //Pick a branch to target
+                    Optional<Branch> maybeTop = branches.values().stream()
+                            .filter(b -> b.source != null)
+                            .filter(b -> !triedTops.contains(b))
+                            .filter(b -> isInWhitelist(b.source))
+                            .filter(b -> !b.isSolved && !b.isTimedOut)
+                            .reduce(BinaryOperator.minBy(Comparator.comparingInt(o -> o.inputsTried.size())));
 
-                triedTops.add(top);
-                if (!maybeInputToTarget.isPresent()) {
-                    System.out.println("Z3 couldn't find an input to target for " + branchToTarget);
-                    continue;
-                }
+                    if (!maybeTop.isPresent()) {
+                        continue out; //Start over, allowing for repeated selection of branches
+                    } else
+                        top = maybeTop.get();
 
-                System.out.println("Targeting: " + branchToTarget);
-                inputToTarget = maybeInputToTarget.get();
-                top.inputsTried.add(inputToTarget.id);
+                    // Create Z3 target
+                    Branch branchToTarget = top;
+                    Optional<Input> maybeInputToTarget;
+                    synchronized (this.inputs) {
+                        maybeInputToTarget = this.inputs.values().stream()
+                                .filter(i -> branchToTarget.isUsefulInputForNegation(i))
+                                .reduce(BinaryOperator.minBy(Comparator.comparingInt(o -> o.bytes.length)));
+                    }
+
+                    triedTops.add(top);
+                    if (!maybeInputToTarget.isPresent()) {
+                        System.out.println("Z3 couldn't find an input to target for " + branchToTarget);
+                        continue;
+                    }
+
+                    System.out.println("Targeting: " + branchToTarget);
+                    inputToTarget = maybeInputToTarget.get();
+                    top.inputsTried.add(inputToTarget.id);
 
 
-                hadWork = true;
+                    hadWork = true;
 
-                try {
-                    if(top.isSwitch()){
-                        //Try to target each of the arms that haven't been yet fully covered
-                        for(int i = 0; i < top.armsSolved.length; i++){
-                            if(!top.armsSolved[i]){
-                                Z3Worker.Target target = new Z3Worker.Target(inputToTarget, top, i,  inputToTarget.bytes, constraints.get(inputToTarget).getExpressions(), perByteStringEqualsHints.get(inputToTarget.id));
-                                Optional<Coordinator.Input> newInput = z3.exploreTarget(target);
+                    try {
+                        if (top.isSwitch()) {
+                            //Try to target each of the arms that haven't been yet fully covered
+                            for (int i = 0; i < top.armsSolved.length; i++) {
+                                if (!top.armsSolved[i]) {
+                                    Z3Worker.Target target = new Z3Worker.Target(inputToTarget, top, i, inputToTarget.bytes, constraints.get(inputToTarget).getExpressions(), perByteStringEqualsHints.get(inputToTarget.id));
+                                    Optional<Coordinator.Input> newInput = z3.exploreTarget(target);
 
-                                // Handle result
-                                if (newInput.isPresent()) {
-                                    System.out.println("Z3 found new input for " + inputToTarget.id + " " + target.branch.source);
-                                    zest.addInputFromZ3(newInput.get(), inputToTarget);
+                                    // Handle result
+                                    if (newInput.isPresent()) {
+                                        System.out.println("Z3 found new input for " + inputToTarget.id + " " + target.branch.source);
+                                        zest.addInputFromZ3(newInput.get(), inputToTarget);
+                                    }
                                 }
                             }
-                        }
-                    }
-                    else{
-                        Z3Worker.Target target = new Z3Worker.Target(inputToTarget, top, inputToTarget.bytes, constraints.get(inputToTarget).getExpressions(), perByteStringEqualsHints.get(inputToTarget.id));
-                        Optional<Coordinator.Input> newInput = z3.exploreTarget(target);
+                        } else {
+                            Z3Worker.Target target = new Z3Worker.Target(inputToTarget, top, inputToTarget.bytes, constraints.get(inputToTarget).getExpressions(), perByteStringEqualsHints.get(inputToTarget.id));
+                            Optional<Coordinator.Input> newInput = z3.exploreTarget(target);
 
-                        // Handle result
-                        if (newInput.isPresent()) {
-                            System.out.println("Z3 found new input for " + inputToTarget.id + " " + target.branch.source);
-                            zest.addInputFromZ3(newInput.get(), inputToTarget);
+                            // Handle result
+                            if (newInput.isPresent()) {
+                                System.out.println("Z3 found new input for " + inputToTarget.id + " " + target.branch.source);
+                                zest.addInputFromZ3(newInput.get(), inputToTarget);
+                            }
                         }
-                    }
 
-                } catch (TimeoutException ex) {
-                    ex.printStackTrace();
-                    top.trueExplored.remove(inputToTarget.id);
-                    top.falseExplored.remove(inputToTarget.id);
-                    ConstraintRepresentation cr = constraints.get(inputToTarget);
-                    long bytes = 0;
-                    if (cr != null)
-                        bytes = cr.destroy();
-                    inputToTarget.evicted = true;
-                    for (Branch b : this.branches.values()) {
-                        b.evict(inputToTarget.id);
+                    } catch (TimeoutException ex) {
+                        ex.printStackTrace();
+                        if (top != null && top.trueExplored != null)
+                            top.trueExplored.remove(inputToTarget.id);
+                        if (top != null && top.falseExplored != null)
+                            top.falseExplored.remove(inputToTarget.id);
+                        ConstraintRepresentation cr = constraints.get(inputToTarget);
+                        long bytes = 0;
+                        if (cr != null)
+                            bytes = cr.destroy();
+                        inputToTarget.evicted = true;
+                        for (Branch b : this.branches.values()) {
+                            b.evict(inputToTarget.id);
+                        }
+                        System.err.println("Evicted " + bytes + " of constraints for input #" + inputToTarget.id);
                     }
-                    System.err.println("Evicted " + bytes + " of constraints for input #" + inputToTarget.id);
+                    if (top.inputsTried.size() > BRANCH_SOLVES_TIMEOUT) {
+                        top.isTimedOut = true;
+                    }
                 }
-                if (top.inputsTried.size() > BRANCH_SOLVES_TIMEOUT) {
-                    top.isTimedOut = true;
-                }
+            }catch(Throwable t){
+                t.printStackTrace();
+                //Continue: never allow an exception to end the Z3 thread!
             }
         }
     }
