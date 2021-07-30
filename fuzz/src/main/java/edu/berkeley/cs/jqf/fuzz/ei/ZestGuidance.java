@@ -710,7 +710,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             currentParentInputDesc = currentParentInputIdx + " ";
             currentParentInputDesc += currentParentInput.isFavored() ? "(favored)" : "(not favored)";
             currentParentInputDesc += " {" + numChildrenGeneratedForCurrentParentInput +
-                    "/" + getTargetChildrenForParent(currentParentInput) + " mutations, including " + currentParentInput.bonusMutations + " hints}";
+                    "/" + getTargetChildrenForParent(currentParentInput) + " mutations, including " + currentParentInput.bonusMutations + "/" + currentParentInput.hintsRemaining + " hints}";
         }
 
         int nonZeroCount = totalCoverage.getNonZeroCount();
@@ -998,23 +998,19 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                             }
                             parent.addExtraRandomStringEqualsHints(random);
                             parent.bonusMutations = 0;
-                            int bonus = 0;
-                            // CONFETTI will always get to generate its own set of children inputs
-                            if (parent.stringEqualsHintsToTryInChildren != null) {
-                                for (Object hints : parent.stringEqualsHintsToTryInChildren) {
-                                    bonus += ((Coordinator.StringHint[]) hints).length;
-                                }
-                            }
-                            if (parent.byteRangesToMutateDirectlyInChildren != null) {
-                                bonus += MUTATIONS_PER_REQUESTED_MUTATION_LOCATION * parent.byteRangesToMutateDirectlyInChildren.size();
-                            }
-                            //parent.bonusMutations = Math.min(bonus, getTargetChildrenForParent(parent));
-                            parent.bonusMutations = bonus;
+                            parent.updateHintsRemainingCount();
+                            parent.bonusMutations = Math.min(parent.hintsRemaining, getTargetChildrenForParent(parent));
                         }
 
                     } catch (IOException e) {
                         throw new Error(e);
                     }
+                }
+                if(newParent && !getRecommendations && parent.bonusMutations > 0){
+                    //Make sure that the number of bonus mutations falls as we run out of hints.
+                    // CONFETTI will always get to generate its own set of children inputs
+                    parent.updateHintsRemainingCount();
+                    parent.bonusMutations = Math.min(parent.hintsRemaining, getTargetChildrenForParent(parent));
                 }
 
                 // Fuzz it to get a new input
@@ -1631,6 +1627,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         public int bonusMutations;
 
         public int numHintsAppliedThisRound;
+        public int hintsRemaining;
 
         /**
          * The file where this input is saved.
@@ -1715,6 +1712,16 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         public LinkedList<Coordinator.TargetedHint> targetedHintsToTryInChildren = new LinkedList<>();
 
 
+        public void updateHintsRemainingCount(){
+            this.hintsRemaining = 0;
+            if(this.stringEqualsHintsToTryInChildren != null)
+            {
+                for(Object h : this.stringEqualsHintsToTryInChildren){
+                    if(h != null)
+                        this.hintsRemaining += ((Coordinator.StringHint[]) h).length;
+                }
+            }
+        }
         public Coordinator.StringHint getHintForPosition(int start, int length){
             for(int i = 0 ; i < instructions.size(); i++){
                 int[] d = instructions.get(i);
@@ -1734,10 +1741,6 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
          */
         public LinkedList<Coordinator.StringHint[]> stringEqualsHintsToTryInChildren;
         public LinkedList<int[]> instructionsToTryInChildren;
-        /**
-         * Unrelated to string hints: we also might be told to try to mutate (independently)
-         */
-        public LinkedList<int[]> byteRangesToMutateDirectlyInChildren;
         public boolean alreadyReceivedHints;
 
         /**
@@ -2096,36 +2099,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             //        }
             //    }
             //}
-            //TODO i don't think we need this, probably delete, currently not using
-            if (this.valid && this.byteRangesToMutateDirectlyInChildren != null && this.byteRangesToMutateDirectlyInChildren.size() > 0) {
-                if (numChildrenGeneratedForCurrentMutationLocation > MUTATIONS_PER_REQUESTED_MUTATION_LOCATION) {
-                    this.byteRangesToMutateDirectlyInChildren.pop();
-                    numChildrenGeneratedForCurrentMutationLocation = 0;
-                }
-                if (!this.byteRangesToMutateDirectlyInChildren.isEmpty()) {
-                    int[] offsetAndSize = this.byteRangesToMutateDirectlyInChildren.peek();
-                    for (int i = offsetAndSize[0]; i < offsetAndSize[0] + offsetAndSize[1]; i++) {
-                        // Don't go past end of list
-                        if (i >= newInput.values.size()) {
-                            break;
-                        }
 
-                        // Otherwise, apply a random mutation
-                        int mutatedValue = setToZero ? 0 : random.nextInt(256);
-                        mutatedBytes += Integer.BYTES;
-                        //System.out.println(i + ": " + newInput.values.get(i) + "->" + mutatedValue);
-                        newInput.values.set(i, mutatedValue);
-                    }
-                    if (!newInput.instructions.isEmpty()) {
-                        newInput.clearHintsAfterOffset(offsetAndSize[0]);
-                        //System.out.println("Cleared hints after " + offsetAndSize);
-                    }
-                    newInput.mutationType = MutationType.TARGETED_RANDOM;
-                    newInput.desc += ",targeted@" + offsetAndSize[0] + "+" + offsetAndSize[1];
-                    numChildrenGeneratedForCurrentMutationLocation++;
-                    return newInput;
-                }
-            }
 
             // Stack a bunch of mutations
             int numMutations = sampleGeometric(random, MEAN_MUTATION_COUNT);

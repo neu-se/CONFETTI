@@ -1055,11 +1055,15 @@ public class Coordinator implements Runnable {
 
         @Override
         public String toString() {
+            String targetBranchStr = null;
+            if(targetBranch != null){
+                targetBranchStr = targetBranch.source;
+            }
             return "StringHint{" +
                     "hint='" + hint + '\'' +
                     "hintLength=" + hint.length() +
                     ", type=" + type +
-                    ", branch=" + targetBranch +
+                    ", branch=" + targetBranchStr +
                     '}';
         }
 

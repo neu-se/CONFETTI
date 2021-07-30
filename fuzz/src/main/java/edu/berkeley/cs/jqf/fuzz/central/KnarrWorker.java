@@ -119,7 +119,7 @@ public class KnarrWorker extends Worker {
                         }
                         switch (cur.getComparisionType()) {
                             case EQUALS:
-                                if (originalString == null || !originalString.equals(cur.getStringCompared())) {
+                                if (originalString != null && !originalString.equals(cur.getStringCompared())) {
                                     //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.EQUALS, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
                                     addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), Coordinator.HintType.EQUALS, controlledBranch));
                                 }
@@ -129,35 +129,37 @@ public class KnarrWorker extends Worker {
                                 //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.STARTSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
                                 //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.ENDSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
 
-                                String startsWith = cur.getStringCompared();
-                                if(originalString != null){
-                                    startsWith = cur.getStringCompared() + originalString;
+                                //String startsWith = cur.getStringCompared();
+                                //if(originalString != null){
+                                //    startsWith = cur.getStringCompared() + originalString;
+                                //}
+                                if(originalString != null && !originalString.contains(cur.getStringCompared())) {
+                                    String endsWith = cur.getStringCompared();
+                                    if (originalString != null) {
+                                        endsWith = originalString + cur.getStringCompared();
+                                    }
+                                    //addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), Coordinator.HintType.INDEXOF, controlledBranch));
+                                    //addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), startsWith, Coordinator.HintType.STARTSWITH, controlledBranch));
+                                    addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), endsWith, Coordinator.HintType.ENDSWITH, controlledBranch));
                                 }
-                                String endsWith = cur.getStringCompared();
-                                if(originalString != null){
-                                    endsWith = originalString + cur.getStringCompared();
-                                }
-                                addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), Coordinator.HintType.INDEXOF, controlledBranch));
-                                addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), startsWith, Coordinator.HintType.STARTSWITH, controlledBranch));
-                                addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), endsWith, Coordinator.HintType.ENDSWITH, controlledBranch));
                                 break;
                             case STARTSWITH:
                                 if (originalString == null || !originalString.startsWith(cur.getStringCompared())) {
-                                    startsWith = cur.getStringCompared();
-                                    if(originalString != null){
-                                        startsWith = cur.getStringCompared() + originalString;
-                                    }
+                                    String startsWith = cur.getStringCompared() + originalString;
                                     //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.STARTSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
                                     addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), startsWith, Coordinator.HintType.STARTSWITH, controlledBranch));
                                 }
                                 break;
-                            //case ENDSWITH:
-                            //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.ENDSWITH));
-                            //break;
+                            case ENDWITH:
+                                if(originalString != null && !originalString.endsWith(cur.getStringCompared())){
+                                    String endsWith = originalString + cur.getStringCompared();
+                                    stringEqualsArgs.add(new Coordinator.StringHint(cur.getStringCompared(), endsWith, Coordinator.HintType.ENDSWITH, controlledBranch));
+                                }
+                            break;
                             case ISEMPTY:
-                                //if (originalString == null || !originalString.isEmpty()) {
-                                //    addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint("", Coordinator.HintType.ISEMPTY, controlledBranch));
-                                //}
+                                if (originalString != null && !originalString.isEmpty()) {
+                                    addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint("", Coordinator.HintType.ISEMPTY, controlledBranch));
+                                }
                                 break;
                         }
 
