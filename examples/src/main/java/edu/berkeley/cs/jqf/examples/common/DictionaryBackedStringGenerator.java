@@ -91,19 +91,6 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
                     int middle = origWord.length() / 2;
                     word = origWord.substring(0, middle) + word + origWord.substring(middle);
                 }
-            } else if (hints[0].getType() == Coordinator.HintType.ENDSWITH) {
-                String origWord = dictionary.get(choice % dictionary.size());
-                word = origWord + word;
-            } else if (hints[0].getType() == Coordinator.HintType.STARTSWITH) {
-                String origWord = dictionary.get(choice % dictionary.size());
-                word = word + origWord;
-            } else if (hints[0].getType() == Coordinator.HintType.ISEMPTY) {
-                String origWord = dictionary.get(choice % dictionary.size());
-                if (word.isEmpty()) {
-                    word = "a";
-                } else {
-                    word = "";
-                }
             }
             //System.out.println("Hint word: " + word);
             if (hints[0].getType() == Coordinator.HintType.Z3) {

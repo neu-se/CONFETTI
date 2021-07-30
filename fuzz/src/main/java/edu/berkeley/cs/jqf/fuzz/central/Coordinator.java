@@ -5,6 +5,7 @@ import edu.gmu.swe.knarr.runtime.Coverage;
 import org.eclipse.collections.api.iterator.IntIterator;
 import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
 import org.eclipse.collections.impl.map.mutable.primitive.IntObjectHashMap;
+import org.eclipse.collections.impl.map.mutable.primitive.ObjectIntHashMap;
 import org.eclipse.collections.impl.set.mutable.primitive.IntHashSet;
 import za.ac.sun.cs.green.expr.Expression;
 
@@ -102,6 +103,133 @@ public class Coordinator implements Runnable {
             zest.addUpdatedInputScore(input);
         }
 
+    }
+
+    public void updateBranchCoverageInformation(Branch b, Input input){
+        if (b.source == null)
+            return;
+
+        for (String f : config.filter)
+            if (b.source.contains(f))
+                return;
+
+        Branch existing;
+        if (!branches.containsKey(b)) {
+            synchronized (branches) {
+                existing = branches.get(b);
+                if(existing == null) {
+                    existing = b;
+                    existing.inputsTried = new IntHashSet();
+                    if(b.isSwitch()){
+                        //it's a switch branch
+                        existing.armsExplored = new IntHashSet[b.armsExplored.length];
+                        existing.armsNotExplored = new IntHashSet[b.armsExplored.length];
+                        existing.armsSolved = new boolean[b.armsExplored.length];
+                        existing.inputsTriedPerArm = new IntHashSet[b.armsExplored.length];
+                        for(int i = 0; i < b.armsExplored.length; i++){
+                            existing.armsExplored[i] = new IntHashSet();
+                            existing.armsNotExplored[i] = new IntHashSet();
+                            existing.inputsTriedPerArm[i] = new IntHashSet();
+                        }
+                    }else {
+                        existing.trueExplored = new IntHashSet();
+                        existing.falseExplored = new IntHashSet();
+                    }
+                    existing.control = new IntObjectHashMap<>();
+                    existing.keep = b.keep;
+                    existing.source = (b.source == null ? "" : b.source);
+                    branches.put(b, b);
+                }
+            }
+        } else {
+            existing = branches.get(b);
+        }
+
+        synchronized (existing) {
+            if (b.isSwitch()) {
+                for (int i = 0; i < b.armsExplored.length; i++) {
+                    if (b.armsExplored[i] != null) {
+                        if(b.result) {
+                            existing.armsExplored[i].add(input.id);
+                            if(!existing.armsNotExplored[i].isEmpty())
+                                existing.armsSolved[i] = true;
+                        }
+                        else {
+                            existing.armsNotExplored[i].add(input.id);
+                            if(!existing.armsExplored[i].isEmpty())
+                                existing.armsSolved[i] = true;
+                        }
+                        if (existing.armsSolved[i]) {
+                            //Check to see if it's fully solved.
+                            boolean solved = true;
+                            for (int j = 0; j < existing.armsSolved.length; j++) {
+                                if (!existing.armsSolved[j]) {
+                                    solved = false;
+                                    break;
+                                }
+                            }
+                            existing.isSolved = solved;
+                        }
+                        break;
+                    }
+                }
+            } else {
+                if (b.result) {
+                    if (existing.trueExplored.isEmpty())
+                        System.out.println("\tInput " + input.id + " explores T on " + existing.takenID + " (" + existing.source + ")");
+                    existing.trueExplored.add(input.id);
+                    if (!existing.falseExplored.isEmpty())
+                        existing.isSolved = true;
+                } else {
+                    if (existing.falseExplored.isEmpty())
+                        System.out.println("\tInput " + input.id + " explores F on " + existing.takenID + " (" + existing.source + ")");
+                    existing.falseExplored.add(input.id);
+                    if (!existing.trueExplored.isEmpty())
+                        existing.isSolved = true;
+                }
+            }
+        }
+    }
+
+    public void process(LinkedList<Coordinator.Branch> bs, HashMap<Integer, HashSet<Coordinator.StringHint>> stringEqualsArgs, Expression e, String[] filter, Coordinator.Input input) {
+        Coverage.CoverageData b = (Coverage.CoverageData) e.metadata;
+
+
+        if (b == null)
+            return;
+
+        for (String f : filter) {
+            if (b.source != null && b.source.contains(f)) {
+                return;
+            }
+        }
+
+        Coordinator.Branch bb = new Coordinator.Branch(b);
+        bb.controllingBytes = new HashSet<>();
+
+        HashSet<Coordinator.StringHint> eq = new HashSet<>();
+
+        updateBranchCoverageInformation(bb, input);
+        Branch existing = branches.get(bb);
+        KnarrWorker.findControllingBytes(e, bb.controllingBytes, eq, input, existing); //TODO this can block, it's really bad when it does...
+        bs.add(bb);
+
+        IntArrayList bytes = new IntArrayList();
+        for(Integer i : bb.controllingBytes)
+            bytes.add(i);
+        bytes.sortThis();
+        existing.control.put(input.id, bytes.toArray());
+
+        if (!eq.isEmpty()) {
+            for (Integer i : bb.controllingBytes) {
+                HashSet<Coordinator.StringHint> cur = stringEqualsArgs.get(i);
+                if (cur == null) {
+                    cur = new HashSet<>();
+                    stringEqualsArgs.put(i, cur);
+                }
+                cur.addAll(eq);
+            }
+        }
     }
 
     @Override
@@ -207,7 +335,7 @@ public class Coordinator implements Runnable {
                     long start = System.currentTimeMillis();
                     KnarrWorker.constraintsProcessed = 0;
                     for (Expression e : cs)
-                        KnarrWorker.process(bs, eqs, e, config.filter, input);
+                        process(bs, eqs, e, config.filter, input);
                     long end = System.currentTimeMillis();
 
                     //update_score(bs, input);
@@ -238,103 +366,13 @@ public class Coordinator implements Runnable {
                     }
 
                     // Check if any previous branches were explored
-                    branches: for (Branch b : bs) {
-                        if (b.source == null || b.controllingBytes.isEmpty())
-                            continue;
-
-                        for (String f : config.filter)
-                            if (b.source.contains(f))
-                                continue branches;
-
-                        Branch existing;
-                        if (!branches.containsKey(b)) {
-                            synchronized (branches) {
-                                existing = branches.get(b);
-                                if(existing == null) {
-                                    existing = b;
-                                    existing.inputsTried = new IntHashSet();
-                                    if(b.isSwitch()){
-                                        //it's a switch branch
-                                        existing.armsExplored = new IntHashSet[b.armsExplored.length];
-                                        existing.armsNotExplored = new IntHashSet[b.armsExplored.length];
-                                        existing.armsSolved = new boolean[b.armsExplored.length];
-                                        existing.inputsTriedPerArm = new IntHashSet[b.armsExplored.length];
-                                        for(int i = 0; i < b.armsExplored.length; i++){
-                                            existing.armsExplored[i] = new IntHashSet();
-                                            existing.armsNotExplored[i] = new IntHashSet();
-                                            existing.inputsTriedPerArm[i] = new IntHashSet();
-                                        }
-                                    }else {
-                                        existing.trueExplored = new IntHashSet();
-                                        existing.falseExplored = new IntHashSet();
-                                    }
-                                    existing.control = new IntObjectHashMap<>();
-                                    existing.keep = b.keep;
-                                    existing.source = (b.source == null ? "" : b.source);
-                                    branches.put(b, b);
-                                }
-                            }
-                        } else {
-                            existing = branches.get(b);
-                        }
-
-                        synchronized (existing) {
-                            if (b.isSwitch()) {
-                                for (int i = 0; i < b.armsExplored.length; i++) {
-                                    if (b.armsExplored[i] != null) {
-                                        if(b.result) {
-                                            existing.armsExplored[i].add(input.id);
-                                            if(!existing.armsNotExplored[i].isEmpty())
-                                                existing.armsSolved[i] = true;
-                                        }
-                                        else {
-                                            existing.armsNotExplored[i].add(input.id);
-                                            if(!existing.armsExplored[i].isEmpty())
-                                                existing.armsSolved[i] = true;
-                                        }
-                                        if (existing.armsSolved[i]) {
-                                            //Check to see if it's fully solved.
-                                            boolean solved = true;
-                                            for (int j = 0; j < existing.armsSolved.length; j++) {
-                                                if (!existing.armsSolved[j]) {
-                                                    solved = false;
-                                                    break;
-                                                }
-                                            }
-                                            existing.isSolved = solved;
-                                        }
-                                        break;
-                                    }
-                                }
-                            } else {
-                                if (b.result) {
-                                    if (existing.trueExplored.isEmpty())
-                                        System.out.println("\tInput " + input.id + " explores T on " + existing.takenID + " (" + existing.source + ")");
-                                    existing.trueExplored.add(input.id);
-                                    if (!existing.falseExplored.isEmpty())
-                                        existing.isSolved = true;
-                                } else {
-                                    if (existing.falseExplored.isEmpty())
-                                        System.out.println("\tInput " + input.id + " explores F on " + existing.takenID + " (" + existing.source + ")");
-                                    existing.falseExplored.add(input.id);
-                                    if (!existing.trueExplored.isEmpty())
-                                        existing.isSolved = true;
-                                }
-                            }
-                        }
-
-                        IntArrayList bytes = new IntArrayList();
-                        for(Integer i : b.controllingBytes)
-                            bytes.add(i);
-                        bytes.sortThis();
-                        existing.control.put(input.id, bytes.toArray());
-                    }
 
                     input.isNew = false;
                 }
             }
 
             // Make recommendations
+            HashSet<Branch> branchesInThisRecSet = new HashSet<>();
             synchronized (this.inputs) {
                 for (Input input : inputs.values()) {
                     if(input == null || input.isNew || input.recommendedBefore){
@@ -347,6 +385,7 @@ public class Coordinator implements Runnable {
                         //otherwise we miss out big on ability to find new paths!!!!
                         //if (branch.falseExplored.isEmpty() || branch.trueExplored.isEmpty() || branch.keep) {
                             if (branch.control.containsKey(input.id)) {
+                                branchesInThisRecSet.add(branch);
                                 for (int i : branch.control.get(input.id)){
                                     recommendation.add(i);
                                 }
@@ -390,17 +429,24 @@ public class Coordinator implements Runnable {
                     }
 
                     //DEBUGGING STRATEGY: print out hints for each rec
-                    //if(recommendation.size() > 0){
-                    //    System.out.println("Recommendation for " + input.id);
-                    //    for(Integer i : recommendation){
-                    //        System.out.println("\t"+i+": " + stringEqualsHints.get(i));
-                    //    }
-                    //}
+                    if(recommendation.size() > 0){
+                        System.out.println("Recommendation for " + input.id);
+                        for(Integer i : recommendation){
+                            System.out.println("\t"+i+": " + stringEqualsHints.get(i));
+                        }
+                    }
                     //input.allHints = stringEqualsHints;
                     //input.recs = new LinkedList<>(recommendation);
                     if(recommendation.size() > 0){
                         zest.recommend(input.id, recommendation, stringEqualsHints);
                     }
+                }
+            }
+            for(Branch b : branchesInThisRecSet){
+                if(b.suggestedHints.size() > 0)
+                    System.out.println(b + " hints:");
+                for(String h : b.suggestedHints.keySet()){
+                    System.out.println("\t"+b.suggestedHints.get(h)+": " + h);
                 }
             }
         }
@@ -935,6 +981,7 @@ public class Coordinator implements Runnable {
         @Override
         public void apply(ZestGuidance.Input parentInput) {
             //Look to see if we already have a string hint at this position, if so add this char at the right spot
+
             if(this.originalString == null) {
                 return; //Should no longer occur...
             } else if (this.originalString.charAt(this.offsetOfCharInString) == this.hint) {
@@ -947,10 +994,10 @@ public class Coordinator implements Runnable {
                 newStr = "" + (char) this.hint;
             else
                 newStr = this.originalString.substring(0,this.offsetOfCharInString) + ((char) this.hint) + this.originalString.substring(this.offsetOfCharInString+1);
-            StringHint newHint = new StringHint(newStr, HintType.CHAR);
+            StringHint newHint = new StringHint(newStr, HintType.CHAR, (Branch) null);
 
             if(newHint.hint.length() < MAXIMUM_STRING_EXTENDED_LENGTH){
-                parentInput.stringEqualsHintsToTryInChildren.add(new StringHint[]{newHint, new StringHint(newHint.hint+'a', HintType.CHAR)});
+                parentInput.stringEqualsHintsToTryInChildren.add(new StringHint[]{newHint, new StringHint(newHint.hint+'a', HintType.CHAR, (Branch) null)});
             }else{
                 parentInput.stringEqualsHintsToTryInChildren.add(new StringHint[]{newHint});
             }
@@ -967,19 +1014,27 @@ public class Coordinator implements Runnable {
         private static final long serialVersionUID = -1812382770909515539L;
         String hint;
         HintType type;
-        transient HashSet<String> debugSources;
+        transient Branch targetBranch;
+        transient String comparedString;
 
         public StringHint(){
 
         }
-        public StringHint(String hint, HintType type, HashSet<String> debugSources){
-            this(hint, type);
-            this.debugSources = debugSources;
-        }
-        public StringHint(String hint, HintType type) {
+
+        public StringHint(String hint, HintType type, Branch targetBranch) {
             this.hint = hint;
             this.type = type;
+            this.comparedString = hint;
+            this.targetBranch = targetBranch;
         }
+
+        public StringHint(String comparedString, String hint, HintType type, Branch targetBranch) {
+            this.hint = hint;
+            this.type = type;
+            this.comparedString = comparedString;
+            this.targetBranch = targetBranch;
+        }
+
 
         public HintType getType() {
             return this.type;
@@ -1004,7 +1059,7 @@ public class Coordinator implements Runnable {
                     "hint='" + hint + '\'' +
                     "hintLength=" + hint.length() +
                     ", type=" + type +
-                    ", debugSources=" + debugSources +
+                    ", branch=" + targetBranch +
                     '}';
         }
 
@@ -1200,6 +1255,15 @@ public class Coordinator implements Runnable {
                 this.trueExplored.remove(inputID);
                 this.falseExplored.remove(inputID);
             }
+        }
+
+        static final int MAX_TIMES_SUGGEST_SAME_HINT = 1000 * 4; //each hint will be added 4 times, one for each byte in the source of randomnes, so this must be X4..
+        transient ObjectIntHashMap<String> suggestedHints = new ObjectIntHashMap<>();
+        public boolean addSuggestion(StringHint stringHint) {
+            String hint = stringHint.comparedString;
+            int rec = suggestedHints.getIfAbsentPut(hint, 0);
+            suggestedHints.put(hint, rec + 1);
+            return rec < MAX_TIMES_SUGGEST_SAME_HINT;
         }
     }
 

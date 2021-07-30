@@ -710,7 +710,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             currentParentInputDesc = currentParentInputIdx + " ";
             currentParentInputDesc += currentParentInput.isFavored() ? "(favored)" : "(not favored)";
             currentParentInputDesc += " {" + numChildrenGeneratedForCurrentParentInput +
-                    "/" + getTargetChildrenForParent(currentParentInput) + " mutations}";
+                    "/" + getTargetChildrenForParent(currentParentInput) + " mutations, including " + currentParentInput.bonusMutations + " hints}";
         }
 
         int nonZeroCount = totalCoverage.getNonZeroCount();
@@ -930,7 +930,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     for(int i = 0; i < hints.instructions.size(); i++){
                         doubled.instructions.add(hints.instructions.get(i));
                         Coordinator.StringHint h = hints.hints.get(i);
-                        doubled.hints.add(new Coordinator.StringHint(h.getHint()+"a", h.getType()));
+                        doubled.hints.add(new Coordinator.StringHint(h.getHint()+"a", h.getType(), null));
                     }
                     currentInput.bonusMutations++;
                     currentInput.stringHintGroupsToTryInChildren.add(doubled);
@@ -998,16 +998,18 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                             }
                             parent.addExtraRandomStringEqualsHints(random);
                             parent.bonusMutations = 0;
+                            int bonus = 0;
                             // CONFETTI will always get to generate its own set of children inputs
                             if (parent.stringEqualsHintsToTryInChildren != null) {
                                 for (Object hints : parent.stringEqualsHintsToTryInChildren) {
-                                    parent.bonusMutations += ((Coordinator.StringHint[]) hints).length;
+                                    bonus += ((Coordinator.StringHint[]) hints).length;
                                 }
                             }
                             if (parent.byteRangesToMutateDirectlyInChildren != null) {
-                                parent.bonusMutations += MUTATIONS_PER_REQUESTED_MUTATION_LOCATION * parent.byteRangesToMutateDirectlyInChildren.size();
+                                bonus += MUTATIONS_PER_REQUESTED_MUTATION_LOCATION * parent.byteRangesToMutateDirectlyInChildren.size();
                             }
-                            parent.bonusMutations = Math.min(parent.bonusMutations, MAX_HINTS_APPLIED_PER_INPUT_PER_FUZZING_CYCLE);
+                            //parent.bonusMutations = Math.min(bonus, getTargetChildrenForParent(parent));
+                            parent.bonusMutations = bonus;
                         }
 
                     } catch (IOException e) {
@@ -1906,7 +1908,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     for (int j = 0; j < sb.capacity(); j++) {
                         sb.append((char)(48 + random.nextInt(127 - 48)));
                     }
-                    extraHinted[hints.length] = new Coordinator.StringHint(sb.toString(), Coordinator.HintType.EQUALS);
+                    extraHinted[hints.length] = new Coordinator.StringHint(sb.toString(), Coordinator.HintType.EQUALS, null);
                     this.stringEqualsHintsToTryInChildren.set(i, extraHinted);
                 }
             }
@@ -2013,7 +2015,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             LinearInput newInput = new LinearInput(this);
 
             boolean setToZero = random.nextDouble() < 0.1; // one out of 10 times
-            boolean skipHints = this.numHintsAppliedThisRound > MAX_HINTS_APPLIED_PER_INPUT_PER_FUZZING_CYCLE;
+            boolean skipHints = this.numHintsAppliedThisRound > this.bonusMutations;
             if(!skipHints && !this.stringHintGroupsToTryInChildren.isEmpty()){
                 //Before doing any random mutations or one-off hints, first try to apply any SETS of hints that we have
                 //The main source of these right now is from one-off character adding for Z3 inputs

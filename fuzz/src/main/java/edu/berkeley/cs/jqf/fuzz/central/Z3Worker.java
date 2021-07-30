@@ -29,6 +29,8 @@ public class Z3Worker {
 
     private static final File Z3_OUTPUT_DIR;
 
+    static final boolean PRINT_Z3_DEBUG_INFO = false;
+
     static {
         String z3Dir = System.getProperty("Z3_OUTPUT_DIR");
         if (z3Dir != null) {
@@ -156,8 +158,6 @@ public class Z3Worker {
                 visitorException.printStackTrace();
             }
         }
-
-        System.out.println(ret);
         return ret;
     }
 
@@ -183,7 +183,8 @@ public class Z3Worker {
 
 //        for (Expression e : hints)
 //            res.put("c" + res.size(), e);
-        System.out.println("Trying to use Z3 to get to " + t.branch + (t.arm != -1 ? " arm#" + t.arm : "") + " using input #" + t.originalInput.id);
+        if(PRINT_Z3_DEBUG_INFO)
+            System.out.println("Trying to use Z3 to get to " + t.branch + (t.arm != -1 ? " arm#" + t.arm : "") + " using input #" + t.originalInput.id);
 
         for (Expression e : t.constraints) {
             if (e.metadata instanceof Coverage.BranchData) {
@@ -212,8 +213,10 @@ public class Z3Worker {
 
         if (targetConstraint == null)
             throw new IllegalStateException();
-        System.out.println("To negate:");
-        System.out.println(targetConstraint);
+        if(PRINT_Z3_DEBUG_INFO) {
+            System.out.println("To negate:");
+            System.out.println(targetConstraint);
+        }
 
         // If we are negating something like char == 'A', we might end up solving it to char == '\0', which has a special
         // meaning, and will likely not end up making any sense.
@@ -240,7 +243,8 @@ public class Z3Worker {
         solve(res, sat, unsat);
 
         if (unsat.isEmpty()) {
-            System.out.println("Z3 found solution for " + t.branch);
+            if(PRINT_Z3_DEBUG_INFO)
+                System.out.println("Z3 found solution for " + t.branch);
             // Solution found, generate input
             HashMap<String, byte[]> genFuncs = new HashMap<>();
             Coordinator.Input ret = new Coordinator.Input();
@@ -251,7 +255,8 @@ public class Z3Worker {
                     ret.hintGroups = new LinkedList<>();
                 }
                 ret.hintGroups.add(hg);
-                System.out.println(hg);
+                if(PRINT_Z3_DEBUG_INFO)
+                    System.out.println(hg);
             }
 
             // Add more bytes to maybe explore new paths
@@ -263,9 +268,11 @@ public class Z3Worker {
 
             return Optional.of(ret);
         } else {
-            System.out.println("Z3 failed to solve for " + t.branch + unsat);
-            for(String each : unsat){
-                System.out.println("\t"+res.get(each));
+            if(PRINT_Z3_DEBUG_INFO) {
+                System.out.println("Z3 failed to solve for " + t.branch + unsat);
+                for (String each : unsat) {
+                    System.out.println("\t" + res.get(each));
+                }
             }
             if (unsat.size() == 1) {
                 // Try to fix single UNSAT expression
@@ -283,7 +290,8 @@ public class Z3Worker {
                 }
                 LinkedList<BinaryOperation> strEqualsExprs = equalsFindingVisitor.getStrEqualsExprs();
                 if(!strEqualsExprs.isEmpty()) {
-                    System.out.println("Transforming unsat str equals exprs: " + ex);
+                    if(PRINT_Z3_DEBUG_INFO)
+                        System.out.println("Transforming unsat str equals exprs: " + ex);
                     // Make a copy of this expression, replacing each of the String.equals operations with versions that
                     // force the symbolic part to be of the right length
                     Copier copier = new Copier() {
@@ -299,14 +307,16 @@ public class Z3Worker {
                         }
                     };
                     Expression withCorrectLength = copier.copy(ex);
-                    System.out.println(withCorrectLength);
+                    if(PRINT_Z3_DEBUG_INFO)
+                        System.out.println(withCorrectLength);
                     if (withCorrectLength != null) {
                         res.put(unsat.stream().findFirst().get(), withCorrectLength);
                         sat.clear();
                         unsat.clear();
                         solve(res, sat, unsat);
                         if (unsat.isEmpty()) {
-                            System.out.println("Z3 found solution after failing w string hack for " + t.branch);
+                            if(PRINT_Z3_DEBUG_INFO)
+                                System.out.println("Z3 found solution after failing w string hack for " + t.branch);
                             // Solution found, generate input
                             HashMap<String, byte[]> genFuncs = new HashMap<>();
                             Coordinator.Input ret = new Coordinator.Input();
@@ -328,9 +338,11 @@ public class Z3Worker {
 
                             return Optional.of(ret);
                         }else{
-                            System.out.println("Z3 failed even after string hacking: " + unsat);
-                            for(String each : unsat)
-                                System.out.println("\t"+res.get(each));
+                            if(PRINT_Z3_DEBUG_INFO) {
+                                System.out.println("Z3 failed even after string hacking: " + unsat);
+                                for (String each : unsat)
+                                    System.out.println("\t" + res.get(each));
+                            }
                         }
                     }
                 }
@@ -402,10 +414,11 @@ public class Z3Worker {
                 }
                 String hint = strings.iterator().next();
                 hintGroup.instructions.add(requestGroup);
-                hintGroup.hints.add(new Coordinator.StringHint(hint, Coordinator.HintType.Z3));
+                hintGroup.hints.add(new Coordinator.StringHint(hint, Coordinator.HintType.Z3, null));
             }
         }
-        System.out.println(hintGroup);
+        if(PRINT_Z3_DEBUG_INFO)
+            System.out.println(hintGroup);
 
         return hintGroup;
     }

@@ -190,22 +190,6 @@ public class KnarrGuidance implements Guidance {
             constraints.addFirst(exp);
         }
 
-        // DEBUG strategy: look at hints in knarr process
-        LinkedList<Coordinator.Branch> bs = new LinkedList<>();
-        HashMap<Integer, HashSet<Coordinator.StringHint>> eqs = new HashMap<>();
-        Coordinator.Input fakeInput = new Coordinator.Input();
-        fakeInput.generatedStrings = generatedStrings;
-        fakeInput.targetedHints = new HashSet<>();
-        for (Expression e : constraints)
-            KnarrWorker.process(bs, eqs, e, new String[0], fakeInput);
-        System.out.println("^^^Hints for above input^^^^^");
-        for(Integer i : eqs.keySet()){
-            HashSet<Coordinator.StringHint> hints = eqs.get(i);
-            System.out.println(i+": " + hints);
-        }
-        System.out.println("End hints");
-
-        // END DEBUG help
     }
     @Override
     public void handleResult(Result result, Throwable error) throws GuidanceException {
