@@ -5,11 +5,7 @@ import edu.berkeley.cs.jqf.fuzz.guidance.Result;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.TreeSet;
+import java.util.*;
 
 class ZestWorker extends Worker {
     private ArrayList<LinkedList<byte[]>> inputs = new ArrayList<>();
@@ -151,6 +147,38 @@ class ZestWorker extends Worker {
 
                         offset += b.length;
                     }
+                    //Flatten the list and sort it.
+
+                    // The parallel list structure is somewhat archaic and made sense for a different hinting strategy
+                    // good target to refactor in the future.
+                    // Each one of the hints will be tried independently, so it doesn't really matter to keep them grouped
+                    // or sorted by their position in the input. Instead, we'll sort them by how many times we've made
+                    // that same hint suggestion to target the same branch (across all inputs). We don't update that
+                    // data as fuzzing progresses, but assume instead that as the corpus grows, we'll also eventually
+                    // execute all hints.
+
+                    ArrayList<HintWithPosition> flattendHints = new ArrayList<>(instructionsToSend.size());
+                    Iterator<int[]> insnIter = instructionsToSend.iterator();
+                    Iterator<Coordinator.StringHint[]> hintIter = stringsToSend.iterator();
+                    while(insnIter.hasNext()){
+                        int[] pos = insnIter.next();
+                        Coordinator.StringHint[] h = hintIter.next();
+                        if(h == null){
+                            flattendHints.add(new HintWithPosition(null, pos));
+                        }else{
+                            for(Coordinator.StringHint _h : h){
+                                flattendHints.add(new HintWithPosition(_h, pos));
+                            }
+                        }
+                    }
+                    flattendHints.sort(HintWithPosition::compareTo);
+                    instructionsToSend.clear();
+                    stringsToSend.clear();
+                    for(HintWithPosition h : flattendHints){
+                        instructionsToSend.add(h.pos);
+                        stringsToSend.add(new Coordinator.StringHint[]{h.hint});
+                    }
+
 
                     // Get the Coordinator.Input object corrseponding to the selected so we can get any
                     // previously used hints
@@ -213,7 +241,38 @@ class ZestWorker extends Worker {
             }
         }
     }
+    class HintWithPosition implements Comparable<HintWithPosition>{
+        Coordinator.StringHint hint;
+        int[] pos;
 
+        @Override
+        public String toString() {
+            return "HintWithPosition{" +
+                    "hint=" + hint +
+                    ", pos=" + Arrays.toString(pos) +
+                    '}';
+        }
+
+        public HintWithPosition(Coordinator.StringHint hint, int[] pos) {
+            this.hint = hint;
+            this.pos = pos;
+        }
+
+        @Override
+        public int compareTo(HintWithPosition o) {
+            if (this.hint == null && o.hint == null)
+                return 0;
+            if (this.hint == null && o.hint != null)
+                return 1;
+            if (this.hint != null && o.hint == null)
+                return -1;
+            if (this.hint.priority == o.hint.priority)
+                return 0;
+            if (this.hint.priority > o.hint.priority)
+                return 1;
+            return -1;
+        }
+    }
     public void recommend(int inputID, TreeSet<Integer> recommendation, HashMap<Integer, HashSet<Coordinator.StringHint>> eqs) {
         synchronized (recommendations) {
             if(!(recommendation.isEmpty() && eqs.isEmpty()) && allRecommendedInputs.add(inputID)){

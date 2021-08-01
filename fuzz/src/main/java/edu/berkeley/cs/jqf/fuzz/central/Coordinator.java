@@ -1012,6 +1012,7 @@ public class Coordinator implements Runnable {
      */
     public static class StringHint implements Externalizable {
         private static final long serialVersionUID = -1812382770909515539L;
+        public int priority;
         String hint;
         HintType type;
         transient Branch targetBranch;
@@ -1063,6 +1064,7 @@ public class Coordinator implements Runnable {
                     "hint='" + hint + '\'' +
                     "hintLength=" + hint.length() +
                     ", type=" + type +
+                    ", priority=" + priority +
                     ", branch=" + targetBranchStr +
                     '}';
         }
@@ -1080,6 +1082,7 @@ public class Coordinator implements Runnable {
                 this.type = null;
             else
                 this.type = HintType.values()[hintType];
+            this.priority = in.readInt();
         }
 
         @Override
@@ -1090,6 +1093,7 @@ public class Coordinator implements Runnable {
             }else{
                 out.writeInt(this.type.ordinal());
             }
+            out.writeInt(this.priority);
         }
     }
     public enum HintType {
@@ -1263,11 +1267,11 @@ public class Coordinator implements Runnable {
 
         static final int MAX_TIMES_SUGGEST_SAME_HINT = 1000 * 4; //each hint will be added 4 times, one for each byte in the source of randomnes, so this must be X4..
         transient ObjectIntHashMap<String> suggestedHints = new ObjectIntHashMap<>();
-        public boolean addSuggestion(StringHint stringHint) {
+        public int addSuggestion(StringHint stringHint) {
             String hint = stringHint.comparedString;
             int rec = suggestedHints.getIfAbsentPut(hint, 0);
             suggestedHints.put(hint, rec + 1);
-            return rec < MAX_TIMES_SUGGEST_SAME_HINT;
+            return rec + 1;
         }
     }
 

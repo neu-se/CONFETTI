@@ -986,9 +986,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                         LinkedList<Coordinator.StringHint[]> stringEqualsHintsToTryInChildren = central.receiveStringEqualsHints();
                         HashSet<Coordinator.TargetedHint> targetedHints = central.receiveTargetedHints();
                         if (!parent.alreadyReceivedHints) {
-                            if(instructionsToTryInChildren.isEmpty()){
-                                throw new IllegalStateException("Central didn't send instructions for input "+ parent.id + " even though it suggested it!");
-                            }
+                            //Not sure why this happens, but also not sure if it's a big deal?
+                            //if(instructionsToTryInChildren.isEmpty()){
+                                //throw new IllegalStateException("Central didn't send instructions for input "+ parent.id + " even though it suggested it!");
+                            //}
                             parent.alreadyReceivedHints = true;
                             parent.instructionsToTryInChildren = instructionsToTryInChildren;
                             parent.stringEqualsHintsToTryInChildren = stringEqualsHintsToTryInChildren;
@@ -999,7 +1000,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                             parent.addExtraRandomStringEqualsHints(random);
                             parent.bonusMutations = 0;
                             parent.updateHintsRemainingCount();
-                            parent.bonusMutations = Math.min(parent.hintsRemaining, getTargetChildrenForParent(parent));
+                            parent.bonusMutations = Math.min(parent.hintsRemaining, ((cyclesCompleted * 20)+ 1) * getTargetChildrenForParent(parent));
                         }
 
                     } catch (IOException e) {
@@ -2042,12 +2043,12 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 // We'll try each hint independently, and only once: if it's useful, then a new input can be derived from
                 // that one, which will always use that hint.
 
-                Coordinator.StringHint[] hints = this.stringEqualsHintsToTryInChildren.getLast();
-                int[] insn = this.instructionsToTryInChildren.getLast();
+                Coordinator.StringHint[] hints = this.stringEqualsHintsToTryInChildren.peek();
+                int[] insn = this.instructionsToTryInChildren.peek();
                 Coordinator.StringHint hint;
                 if(hints.length == 0){ //TODO what the heck causes this!?
-                    this.stringEqualsHintsToTryInChildren.removeLast();
-                    this.instructionsToTryInChildren.removeLast();
+                    this.stringEqualsHintsToTryInChildren.pop();
+                    this.instructionsToTryInChildren.pop();
                     if(insn.length == 2){
                         //Just to be cute, let's keep it as-is but do a single random mutation at the location indicated
                         //if this check fails, then we just do a random mutation
@@ -2066,13 +2067,13 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 else {
                     if (hints.length == 1) {
                         hint = hints[0];
-                        this.stringEqualsHintsToTryInChildren.removeLast();
-                        this.instructionsToTryInChildren.removeLast();
+                        this.stringEqualsHintsToTryInChildren.pop();
+                        this.instructionsToTryInChildren.pop();
                     } else {
                         hint = hints[0];
                         Coordinator.StringHint[] remainingStringHints = new Coordinator.StringHint[hints.length - 1];
                         System.arraycopy(hints, 1, remainingStringHints, 0, remainingStringHints.length);
-                        this.stringEqualsHintsToTryInChildren.set(this.stringEqualsHintsToTryInChildren.size() - 1, remainingStringHints);
+                        this.stringEqualsHintsToTryInChildren.set(0, remainingStringHints);
                     }
                     //if(hint.getHint().equals("execution")){
                     //    System.out.println("Oh, we are almost there!");

@@ -176,7 +176,8 @@ public class KnarrWorker extends Worker {
         }
     }
     private static void addStringHintIfNew(HashSet<Coordinator.StringHint> hints, Coordinator.StringHint hintToAdd){
-        if(hintToAdd.targetBranch != null && hintToAdd.targetBranch.addSuggestion(hintToAdd))
+        int c = hintToAdd.targetBranch.addSuggestion(hintToAdd);
+        hintToAdd.priority = c;
             hints.add(hintToAdd);
     }
 
