@@ -52,10 +52,6 @@ public class KnarrGuidance implements Guidance {
             throw new UnsupportedOperationException();
         }
 
-        @Override
-        public Iterator iterator() {
-            throw new UnsupportedOperationException();
-        }
     }
 
     public static HashMap<String, String> generatedStrings = new HashMap<>();

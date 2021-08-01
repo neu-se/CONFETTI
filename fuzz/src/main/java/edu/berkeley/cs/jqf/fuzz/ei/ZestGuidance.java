@@ -42,7 +42,9 @@ import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEventVisitor;
 import org.apache.bcel.classfile.JavaClass;
 import org.eclipse.collections.api.iterator.IntIterator;
+import org.eclipse.collections.api.iterator.ShortIterator;
 import org.eclipse.collections.api.list.primitive.IntList;
+import org.eclipse.collections.impl.list.mutable.primitive.ShortArrayList;
 import org.eclipse.collections.impl.set.mutable.primitive.IntHashSet;
 import org.w3c.dom.Document;
 
@@ -1416,9 +1418,18 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private void writeCurrentInputToFile(File saveFile) throws IOException {
         try (ObjectOutputStream out = new ObjectOutputStream(new BufferedOutputStream(new FileOutputStream(saveFile)))) {
             out.writeInt(currentInput.size());
-            for (Integer b : currentInput) {
-                assert (b >= 0 && b < 256);
-                out.write(b);
+            if(currentInput instanceof Iterable){
+                for (Integer b : ((Iterable<Integer>) currentInput)) {
+                    assert (b >= 0 && b < 256);
+                    out.write(b);
+                }
+            }else if(currentInput instanceof LinearInput){
+                ShortIterator iter = ((LinearInput) currentInput).shortIterator();
+                while(iter.hasNext()){
+                    short b = iter.next();
+                    assert (b >= 0 && b < 256);
+                    out.write((int) b);
+                }
             }
             out.writeObject(currentInput.instructions);
             out.writeObject(currentInput.stringEqualsHints);
@@ -1621,7 +1632,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     /**
      * A candidate or saved test input that maps objects of type K to bytes.
      */
-    public static abstract class Input<K> implements Iterable<Integer> {
+    public static abstract class Input<K> {
 
         public SeedSource seedSource;
 
@@ -1940,7 +1951,11 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     public class LinearInput extends Input<Integer> {
 
         /** A list of byte values (0-255) ordered by their index. */
-        protected ArrayList<Integer> values;
+        protected ShortArrayList values;
+        //Note: Would save more space if this were a ByteArrayList, but the code as I found it
+        //used an ArrayList<Integer> (and assumed all bytes were unsigned), so there would be more
+        //refactoring needed to migrate to actual byte types, this gives a savings enough from avoiding
+        //primitive boxing, at least.
 
         /** The number of bytes requested so far */
         protected int requested = 0;
@@ -1951,12 +1966,13 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
         public LinearInput() {
             super();
-            this.values = new ArrayList<>();
+            this.values = new ShortArrayList();
         }
 
         public LinearInput(LinearInput other) {
             super(other);
-            this.values = new ArrayList<>(other.values);
+            this.values = new ShortArrayList(other.values.size());
+            this.values.addAll(other.values);
         }
 
 
@@ -1986,7 +2002,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 return -1;
             } else {
                 // Just generate a random input
-                int val = random.nextInt(256);
+                short val = (short) random.nextInt(256);
                 values.add(val);
                 requested++;
                 // infoLog("Generating fresh byte at key=%d, total requested=%d", key, requested);
@@ -2009,8 +2025,13 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         @Override
         public void gc() {
             // Remove elements beyond "requested"
-            values = new ArrayList<>(values.subList(0, requested));
-            values.trimToSize();
+            ShortArrayList old = values;
+            if(requested != old.size()) {
+                values = new ShortArrayList(requested);
+                for (int i = 0; i < old.size(); i++)
+                    values.add(old.get(i));
+                values.trimToSize();
+            }
         }
 
         @Override
@@ -2056,7 +2077,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                         for(int i = insn[0]; i < insn[0]+insn[1]; i++){
                             int mutatedValue = setToZero ? 0 : random.nextInt(256);
                             mutatedBytes += Integer.BYTES;
-                            newInput.values.set(i, mutatedValue);
+                            newInput.values.set(i, (short) mutatedValue);
                         }
                         newInput.mutationType = MutationType.TARGETED_RANDOM;
                         newInput.seedSource = SeedSource.RANDOM;
@@ -2176,16 +2197,15 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     // Otherwise, apply a random mutation
                     int mutatedValue = setToZero ? 0 : random.nextInt(256);
                     mutatedBytes += Integer.BYTES;
-                    newInput.values.set(i, mutatedValue);
+                    newInput.values.set(i, (short) mutatedValue);
                 }
             }
 
             return newInput;
         }
 
-        @Override
-        public Iterator<Integer> iterator() {
-            return values.iterator();
+        public ShortIterator shortIterator() {
+            return values.shortIterator();
         }
     }
 
@@ -2622,7 +2642,6 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
         }
 
-        @Override
         public Iterator<Integer> iterator() {
             return new Iterator<Integer>() {
 
@@ -2706,7 +2725,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
             if (value >= 0) {
                 requested++;
-                values.add(value);
+                values.add((short) value);
             }
 
             // If value is -1, then it is returned (as EOF) but not added to the list
