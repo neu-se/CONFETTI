@@ -680,9 +680,10 @@ public class Z3Worker {
         private LinkedList<GeneratedCharacter> symbolicChars = new LinkedList<>();
         private StringConstant stringConstant;
         private String generatorFunctionName;
+        private HashSet<String> generatorFunctionNames = new HashSet<>();
         private Expression expression;
         private boolean containsConcatOrStringEquals;
-
+        private boolean hasConcretePrefix;
 
         public StringEqualsVisitor(Expression expression) {
             this.expression = expression;
@@ -690,6 +691,10 @@ public class Z3Worker {
 
         public Expression getExpression() {
             return expression;
+        }
+
+        public HashSet<String> getGeneratorFunctionNames() {
+            return generatorFunctionNames;
         }
 
         public int getLength(){
@@ -715,6 +720,10 @@ public class Z3Worker {
             return concreteChars;
         }
 
+        public boolean hasConcretePrefix() {
+            return hasConcretePrefix;
+        }
+
         public StringConstant getStringConstant() {
             return stringConstant;
         }
@@ -738,6 +747,7 @@ public class Z3Worker {
                 FunctionCall fn = (FunctionCall) expression;
                 if(fn.getName().startsWith("gen")){
                     this.generatorFunctionName = fn.getName();
+                    this.generatorFunctionNames.add(fn.getName());
                     this.symbolicChars.add(GeneratedCharacter.fromFunction(fn));
                 }
             }
@@ -750,8 +760,12 @@ public class Z3Worker {
                 this.containsConcatOrStringEquals = true;
             if(operation.getOperator() == Operation.Operator.CONCAT){
                 this.containsConcatOrStringEquals = true;
-                if(operation.getOperand(0) instanceof IntConstant)
+                if(operation.getOperand(0) instanceof IntConstant) {
+                    if(this.generatorFunctionName == null){
+                        this.hasConcretePrefix = true;
+                    }
                     concreteChars.add((int) ((IntConstant) operation.getOperand(0)).getValueLong());
+                }
                 if(operation.getOperand(1) instanceof IntConstant)
                     concreteChars.add((int) ((IntConstant) operation.getOperand(1)).getValueLong());
             }

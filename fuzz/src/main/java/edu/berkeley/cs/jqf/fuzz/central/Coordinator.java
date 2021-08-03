@@ -429,12 +429,12 @@ public class Coordinator implements Runnable {
                     }
 
                     //DEBUGGING STRATEGY: print out hints for each rec
-                    if(recommendation.size() > 0){
-                        System.out.println("Recommendation for " + input.id);
-                        for(Integer i : recommendation){
-                            System.out.println("\t"+i+": " + stringEqualsHints.get(i));
-                        }
-                    }
+                    //if(recommendation.size() > 0){
+                    //    System.out.println("Recommendation for " + input.id);
+                    //    for(Integer i : recommendation){
+                    //        System.out.println("\t"+i+": " + stringEqualsHints.get(i));
+                    //    }
+                    //}
                     //input.allHints = stringEqualsHints;
                     //input.recs = new LinkedList<>(recommendation);
                     if(recommendation.size() > 0){
@@ -442,13 +442,13 @@ public class Coordinator implements Runnable {
                     }
                 }
             }
-            for(Branch b : branchesInThisRecSet){
-                if(b.suggestedHints.size() > 0)
-                    System.out.println(b + " hints:");
-                for(String h : b.suggestedHints.keySet()){
-                    System.out.println("\t"+b.suggestedHints.get(h)+": " + h);
-                }
-            }
+            //for(Branch b : branchesInThisRecSet){
+            //    if(b.suggestedHints.size() > 0)
+            //        System.out.println(b + " hints:");
+            //    for(String h : b.suggestedHints.keySet()){
+            //        System.out.println("\t"+b.suggestedHints.get(h)+": " + h);
+            //    }
+            //}
         }
     }
 
@@ -1083,6 +1083,7 @@ public class Coordinator implements Runnable {
             else
                 this.type = HintType.values()[hintType];
             this.priority = in.readInt();
+            this.targetBranch = (Branch) in.readObject();
         }
 
         @Override
@@ -1094,6 +1095,7 @@ public class Coordinator implements Runnable {
                 out.writeInt(this.type.ordinal());
             }
             out.writeInt(this.priority);
+            out.writeObject(this.targetBranch);
         }
     }
     public enum HintType {

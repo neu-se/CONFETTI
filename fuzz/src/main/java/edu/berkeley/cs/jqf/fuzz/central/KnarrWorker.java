@@ -63,7 +63,7 @@ public class KnarrWorker extends Worker {
             }
         } else if (e instanceof Operation) {
             Operation op = (Operation) e;
-            if(controlledBranch != null && !controlledBranch.isSolved) {
+            if(controlledBranch != null) {
                 if (e.metadata != null && op.getOperator() == Operation.Operator.EQ || op.getOperator() == Operation.Operator.NE) {
                     //is this a char comparison?
                     Z3Worker.StringEqualsVisitor leftOfEQ = new Z3Worker.StringEqualsVisitor(op.getOperand(0));
@@ -97,74 +97,91 @@ public class KnarrWorker extends Worker {
                 if (e.metadata != null && e.metadata instanceof HashSet) {
                     Iterator<StringUtils.StringComparisonRecord> it = ((HashSet<StringUtils.StringComparisonRecord>) e.metadata).iterator();
                     while (it.hasNext()) {
+                        boolean ignore = false;
                         StringUtils.StringComparisonRecord cur = it.next();
                         String originalString = null;
+                        //Find the right genName for this...
+                        Z3Worker.StringEqualsVisitor leftOfEQ = new Z3Worker.StringEqualsVisitor(op.getOperand(0));
+                        Z3Worker.StringEqualsVisitor rightOfEQ = new Z3Worker.StringEqualsVisitor(op.getOperand(1));
+                        try {
+                            op.getOperand(0).accept(leftOfEQ);
+                            op.getOperand(1).accept(rightOfEQ);
+                        } catch (VisitorException visitorException) {
+                            //visitorException.printStackTrace();
+                        }
+                        Z3Worker.StringEqualsVisitor v = leftOfEQ;
+                        if (v.getFunctionName() == null) {
+                            v = rightOfEQ;
+                        }
                         if (input.generatedStrings != null) {
-                            //Find the right genName for this...
-                            Z3Worker.StringEqualsVisitor leftOfEQ = new Z3Worker.StringEqualsVisitor(op.getOperand(0));
-                            Z3Worker.StringEqualsVisitor rightOfEQ = new Z3Worker.StringEqualsVisitor(op.getOperand(1));
-                            try {
-                                op.getOperand(0).accept(leftOfEQ);
-                                op.getOperand(1).accept(rightOfEQ);
-                            } catch (VisitorException visitorException) {
-                                //visitorException.printStackTrace();
-                            }
-                            Z3Worker.StringEqualsVisitor v = leftOfEQ;
-                            if (v.getFunctionName() == null) {
-                                v = rightOfEQ;
-                            }
                             if (v.getFunctionName() != null) {
                                 originalString = input.generatedStrings.get(v.getFunctionName());
                             }
                         }
-                        switch (cur.getComparisionType()) {
-                            case EQUALS:
-                                if (originalString != null && !originalString.equals(cur.getStringCompared())) {
-                                    //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.EQUALS, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
-                                    addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), Coordinator.HintType.EQUALS, controlledBranch));
-                                }
-                                break;
-                            case INDEXOF:
-                                //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.INDEXOF, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
-                                //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.STARTSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
-                                //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.ENDSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
-
-                                //String startsWith = cur.getStringCompared();
-                                //if(originalString != null){
-                                //    startsWith = cur.getStringCompared() + originalString;
-                                //}
-                                if(originalString != null && !originalString.contains(cur.getStringCompared())) {
-                                    String endsWith = cur.getStringCompared();
-                                    if (originalString != null) {
-                                        endsWith = originalString + cur.getStringCompared();
-                                    }
-                                    //addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), Coordinator.HintType.INDEXOF, controlledBranch));
-                                    //addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), startsWith, Coordinator.HintType.STARTSWITH, controlledBranch));
-                                    addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), endsWith, Coordinator.HintType.ENDSWITH, controlledBranch));
-                                }
-                                break;
-                            case STARTSWITH:
-                                if (originalString == null || !originalString.startsWith(cur.getStringCompared())) {
-                                    String startsWith = cur.getStringCompared() + originalString;
-                                    //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.STARTSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
-                                    addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), startsWith, Coordinator.HintType.STARTSWITH, controlledBranch));
-                                }
-                                break;
-                            case ENDWITH:
-                                if(originalString != null && !originalString.endsWith(cur.getStringCompared())){
-                                    String endsWith = originalString + cur.getStringCompared();
-                                    stringEqualsArgs.add(new Coordinator.StringHint(cur.getStringCompared(), endsWith, Coordinator.HintType.ENDSWITH, controlledBranch));
-                                }
-                            break;
-                            case ISEMPTY:
-                                if (originalString != null && !originalString.isEmpty()) {
-                                    addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint("", Coordinator.HintType.ISEMPTY, controlledBranch));
-                                }
-                                break;
+                        //Look and see if it will even be feasible to do this: if we want a startsWith, but the first chars are concrete
+                        //or if we want an equals and there are non-symbolic chars, we should bail!
+                        if (cur.getComparisionType() == StringUtils.StringComparisonType.EQUALS) {
+                            if (v.getNumConcreteCharsInSymbolic() > 0) {
+                                ignore = true;
+                            }
+                        } else if (cur.getComparisionType() == StringUtils.StringComparisonType.STARTSWITH) {
+                            if (v.getNumConcreteCharsInSymbolic() > 0) {
+                                ignore = true;
+                            }
                         }
+                        if (v.getGeneratorFunctionNames().size() > 1) {
+                            ignore = true;
+                        }
+                        if (!ignore) {
+                            //TODO debug when we're looking at the setCode branch
+                            //if (controlledBranch != null && controlledBranch.source != null && controlledBranch.source.contains("isLineTerminator")) {
+                            //    System.out.println("...");
+                            //}
+                            switch (cur.getComparisionType()) {
+                                case EQUALS:
+                                    if (originalString != null && !originalString.equals(cur.getStringCompared())) {
+                                        //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.EQUALS, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
+                                        addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), Coordinator.HintType.EQUALS, controlledBranch));
+                                    }
+                                    break;
+                                case INDEXOF:
+                                    //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.INDEXOF, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
+                                    //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.STARTSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
+                                    //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.ENDSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
 
+                                    //String startsWith = cur.getStringCompared();
+                                    //if(originalString != null){
+                                    //    startsWith = cur.getStringCompared() + originalString;
+                                    //}
+                                    //if (originalString != null && !originalString.contains(cur.getStringCompared())) {
+                                    //    String startsWith = cur.getStringCompared() + originalString;
+                                    //    //addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), Coordinator.HintType.INDEXOF, controlledBranch));
+                                    //    addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), startsWith, Coordinator.HintType.STARTSWITH, controlledBranch));
+                                    //    //addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), endsWith, Coordinator.HintType.ENDSWITH, controlledBranch));
+                                    //}
+                                    break;
+                                case STARTSWITH:
+                                    if (originalString == null || !originalString.startsWith(cur.getStringCompared())) {
+                                        String startsWith = cur.getStringCompared() + originalString;
+                                        //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.STARTSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
+                                        addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), startsWith, Coordinator.HintType.STARTSWITH, controlledBranch));
+                                    }
+                                    break;
+                                case ENDWITH:
+                                    //if(originalString != null && !originalString.endsWith(cur.getStringCompared())){
+                                    //    String endsWith = originalString + cur.getStringCompared();
+                                    //    stringEqualsArgs.add(new Coordinator.StringHint(cur.getStringCompared(), endsWith, Coordinator.HintType.ENDSWITH, controlledBranch));
+                                    //}
+                                    break;
+                                case ISEMPTY:
+                                    if (originalString != null && !originalString.isEmpty()) {
+                                        addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint("", Coordinator.HintType.ISEMPTY, controlledBranch));
+                                    }
+                                    break;
+                            }
+
+                        }
                     }
-
                 }
             }
             for (int i = 0 ; i < op.getArity() ; i++)
