@@ -119,10 +119,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private long[] countOfSavedInputsBySeedSource = new long[SeedSource.values().length];
     private long[] countOfFailingInputsBySeedSource = new long[SeedSource.values().length];
 
-    private int[] countOfInputsSavedWithMutationCountsRanges = new int[]{0, 1, 5, 10, 20, 100, 1000, 10000};
+    private static int[] countOfInputsSavedWithMutationCountsRanges = new int[]{0, 1, 5, 10, 20, 100, 1000, 10000};
 
     private long[] countOfInputsSavedWithMutationCounts = new long[countOfInputsSavedWithMutationCountsRanges.length];
-    private long[] countOfInputsCreatedWithMutationCounts = new long[countOfInputsSavedWithMutationCountsRanges.length];
+    private static long[] countOfInputsCreatedWithMutationCounts = new long[countOfInputsSavedWithMutationCountsRanges.length];
 
     /**
      * If the central says that there is a recommendation for something, it will jump up to the front here
@@ -321,7 +321,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     // ---------- LOGGING / STATS OUTPUT ------------
 
     /** Whether to print log statements to stderr (debug option; manually edit). */
-    private final boolean verbose = true;
+    private static final boolean verbose = true;
 
 
     /** A system console, which is non-null only if STDOUT is a console. */
@@ -340,7 +340,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private static final long STATS_REFRESH_TIME_PERIOD = 300;
 
     /** The file where log data is written. */
-    private File logFile;
+    private static File logFile;
 
     /** The file where saved plot data is written. */
     private File statsFile;
@@ -610,7 +610,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     }
 
-    private void appendLineToFile(File file, String line) throws GuidanceException {
+    private static void appendLineToFile(File file, String line) throws GuidanceException {
         try (PrintWriter out = new PrintWriter(new FileWriter(file, true))) {
             out.println(line);
         } catch (IOException e) {
@@ -619,7 +619,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     }
 
-    private void infoLog(String str, Object... args) {
+    private static void infoLog(String str, Object... args) {
         if (verbose) {
             String line = String.format(str, args);
             if (logFile != null) {
@@ -999,10 +999,20 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                             for(Coordinator.TargetedHint h : targetedHints){
                                 h.apply(parent);
                             }
-                            parent.addExtraRandomStringEqualsHints(random);
+
+                            parent.allInstructions = new LinkedList(parent.instructionsToTryInChildren);
+                            parent.allStringEqualsHints = new LinkedList();
+                            for(Object each : parent.stringEqualsHintsToTryInChildren){
+                                Coordinator.StringHint[] sh = (Coordinator.StringHint[]) each;
+                                parent.allStringEqualsHints.add(sh.clone());
+                            }
+                            //parent.addExtraRandomStringEqualsHints(random);
                             parent.bonusMutations = 0;
                             parent.updateHintsRemainingCount();
                             parent.bonusMutations = Math.min(parent.hintsRemaining, getTargetChildrenForParent(parent));
+                            //Save the input again, since we now have hints for it!
+                            writeInputToFile(parent, new File(savedInputsDirectory, String.format("id_%06d", parent.id)));
+
                         }
 
                     } catch (IOException e) {
@@ -1416,28 +1426,33 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     }
 
     private void writeCurrentInputToFile(File saveFile) throws IOException {
+        writeInputToFile(currentInput, saveFile);
+    }
+
+    private void writeInputToFile(Input input, File saveFile) throws IOException{
         try (ObjectOutputStream out = new ObjectOutputStream(new BufferedOutputStream(new FileOutputStream(saveFile)))) {
-            out.writeInt(currentInput.size());
-            if(currentInput instanceof Iterable){
-                for (Integer b : ((Iterable<Integer>) currentInput)) {
+            out.writeInt(input.size());
+            if(input instanceof Iterable){
+                for (Integer b : ((Iterable<Integer>) input)) {
                     assert (b >= 0 && b < 256);
                     out.write(b);
                 }
-            }else if(currentInput instanceof LinearInput){
-                ShortIterator iter = ((LinearInput) currentInput).shortIterator();
+            }else if(input instanceof LinearInput){
+                ShortIterator iter = ((LinearInput) input).shortIterator();
                 while(iter.hasNext()){
                     short b = iter.next();
                     assert (b >= 0 && b < 256);
                     out.write((int) b);
                 }
             }
-            out.writeObject(currentInput.instructions);
-            out.writeObject(currentInput.stringEqualsHints);
-            out.writeObject(currentInput.appliedTargetedHints);
+            out.writeObject(input.instructions);
+            out.writeObject(input.stringEqualsHints);
+            out.writeObject(input.appliedTargetedHints);
 
-            out.writeInt(currentInput.offsetOfLastHintAdded);
+            out.writeInt(input.offsetOfLastHintAdded);
+            out.writeObject(input.allInstructions);
+            out.writeObject(input.allStringEqualsHints);
         }
-
     }
 
     private void saveInputToDisk(File f, Object o) throws IOException {
@@ -1753,6 +1768,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
          */
         public LinkedList<Coordinator.StringHint[]> stringEqualsHintsToTryInChildren;
         public LinkedList<int[]> instructionsToTryInChildren;
+
+        public LinkedList<Coordinator.StringHint[]> allStringEqualsHints;
+        public LinkedList<int[]> allInstructions;
         public boolean alreadyReceivedHints;
 
         /**
@@ -1930,7 +1948,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         }
     }
 
-    private long mutatedBytes = 0L;
+    private static long mutatedBytes = 0L;
 
     public enum SeedSource {
         RANDOM,
@@ -1948,7 +1966,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         AFTER_HINTS_BUT_NEAR, APPLY_Z3_HINT_EXTENDED, APPLY_SINGLE_CHAR_HINT;
     }
 
-    public class LinearInput extends Input<Integer> {
+    public static class LinearInput extends Input<Integer> {
 
         /** A list of byte values (0-255) ordered by their index. */
         protected ShortArrayList values;
@@ -2127,7 +2145,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             int numMutations = sampleGeometric(random, MEAN_MUTATION_COUNT);
             newInput.numMutations = numMutations;
             newInput.desc += ",havoc:"+numMutations;
-            int n = ((LinearInput) currentInput).numMutations;
+            int n = this.numMutations;
             for (int i = 0; i < countOfInputsSavedWithMutationCountsRanges.length; i++) {
                 if (n <= countOfInputsSavedWithMutationCountsRanges[i]) {
                     countOfInputsCreatedWithMutationCounts[i]++;
@@ -2660,7 +2678,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         }
     }
 
-    public class SeedInput extends LinearInput {
+    public static class SeedInput extends LinearInput {
         final Optional<File> seedFile;
         InputStream in;
 
@@ -2680,6 +2698,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 LinkedList<Coordinator.StringHint[]> stringHints = (LinkedList<Coordinator.StringHint[]>) ois.readObject();
                 LinkedList<Coordinator.TargetedHint> targetedHints = (LinkedList<Coordinator.TargetedHint>) ois.readObject();
                 this.offsetOfLastHintAdded = ois.readInt();
+                this.instructionsToTryInChildren = (LinkedList<int[]>) ois.readObject();
+                this.stringEqualsHintsToTryInChildren = (LinkedList<Coordinator.StringHint[]>) ois.readObject();
                 this.stringEqualsHints = stringHints;
                 this.instructions = instructions;
                 this.appliedTargetedHints = targetedHints;

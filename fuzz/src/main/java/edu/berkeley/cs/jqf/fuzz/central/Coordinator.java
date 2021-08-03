@@ -1015,7 +1015,7 @@ public class Coordinator implements Runnable {
         public int priority;
         String hint;
         HintType type;
-        transient Branch targetBranch;
+        Branch targetBranch;
         transient String comparedString;
 
         public StringHint(){
@@ -1043,6 +1043,10 @@ public class Coordinator implements Runnable {
 
         public String getHint() {
             return this.hint;
+        }
+
+        public Branch getTargetBranch() {
+            return targetBranch;
         }
 
         @Override

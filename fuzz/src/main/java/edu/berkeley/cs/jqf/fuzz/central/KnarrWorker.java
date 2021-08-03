@@ -120,23 +120,17 @@ public class KnarrWorker extends Worker {
                         }
                         //Look and see if it will even be feasible to do this: if we want a startsWith, but the first chars are concrete
                         //or if we want an equals and there are non-symbolic chars, we should bail!
-                        if (cur.getComparisionType() == StringUtils.StringComparisonType.EQUALS) {
-                            if (v.getNumConcreteCharsInSymbolic() > 0) {
-                                ignore = true;
-                            }
-                        } else if (cur.getComparisionType() == StringUtils.StringComparisonType.STARTSWITH) {
-                            if (v.getNumConcreteCharsInSymbolic() > 0) {
-                                ignore = true;
-                            }
+                        if (v.getNumConcreteCharsInSymbolic() > 0) {
+                            ignore = true;
                         }
                         if (v.getGeneratorFunctionNames().size() > 1) {
                             ignore = true;
                         }
                         if (!ignore) {
                             //TODO debug when we're looking at the setCode branch
-                            //if (controlledBranch != null && controlledBranch.source != null && controlledBranch.source.contains("isLineTerminator")) {
-                            //    System.out.println("...");
-                            //}
+                            if (controlledBranch != null && controlledBranch.source != null && controlledBranch.source.contains("isLineTerminator")) {
+                                System.out.println("...");
+                            }
                             switch (cur.getComparisionType()) {
                                 case EQUALS:
                                     if (originalString != null && !originalString.equals(cur.getStringCompared())) {
@@ -149,19 +143,18 @@ public class KnarrWorker extends Worker {
                                     //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.STARTSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
                                     //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.ENDSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
 
+                                    //TODO the indexOf comparison might have had nothing to do with this comparison, and should be ignored in that case.
+                                    //We don't have a way to skip those, though. So, for now, this stays off (otherwise closure's parser brings in tons of INDEXOF /*, // */ hints that are garbage
                                     //String startsWith = cur.getStringCompared();
-                                    //if(originalString != null){
-                                    //    startsWith = cur.getStringCompared() + originalString;
-                                    //}
                                     //if (originalString != null && !originalString.contains(cur.getStringCompared())) {
-                                    //    String startsWith = cur.getStringCompared() + originalString;
+                                    //    startsWith = cur.getStringCompared() + originalString;
                                     //    //addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), Coordinator.HintType.INDEXOF, controlledBranch));
                                     //    addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), startsWith, Coordinator.HintType.STARTSWITH, controlledBranch));
                                     //    //addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), endsWith, Coordinator.HintType.ENDSWITH, controlledBranch));
                                     //}
                                     break;
                                 case STARTSWITH:
-                                    if (originalString == null || !originalString.startsWith(cur.getStringCompared())) {
+                                    if (originalString != null && !originalString.startsWith(cur.getStringCompared())) {
                                         String startsWith = cur.getStringCompared() + originalString;
                                         //stringEqualsArgs.add(new Coordinator.StringHint(cur.getSecond(), Coordinator.HintType.STARTSWITH, KnarrGuidance.extractChoices(e))); //TODO disable when not debugging, this is slow
                                         addStringHintIfNew(stringEqualsArgs, new Coordinator.StringHint(cur.getStringCompared(), startsWith, Coordinator.HintType.STARTSWITH, controlledBranch));
