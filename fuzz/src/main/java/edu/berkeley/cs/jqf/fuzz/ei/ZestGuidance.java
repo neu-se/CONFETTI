@@ -1002,7 +1002,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                             parent.addExtraRandomStringEqualsHints(random);
                             parent.bonusMutations = 0;
                             parent.updateHintsRemainingCount();
-                            parent.bonusMutations = Math.min(parent.hintsRemaining, getTargetChildrenForParent(parent)
+                            parent.bonusMutations = Math.min(parent.hintsRemaining, getTargetChildrenForParent(parent));
                         }
 
                     } catch (IOException e) {
