@@ -36,7 +36,7 @@ public class Coordinator implements Runnable {
     private ConcurrentHashMap<Input, ConstraintRepresentation> constraints = new ConcurrentHashMap<>();
     private KnarrWorker knarr;
     private Z3Worker z3;
-    private ZestWorker zest;
+    ZestWorker zest;
 
     protected Boolean z3Started = false;
 
@@ -621,7 +621,7 @@ public class Coordinator implements Runnable {
     private long lastGC = 0;
     private void garbageCollect(){
         long start = System.currentTimeMillis();
-        if(start - lastGC > 10000) {
+        if(start - lastGC > 10000 && zest != null) {
             lastGC = start;
             synchronized (this) {
                 IntHashSet inputsToKeep = new IntHashSet();

@@ -84,6 +84,9 @@ public class Central {
                         }
 
                         zest = new ZestWorker(ois, oos, c);
+                        if(knarr != null && c.zest == null){
+                            c.zest = zest;
+                        }
                         new Thread(zest, "CONFETTI Zest Worker").start();
                     }
                     break;
