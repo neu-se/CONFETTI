@@ -40,6 +40,7 @@ import edu.berkeley.cs.jqf.instrument.tracing.events.CallEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.ReturnEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEventVisitor;
+import edu.columbia.cs.psl.phosphor.struct.IntSinglyLinkedList;
 import org.apache.bcel.classfile.JavaClass;
 import org.eclipse.collections.api.iterator.IntIterator;
 import org.eclipse.collections.api.iterator.ShortIterator;
@@ -262,6 +263,13 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     /** Index of currentInput in the savedInputs -- valid after seeds are processed (OK if this is inaccurate). */
     private int currentParentInputIdx = 0;
 
+    /**
+     * We might jump around in terms of "currentParentInputIdx", but still need to know where we were last in a
+     * cycle working thorugh the list. This variable will always track the last input idx that was selected by zest, not
+     * any that was from CONFETTI. NB an input might be selected for fuzzing multiple times within the same fuzzing cycle.
+     */
+    private int currentParentInputCounter = 0;
+
 
     /** Keep track of whether or not we have exhausted hints for the current input **/
     private boolean currentParentExhaustedHints = false;
@@ -321,7 +329,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     // ---------- LOGGING / STATS OUTPUT ------------
 
     /** Whether to print log statements to stderr (debug option; manually edit). */
-    private static final boolean verbose = true;
+    private static final boolean verbose = false;
 
 
     /** A system console, which is non-null only if STDOUT is a console. */
@@ -585,6 +593,18 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             file.delete();
         }
 
+        statsWriter = new PrintWriter(new FileWriter(this.statsFile));
+        Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+            @Override
+            public void run() {
+                if(statsWriter != null){
+                    statsWriter.flush();
+                    statsWriter.close();
+                }
+            }
+        }));
+
+
         /*
                         countOfInputsSavedByMutation[MutationType.APPLY_SINGLE_HINT.ordinal()],
                 countOfInputsCreatedByMutation[MutationType.APPLY_SINGLE_HINT.ordinal()],
@@ -597,7 +617,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 countOfSavedInputsBySeedSource[SeedSource.Z3.ordinal()],
                 countOfSavedInputsBySeedSource[SeedSource.RANDOM.ordinal()]);
          */
-        appendLineToFile(statsFile, "# unix_time, cycles_done, cur_path, paths_total, pending_total, " +
+        appendToStatsFile("# unix_time, cycles_done, cur_path, paths_total, pending_total, " +
                 "pending_favs, map_size, unique_crashes, unique_hangs, max_depth, execs_per_sec, total_inputs, " +
                 "mutated_bytes, valid_inputs, invalid_inputs, valid_cov, z3, " +
                 "inputsSavedBy_StrHint, inputsCreatedBy_StrHint, inputsSavedBy_CharHint, inputsCreatedBy_CharHint, " +
@@ -608,6 +628,12 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 "inputsSavedWithoutHintsOrZ3");
 
 
+    }
+
+    static PrintWriter statsWriter;
+
+    private static void appendToStatsFile(String line){
+        statsWriter.println(line);
     }
 
     private static void appendLineToFile(File file, String line) throws GuidanceException {
@@ -682,7 +708,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 savedInputs.size(), 0, 0, nonZeroFraction, uniqueFailures.size(), 0, 0, intervalExecsPerSecDouble,
                 numTrials, mutatedBytes/numTrials, numValid, numTrials-numValid, nonZeroValidFraction,
                 (z3ThreadStartedInputNum != -1) && (numTrials >= z3ThreadStartedInputNum) ? 1: 0);
-        appendLineToFile(statsFile, plotData);
+        appendToStatsFile(plotData);
     }
 
     // Call only if console exists
@@ -808,7 +834,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 countOfSavedInputsBySeedSource[SeedSource.HINTS.ordinal()],
                 countOfSavedInputsBySeedSource[SeedSource.Z3.ordinal()],
                 countOfSavedInputsBySeedSource[SeedSource.RANDOM.ordinal()]);
-        appendLineToFile(statsFile, plotData);
+        appendToStatsFile(plotData);
 
     }
 
@@ -858,7 +884,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         int totalCoverageCount = totalCoverage.getNonZeroCount();
         infoLog("Total %d branches covered", totalCoverageCount);
         if (sumResponsibilities != totalCoverageCount) {
-            throw new AssertionError("Responsibilty mistmatch: " + sumResponsibilities + " vs " + totalCoverageCount);
+            //throw new AssertionError("Responsibilty mistmatch: " + sumResponsibilities + " vs " + totalCoverageCount);
+            System.err.println("Responsibility mismatch: " + sumResponsibilities + " vs " + totalCoverageCount);
         }
 
         // Refresh ecToInputLoc so that subsequent splices are only from favored inputs
@@ -962,8 +989,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     }
                     else if (priorityQueueConfig.usePriorityQueue)
                         currentParentInputIdx = savedInputsAccess.remove().id;
-                    else
-                        currentParentInputIdx = (currentParentInputIdx + 1) % savedInputs.size();
+                    else {
+                        currentParentInputCounter = (currentParentInputCounter + 1) % savedInputs.size();
+                        currentParentInputIdx = currentParentInputCounter;
+                    }
 
                     // Count cycles
                     // if (currentParentInputIdx == 0) {
@@ -1385,14 +1414,18 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             int currentNonZeroCoverage = runCoverage.getNonZeroCount();
             int currentInputSize = currentInput.size();
             IntHashSet covered = new IntHashSet();
-            covered.addAll(runCoverage.getCovered());
+            IntSinglyLinkedList.IntListIterator coveredIter = runCoverage.getCovered().iterator();
+            while(coveredIter.hasNext()){
+                int v = coveredIter.nextInt();
+                covered.add(v);
+            }
 
             // Search for a candidate to steal responsibility from
             candidate_search:
             for (Input candidate : savedInputs) {
                 IntHashSet responsibilities = candidate.responsibilities;
 
-                // Candidates with no responsibility are not interesting
+                // Candidates with no responsibility are not interestig
                 if (responsibilities.isEmpty()) {
                     continue candidate_search;
                 }

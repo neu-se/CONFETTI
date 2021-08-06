@@ -1,7 +1,7 @@
 package edu.berkeley.cs.jqf.fuzz.util;
 
 
-import org.eclipse.collections.api.iterator.MutableIntIterator;
+import edu.columbia.cs.psl.phosphor.struct.IntSinglyLinkedList;
 import org.eclipse.collections.api.list.primitive.IntList;
 import org.eclipse.collections.api.map.primitive.MutableIntIntMap;
 import org.eclipse.collections.api.tuple.primitive.IntIntPair;
@@ -12,6 +12,7 @@ import java.util.Iterator;
 
 public class ReliableCounter {
 
+    public IntSinglyLinkedList nonZeroKeys = new IntSinglyLinkedList();
     public MutableIntIntMap map = new IntIntHashMap(1 << 8);
     public synchronized int size() {
         return map.size();
@@ -19,43 +20,31 @@ public class ReliableCounter {
 
     public synchronized void clear() {
         map.clear();
+        nonZeroKeys.clear();
     }
 
     public synchronized int increment(int key) {
-        int existing = map.get(key);
-        int newVal = existing + 1;
-        map.put(key, newVal);
+        int newVal = map.addToValue(key, 1);
+        if(newVal == 1){
+            nonZeroKeys.addFirst(key);
+        }
         return newVal;
     }
 
     public synchronized int increment(int key, int delta) {
-        int existing = map.get(key);
-        int newVal = existing + delta;
-        map.put(key, newVal);
+        int newVal = map.addToValue(key, delta);
+        if(newVal == delta){
+            nonZeroKeys.addFirst(key);
+        }
         return newVal;
     }
 
     public synchronized int getNonZeroSize() {
-        int size = 0;
-        MutableIntIterator iter = map.values().intIterator();
-        while(iter.hasNext()){
-            if(iter.next() != 0){
-                size++;
-            }
-        }
-        return size;
+        return nonZeroKeys.size();
     }
 
-    public synchronized IntList getNonZeroKeys() {
-        IntArrayList indices = new IntArrayList(map.size()/2);
-        Iterator<IntIntPair> iter = map.keyValuesView().iterator();
-        while(iter.hasNext()){
-            IntIntPair each = iter.next();
-            if(each.getTwo() != 0){
-                indices.add(each.getOne());
-            }
-        }
-        return indices;
+    public synchronized IntSinglyLinkedList getNonZeroKeys() {
+        return nonZeroKeys;
     }
 
     public synchronized IntList getNonZeroValues() {
@@ -77,5 +66,14 @@ public class ReliableCounter {
 
     public void copyFrom(ReliableCounter counter) {
         this.map = new IntIntHashMap(counter.map);
+        this.nonZeroKeys = new IntSinglyLinkedList();
+        Iterator<IntIntPair> iter = map.keyValuesView().iterator();
+        while (iter.hasNext()) {
+            IntIntPair each = iter.next();
+            if (each.getTwo() != 0) {
+                this.nonZeroKeys.addFirst(each.getOne());
+            }
+        }
+
     }
 }

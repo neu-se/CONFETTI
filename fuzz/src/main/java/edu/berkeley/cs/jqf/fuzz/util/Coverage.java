@@ -32,7 +32,9 @@ import edu.berkeley.cs.jqf.instrument.tracing.events.BranchEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.CallEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEvent;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEventVisitor;
+import edu.columbia.cs.psl.phosphor.struct.IntSinglyLinkedList;
 import janala.instrument.CoverageListener;
+import org.eclipse.collections.api.IntIterable;
 import org.eclipse.collections.api.iterator.IntIterator;
 import org.eclipse.collections.api.list.primitive.IntList;
 import org.eclipse.collections.api.tuple.primitive.IntIntPair;
@@ -123,7 +125,7 @@ public class Coverage implements TraceEventVisitor, CoverageListener {
      *
      * @return a collection of keys that are covered
      */
-    public IntList getCovered() {
+    public IntSinglyLinkedList getCovered() {
         return counter.getNonZeroKeys();
     }
 
@@ -131,10 +133,10 @@ public class Coverage implements TraceEventVisitor, CoverageListener {
     public IntList computeNewCoverage(Coverage baseline) {
         IntArrayList newCoverage = new IntArrayList();
 
-        IntList baseNonZero = this.counter.getNonZeroKeys();
-        IntIterator iter = baseNonZero.intIterator();
+        IntSinglyLinkedList baseNonZero = this.counter.getNonZeroKeys();
+        IntSinglyLinkedList.IntListIterator iter = baseNonZero.iterator();
         while (iter.hasNext()) {
-            int idx = iter.next();
+            int idx = iter.nextInt();
             if (baseline.counter.get(idx) == 0) {
                 newCoverage.add(idx);
             }
@@ -222,6 +224,9 @@ public class Coverage implements TraceEventVisitor, CoverageListener {
                     if(after != before){
                         this.counter.map.put(coverageEntry.getOne(), after);
                         changed = true;
+                    }
+                    if(before == 0){
+                        this.counter.nonZeroKeys.addFirst(coverageEntry.getOne());
                     }
                 }
             }
