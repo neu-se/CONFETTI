@@ -16,6 +16,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>com.github.dpaukov</groupId>
+            <artifactId>combinatoricslib3</artifactId>
+            <version>3.3.0</version>
+        </dependency>
+        <dependency>
             <groupId>org.apache.bcel</groupId>
             <artifactId>bcel</artifactId>
             <version>6.2</version>
@@ -86,22 +91,22 @@
                     </archive>
                 </configuration>
             </plugin>
-            <plugin> 
-		        <groupId>org.apache.maven.plugins</groupId> 
+            <plugin>
+		        <groupId>org.apache.maven.plugins</groupId>
 		        <artifactId>maven-dependency-plugin</artifactId>
-		        <executions> 
-		                <execution> 
-		                        <id>copy-dependencies</id> 
+		        <executions>
+		                <execution>
+		                        <id>copy-dependencies</id>
 		                        <phase>package</phase>
-		                        <goals> 
-		                                <goal>copy-dependencies</goal> 
-		                        </goals> 
-		                        <configuration> 
-		                                <includeScope>runtime</includeScope> 
+		                        <goals>
+		                                <goal>copy-dependencies</goal>
+		                        </goals>
+		                        <configuration>
+		                                <includeScope>runtime</includeScope>
 		                                <excludeArtifactIds>jqf-instrument,asm</excludeArtifactIds>
-		                        </configuration> 
-		                </execution> 
-		        </executions> 
+		                        </configuration>
+		                </execution>
+		        </executions>
 			</plugin>
         </plugins>
     </build>
