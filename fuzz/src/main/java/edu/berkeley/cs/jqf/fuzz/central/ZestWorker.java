@@ -78,8 +78,16 @@ class ZestWorker extends Worker {
                     //                Coverage cov = (Coverage) ois.readObject();
 
                     // Save input
-                    if(id > inputs.size() && inputs.get(id) != null){
-                        throw new IllegalArgumentException();
+                    if(id > inputs.size()){
+                        //If we are running with pre-hinted seeds, we won't have the inputs on this side, but that is probably OK
+                        //just grow the arraylist to fit this... old behavior was to die in this case
+                        while(inputs.size() < id){
+                            inputs.add(null);
+                            fuzzing.add(null);
+                            recommendations.add(new TreeSet<>());
+                            stringEqualsHints.add(null);
+                        }
+                        //throw new IllegalArgumentException();
                     }
                     inputs.add(id, inputRequests);
                     fuzzing.add(id, 0);
@@ -118,6 +126,13 @@ class ZestWorker extends Worker {
                     TreeSet<Integer> recs;
                     synchronized (recommendations) {
                         recs = recommendations.get(selected);
+                    }
+
+                    if(inputs.get(selected) == null){
+                        oos.writeObject(null);
+                        oos.writeObject(null);
+                        oos.writeObject(null);
+                        break;
                     }
 
                     HashMap<Integer, HashSet<Coordinator.StringHint>> inputStrings = stringEqualsHints.get(selected);
