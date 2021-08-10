@@ -1,8 +1,9 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
+import edu.gmu.swe.knarr.internal.ConstraintSerializer;
 import za.ac.sun.cs.green.expr.Expression;
 
-import java.io.*;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -30,23 +31,36 @@ public class KnarrClient extends Central {
         }
     }
 
+    private ConstraintSerializer constraintSerializer = new ConstraintSerializer();
     public void sendConstraints(LinkedList<Expression> constraints, HashMap<String, String> generatedStrings) throws IOException {
         long t1 = System.currentTimeMillis();
         System.out.println("Constraint size: " + constraints.size());
-        oos.writeInt(constraints.size());
+        //oos.writeInt(constraints.size());
         long t2 = System.currentTimeMillis();
+        constraintSerializer.writeInt(constraints.size());
         for(Expression expr : constraints){
-            oos.writeObject(expr);
+            constraintSerializer.write(expr);
         }
+        int size = constraintSerializer.size();
+        byte[] bytes = constraintSerializer.bytes();
+        long doneSerializing = System.currentTimeMillis();
+        System.out.println("Serialized to " + size + " bytes in " + (doneSerializing - t2));
+
+        oos.writeInt(size);
+        oos.write(bytes, 0 , size);
+
+        long writtenConstriants = System.currentTimeMillis();
+        System.out.println("Wrote constraints in " + (writtenConstriants - doneSerializing));
         oos.writeInt(generatedStrings.size());
         for(Map.Entry<String, String> entry : generatedStrings.entrySet()){
             oos.writeUTF(entry.getKey());
             oos.writeUTF(entry.getValue());
         }
         long t2a = System.currentTimeMillis();
-        System.out.println("Write constraints to socket: " + (t2a-t2));
+        System.out.println("Write strings to socket: " + (t2a-writtenConstriants));
         oos.reset();
         oos.flush();
+        constraintSerializer.clear();
     }
 
 }

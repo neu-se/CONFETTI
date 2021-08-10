@@ -1,5 +1,6 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
+import edu.gmu.swe.knarr.internal.ConstraintDeserializer;
 import edu.gmu.swe.knarr.runtime.StringUtils;
 import za.ac.sun.cs.green.expr.*;
 
@@ -18,6 +19,8 @@ public class KnarrWorker extends Worker {
         this.c = c;
     }
 
+    ConstraintDeserializer deserializer = new ConstraintDeserializer();
+    byte[] buffer = new byte[1024*10];
     public LinkedList<Expression> getConstraints(Coordinator.Input input) throws IOException {
         // Send input to Knarr process
         oos.writeObject(input.bytes);
@@ -31,15 +34,26 @@ public class KnarrWorker extends Worker {
 
         // Get constraints from Knarr process
         LinkedList<Expression> constraints;
-        try {
-            int nConstraints = ois.readInt();
-            constraints = new LinkedList<Expression>();
-            for(int i = 0; i < nConstraints; i++){
-                constraints.add((Expression) ois.readObject());
-            }
-        } catch (ClassNotFoundException e) {
-            throw new Error(e);
+        int nBytes = ois.readInt();
+        if(nBytes > buffer.length){
+            buffer = new byte[nBytes];
         }
+        int offset = 0;
+        while(offset < nBytes){
+            int read = ois.read(buffer, offset, nBytes - offset);
+            if(read == -1){
+                if(offset == 0){
+                    throw new IOException("Read -1 bytes");
+                }
+                break;
+            }
+            offset += read;
+        }
+        long start = System.currentTimeMillis();
+        System.out.println("Read " + nBytes + " of constraints");
+        constraints = deserializer.fromBytes(buffer, 0, nBytes);
+        long end =System.currentTimeMillis();
+        System.out.println("Deserialized in " + (end - start));
 
         return constraints;
     }
