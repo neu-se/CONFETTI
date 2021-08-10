@@ -16,6 +16,13 @@
 
     <dependencies>
         <dependency>
+            <groupId>com.microsoft</groupId>
+            <artifactId>z3</artifactId>
+            <version>4.8.12</version>
+            <scope>system</scope>
+            <systemPath>${basedir}/lib/com.microsoft.z3.jar</systemPath>
+        </dependency>
+        <dependency>
             <groupId>org.apache.bcel</groupId>
             <artifactId>bcel</artifactId>
             <version>6.2</version>
