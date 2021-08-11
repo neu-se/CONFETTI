@@ -1,12 +1,12 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
-import edu.gmu.swe.knarr.internal.ConstraintDeserializer;
+import edu.gmu.swe.knarr.ConstraintDeserializer;
 import edu.gmu.swe.knarr.runtime.StringUtils;
+import org.apache.commons.io.input.TeeInputStream;
+import org.apache.commons.io.output.NullOutputStream;
 import za.ac.sun.cs.green.expr.*;
 
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.util.*;
 
 public class KnarrWorker extends Worker {
@@ -14,56 +14,165 @@ public class KnarrWorker extends Worker {
     private ArrayList<Integer> fuzzing = new ArrayList<>();
     private Coordinator c;
 
+    private LinkedList<KnarrResponse> responses = new LinkedList<>();
+    private ConstraintReceivingThread constraintReceivingThread;
+    private KnarrSendingThread knarrSendingThread;
+
+    public static int numOutstandingKnarrInputs = 0;
+    private LinkedList<Coordinator.Input> pendingInputsNotSentYet = new LinkedList<>();
+
+    private Coordinator.Config config;
+
+    public void setConfig(Coordinator.Config config) {
+        this.config = config;
+        if (this.config.useConstraints && this.config.constraintsPath != null) {
+            File dir = new File(this.config.constraintsPath);
+            dir.mkdirs();
+        }
+    }
+
+    /**
+     * Encapsulates what we get back from Knarr to describe an input
+     */
+    static class KnarrResponse {
+        public int inputID;
+        public LinkedList<Expression> constraints;
+        public HashMap<String, String> generatedStrings;
+        public String fileName;
+
+        public KnarrResponse(int inputID, LinkedList<Expression> constraints, HashMap<String, String> generatedStrings) {
+            this.inputID = inputID;
+            this.constraints = constraints;
+            this.generatedStrings = generatedStrings;
+        }
+    }
     public KnarrWorker(ObjectInputStream ois, ObjectOutputStream oos, Coordinator c) {
         super(ois, oos);
+        constraintReceivingThread = new ConstraintReceivingThread();
+        constraintReceivingThread.setDaemon(true);
+        constraintReceivingThread.start();
+        knarrSendingThread = new KnarrSendingThread();
+        knarrSendingThread.setDaemon(true);
+        knarrSendingThread.start();
+
         this.c = c;
     }
 
     ConstraintDeserializer deserializer = new ConstraintDeserializer();
-    byte[] buffer = new byte[1024*10];
-    public LinkedList<Expression> getConstraints(Coordinator.Input input) throws IOException {
-        // Send input to Knarr process
-        oos.writeObject(input.bytes);
-        oos.writeObject(input.hints);
-        oos.writeObject(input.instructions);
-        oos.writeObject(input.targetedHints);
-        oos.writeInt(input.id);
-        oos.writeBoolean(input.isValid);
-        oos.reset();
-        oos.flush();
+    static final int KNARR_MAX_QUEUE_SIZE = 5; // maximum number of outstanding requests to knarr permitted
+    // this controls how much might get queued in that process. once we overflow this, we queue in this process.
 
-        // Get constraints from Knarr process
-        LinkedList<Expression> constraints;
-        int nBytes = ois.readInt();
-        if(nBytes > buffer.length){
-            buffer = new byte[nBytes];
+    public synchronized void sendInputToKnarr(Coordinator.Input input) throws IOException {
+        synchronized (this.pendingInputsNotSentYet){
+            this.pendingInputsNotSentYet.add(input);
+            this.pendingInputsNotSentYet.notifyAll();
         }
-        int offset = 0;
-        while(offset < nBytes){
-            int read = ois.read(buffer, offset, nBytes - offset);
-            if(read == -1){
-                if(offset == 0){
-                    throw new IOException("Read -1 bytes");
-                }
-                break;
-            }
-            offset += read;
-        }
-        long start = System.currentTimeMillis();
-        System.out.println("Read " + nBytes + " of constraints");
-        constraints = deserializer.fromBytes(buffer, 0, nBytes);
-        long end =System.currentTimeMillis();
-        System.out.println("Deserialized in " + (end - start));
-
-        return constraints;
     }
-    public HashMap<String, String> getGeneratedStrings() throws IOException {
-        int nEntries = ois.readInt();
-        HashMap<String, String> ret = new HashMap<>();
-        for(int i = 0; i < nEntries; i++){
-            ret.put(ois.readUTF(), ois.readUTF());
+
+    public KnarrResponse getConstraintsFromKnarr(){
+        synchronized (responses){
+            while(responses.isEmpty()){
+                try {
+                    responses.wait();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+            return responses.pop();
         }
-        return ret;
+    }
+    class KnarrSendingThread extends Thread {
+        public KnarrSendingThread(){
+            super("Knarr-ConstraintSender");
+        }
+
+        @Override
+        public void run() {
+            while(true){
+                try{
+                    synchronized (pendingInputsNotSentYet) {
+                        while (pendingInputsNotSentYet.isEmpty()) {
+                            pendingInputsNotSentYet.wait();
+                        }
+                    }
+                    synchronized (responses) {
+                        while (numOutstandingKnarrInputs >= KNARR_MAX_QUEUE_SIZE) {
+                            responses.wait();
+                        }
+                    }
+                    if (!pendingInputsNotSentYet.isEmpty()) {
+                        Coordinator.Input input = pendingInputsNotSentYet.pop();
+                        oos.writeObject(input.bytes);
+                        oos.writeObject(input.hints);
+                        oos.writeObject(input.instructions);
+                        oos.writeObject(input.targetedHints);
+                        oos.writeInt(input.id);
+                        oos.writeBoolean(input.isValid);
+                        oos.reset();
+                        oos.flush();
+                        synchronized (responses) {
+                            numOutstandingKnarrInputs++;
+                        }
+                    }
+                } catch (Throwable tr) {
+                    tr.printStackTrace();
+                }
+            }
+        }
+    }
+    class ConstraintReceivingThread extends Thread {
+        public ConstraintReceivingThread(){
+            super("Knarr-ConstraintReceiver");
+        }
+
+        @Override
+        public void run() {
+            while (true) {
+                try {
+                    // Get constraints from Knarr process
+                    LinkedList<Expression> constraints;
+
+                    int inputID = ois.readInt();
+                    OutputStream fileOrNull = NullOutputStream.NULL_OUTPUT_STREAM;
+                    String filename = null;
+                    if (config.useConstraints && config.constraintsPath != null) {
+                        filename = config.constraintsPath + "/input_" + inputID;
+                        try {
+                            fileOrNull = new BufferedOutputStream(new FileOutputStream(filename));
+                        } catch (FileNotFoundException e) {
+                            e.printStackTrace();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    }
+
+                    TeeInputStream tis = new TeeInputStream(ois, fileOrNull);
+                    constraints = deserializer.fromInputStream(tis);
+                    fileOrNull.close();
+                    int nEntries = ois.readInt();
+                    HashMap<String, String> generatedStrings = new HashMap<>();
+                    for (int i = 0; i < nEntries; i++) {
+                        generatedStrings.put(ois.readUTF(), ois.readUTF());
+                    }
+
+                    KnarrResponse response = new KnarrResponse(inputID, constraints, generatedStrings);
+
+                    response.fileName = filename;
+                    synchronized (responses) {
+                        responses.add(response);
+                        numOutstandingKnarrInputs--;
+                        responses.notifyAll();
+                    }
+                }catch(EOFException ex){
+                    ex.printStackTrace();
+                    System.exit(-1);
+                    return;
+                } catch (Throwable tr) {
+                    tr.printStackTrace();
+                    System.exit(-1);
+                }
+            }
+        }
     }
 
     static long constraintsProcessed;

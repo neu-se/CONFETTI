@@ -1,6 +1,7 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
 import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
+import edu.gmu.swe.knarr.ConstraintDeserializer;
 import edu.gmu.swe.knarr.runtime.Coverage;
 import org.eclipse.collections.api.iterator.IntIterator;
 import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
@@ -47,6 +48,8 @@ public class Coordinator implements Runnable {
     }
 
 
+    protected LinkedList<Input> inputsToSendToKnarr = new LinkedList<>(); //Only used if knarr is not initialized
+
     protected final void foundInput(int id, byte[] bytes, boolean valid, LinkedList<StringHint[]> hints, LinkedList<int[]> instructions, LinkedList<TargetedHint> targetedHints, Double coveragePercentage, long numExecutions, Integer score, LinkedList<int[]> requestOffsets) {
         Input in = new Input();
         in.bytes = bytes;
@@ -58,12 +61,28 @@ public class Coordinator implements Runnable {
         in.numExecutions = numExecutions;
         in.score = score;
         in.isValid = valid;
-        in.requestsForRandom = requestOffsets;
+        in.requestsForRandom = new int[requestOffsets.size() * 2];
+        int i = 0;
+        for (int[] ar : requestOffsets) {
+            in.requestsForRandom[i] = ar[0];
+            i++;
+            in.requestsForRandom[i] = ar[1];
+            i++;
+        }
         in.targetedHints = new HashSet<>(targetedHints);
+
+        if(this.knarr != null){
+            try {
+                knarr.sendInputToKnarr(in);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        } else{
+            this.inputsToSendToKnarr.add(in);
+        }
 
         synchronized (this.inputs){
             this.inputs.put(in.id, in);
-            this.inputs.notifyAll();
         }
     }
 
@@ -236,211 +255,156 @@ public class Coordinator implements Runnable {
     public void run() {
         HashMap<Integer, TreeSet<Integer>> lastRecommendation = new HashMap<>();
 
+        synchronized (this.inputs) {
+            while (this.knarr == null) {
+                try {
+                    this.inputs.wait();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
         while (true) {
-            IntObjectHashMap<Input> inputsToWorkOn = new IntObjectHashMap<>();
-
-            synchronized (this.inputs) {
-                if (this.knarr != null) {
-                    // if for some reason z3 isn't started, start it here
-                    if (config.usez3Hints && !z3Started) {
-                        if (this.z3 == null)
-                            this.z3 = new Z3Worker(zest, knarr, config.filter);
-                        startZ3Thread();
-                    }
-                    for (Input i : this.inputs.values()) {
-                        if (i != null && i.isNew) {
-                            inputsToWorkOn.put(i.id, i);
-                        }
-                    }
+            if (this.knarr != null) {
+                //TODO can this be safely deleted now?
+                // if for some reason z3 isn't started, start it here
+                if (config.usez3Hints && !z3Started) {
+                    if (this.z3 == null)
+                        this.z3 = new Z3Worker(zest, knarr, config.filter);
+                    startZ3Thread();
                 }
-                if (inputsToWorkOn.isEmpty()) {
-                    try {
-                        this.inputs.wait();
-                        continue;
-                    } catch (InterruptedException e) {
-                        continue;
-                    }
-                }
-
-                //DEBUG/profiling:
-                int numNewInputs = 0;
-                int numNewValidInputs = 0;
-                int numNewInvalidInputs = 0;
-                for(Input i : inputs.values()){
-                    if(i != null && i.isNew){
-                        numNewInputs++;
-                        if(i.isValid){
-                            numNewValidInputs++;
-                        }else{
-                            numNewInvalidInputs++;
-                        }
-                    }
-                }
-                System.out.println("Knarr queue size: " + numNewInputs + " ("+numNewValidInputs+" valid, " + numNewInvalidInputs+" invalid)");
             }
 
             int n = 0;
-            for (Input input : inputsToWorkOn.values()) {
-                if (input != null && input.isNew) {
-                    if (n++ > 10)
-                        break;
-                    // Get constraints from Knarr
-                    LinkedList<Expression> cs;
-                    HashMap<String, String> generatedStrings;
-                    try {
-                        cs = knarr.getConstraints(input);
-                        generatedStrings = knarr.getGeneratedStrings();
-                        input.generatedStrings = generatedStrings;
-                    } catch (IOException e) {
-                        throw new Error(e);
-                    }
-
-                    if (config.useConstraints) {
-                        // Keep track of constraints, either filenames or in memory
-                        if (config.constraintsPath != null) {
-
-                            String filename = config.constraintsPath + "/input_" + input.id;
-                            //Saving of object in a file
-                            FileOutputStream file = null;
-                            try {
-                                file = new FileOutputStream(filename);
-                                ObjectOutputStream out = null;
-                                out = new ObjectOutputStream(new BufferedOutputStream(file));
-
-                                // Serialize the constraints
-                                out.writeObject(cs);
-
-                                out.flush();
-                                out.close();
-                                file.close();
-                            } catch (FileNotFoundException e) {
-                                e.printStackTrace();
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                            }
-
-                            this.constraints.put(input, new ConstraintRepresentation(filename));
-                        } else {
-                            this.constraints.put(input, new ConstraintRepresentation(cs));
-                        }
-
-
-                    }
-                    //z3.addConstraints(input.id, cs);
-                    // Compute coverage and branches from constraints
-                    LinkedList<Branch> bs = new LinkedList<>();
-                    HashMap<Integer, HashSet<StringHint>> eqs = new HashMap<>();
-
-                    input.targetedHints = new HashSet<>();
-                    long start = System.currentTimeMillis();
-                    KnarrWorker.constraintsProcessed = 0;
-                    for (Expression e : cs)
-                        process(bs, eqs, e, config.filter, input);
-                    long end = System.currentTimeMillis();
-
-                    //update_score(bs, input);
-                    // Adjust string hints
-                     if (!eqs.isEmpty()) {
-                        switch (config.hinting) {
-                            case NONE:
-                                break;
-                            case GLOBAL:
-                                for (HashSet<StringHint> s : eqs.values())
-                                    globalStringEqualsHints.addAll(s);
-                                break;
-                            case PER_INPUT:
-                                HashSet<StringHint> ss = new HashSet<>();
-                                for (HashSet<StringHint> s : eqs.values())
-                                    ss.addAll(s);
-                                perInputStringEqualsHints.put(input, ss);
-                                break;
-                            case PER_BYTE:
-                                synchronized (perByteStringEqualsHints){
-                                    perByteStringEqualsHints.put(input.id, eqs);
-                                }
-                                break;
-                            default:
-                                throw new Error("Not implemented");
-                        }
-
-                    }
-
-                    // Check if any previous branches were explored
-
-                    input.isNew = false;
-                }
+            // Get constraints from Knarr
+            LinkedList<Expression> cs;
+            HashMap<String, String> generatedStrings;
+            KnarrWorker.KnarrResponse response = knarr.getConstraintsFromKnarr();
+            Input input = null;
+            synchronized (inputs) {
+                input = inputs.get(response.inputID);
             }
+
+            cs = response.constraints;
+            generatedStrings = response.generatedStrings;
+            input.generatedStrings = generatedStrings;
+
+            if (config.useConstraints) {
+                // Keep track of constraints, either filenames or in memory
+                if (config.constraintsPath != null) {
+                    this.constraints.put(input, new ConstraintRepresentation(response.fileName));
+                } else {
+                    this.constraints.put(input, new ConstraintRepresentation(cs));
+                }
+
+
+            }
+            //z3.addConstraints(input.id, cs);
+            // Compute coverage and branches from constraints
+            LinkedList<Branch> bs = new LinkedList<>();
+            HashMap<Integer, HashSet<StringHint>> eqs = new HashMap<>();
+
+            input.targetedHints = new HashSet<>();
+            long start = System.currentTimeMillis();
+            KnarrWorker.constraintsProcessed = 0;
+            for (Expression e : cs)
+                process(bs, eqs, e, config.filter, input);
+            long end = System.currentTimeMillis();
+
+            //update_score(bs, input);
+            // Adjust string hints
+            if (!eqs.isEmpty()) {
+                switch (config.hinting) {
+                    case NONE:
+                        break;
+                    case GLOBAL:
+                        for (HashSet<StringHint> s : eqs.values())
+                            globalStringEqualsHints.addAll(s);
+                        break;
+                    case PER_INPUT:
+                        HashSet<StringHint> ss = new HashSet<>();
+                        for (HashSet<StringHint> s : eqs.values())
+                            ss.addAll(s);
+                        perInputStringEqualsHints.put(input, ss);
+                        break;
+                    case PER_BYTE:
+                        synchronized (perByteStringEqualsHints) {
+                            perByteStringEqualsHints.put(input.id, eqs);
+                        }
+                        break;
+                    default:
+                        throw new Error("Not implemented");
+                }
+
+            }
+
+            // Check if any previous branches were explored
+
+            input.isNew = false;
 
             // Make recommendations
             HashSet<Branch> branchesInThisRecSet = new HashSet<>();
-            synchronized (this.inputs) {
-                for (Input input : inputs.values()) {
-                    if(input == null || input.isNew || input.recommendedBefore){
-                        continue;
-                    }
-                    input.recommendedBefore = true;
-                    TreeSet<Integer> recommendation = new TreeSet<>();
-                    for (Branch branch : branches.values()) {
-                        //We need to recommend things even if they weren't used in a branch that wasn't explored -
-                        //otherwise we miss out big on ability to find new paths!!!!
-                        //if (branch.falseExplored.isEmpty() || branch.trueExplored.isEmpty() || branch.keep) {
-                            if (branch.control.containsKey(input.id)) {
-                                branchesInThisRecSet.add(branch);
-                                for (int i : branch.control.get(input.id)){
-                                    recommendation.add(i);
-                                }
-                            }
-                        //}
-                    }
-
-                    if (!lastRecommendation.containsKey(input.id) || !recommendation.equals(lastRecommendation.get(input.id))) {
-                        //System.out.println(input.id + " -> " + recommendation);
-                        lastRecommendation.put(input.id, recommendation);
-                    }
-
-                    HashMap<Integer, HashSet<StringHint>> stringEqualsHints = new HashMap<>();
-                    switch (config.hinting) {
-                        case NONE:
-                            break;
-                        case GLOBAL:
-                            recommendation.clear();
-                            HashSet<StringHint> globals = new HashSet<>(globalStringEqualsHints);
-                            for (int i = 0 ; i < input.bytes.length ; i++) {
-                                stringEqualsHints.put(i, globals);
-                            }
-                            break;
-                        case PER_INPUT:
-                            recommendation.clear();
-                            HashSet<StringHint> perInput = new HashSet<>(perInputStringEqualsHints.getOrDefault(input, new HashSet<>()));
-                            for (int i = 0 ; i < input.bytes.length ; i++) {
-                                stringEqualsHints.put(i, perInput);
-                            }
-                            break;
-                        case PER_BYTE:
-                            synchronized (perByteStringEqualsHints){
-                                HashMap<Integer,HashSet<StringHint>> hints = perByteStringEqualsHints.get(input.id);
-                                if(hints == null)
-                                    hints = new HashMap<>();
-                                stringEqualsHints.putAll(hints);
-                            }
-                            break;
-                        default:
-                            throw new Error("Not implemented");
-                    }
-
-                    //DEBUGGING STRATEGY: print out hints for each rec
-                    //if(recommendation.size() > 0){
-                    //    System.out.println("Recommendation for " + input.id);
-                    //    for(Integer i : recommendation){
-                    //        System.out.println("\t"+i+": " + stringEqualsHints.get(i));
-                    //    }
-                    //}
-                    //input.allHints = stringEqualsHints;
-                    //input.recs = new LinkedList<>(recommendation);
-                    if(recommendation.size() > 0){
-                        zest.recommend(input.id, recommendation, stringEqualsHints);
+            input.recommendedBefore = true;
+            TreeSet<Integer> recommendation = new TreeSet<>();
+            for (Branch branch : branches.values()) {
+                //We need to recommend things even if they weren't used in a branch that wasn't explored -
+                //otherwise we miss out big on ability to find new paths!!!!
+                //if (branch.falseExplored.isEmpty() || branch.trueExplored.isEmpty() || branch.keep) {
+                if (branch.control.containsKey(input.id)) {
+                    branchesInThisRecSet.add(branch);
+                    for (int i : branch.control.get(input.id)) {
+                        recommendation.add(i);
                     }
                 }
+                //}
+            }
+
+            if (!lastRecommendation.containsKey(input.id) || !recommendation.equals(lastRecommendation.get(input.id))) {
+                //System.out.println(input.id + " -> " + recommendation);
+                lastRecommendation.put(input.id, recommendation);
+            }
+
+            HashMap<Integer, HashSet<StringHint>> stringEqualsHints = new HashMap<>();
+            switch (config.hinting) {
+                case NONE:
+                    break;
+                case GLOBAL:
+                    recommendation.clear();
+                    HashSet<StringHint> globals = new HashSet<>(globalStringEqualsHints);
+                    for (int i = 0; i < input.bytes.length; i++) {
+                        stringEqualsHints.put(i, globals);
+                    }
+                    break;
+                case PER_INPUT:
+                    recommendation.clear();
+                    HashSet<StringHint> perInput = new HashSet<>(perInputStringEqualsHints.getOrDefault(input, new HashSet<>()));
+                    for (int i = 0; i < input.bytes.length; i++) {
+                        stringEqualsHints.put(i, perInput);
+                    }
+                    break;
+                case PER_BYTE:
+                    synchronized (perByteStringEqualsHints) {
+                        HashMap<Integer, HashSet<StringHint>> hints = perByteStringEqualsHints.get(input.id);
+                        if (hints == null)
+                            hints = new HashMap<>();
+                        stringEqualsHints.putAll(hints);
+                    }
+                    break;
+                default:
+                    throw new Error("Not implemented");
+            }
+
+            //DEBUGGING STRATEGY: print out hints for each rec
+            //if(recommendation.size() > 0){
+            //    System.out.println("Recommendation for " + input.id);
+            //    for(Integer i : recommendation){
+            //        System.out.println("\t"+i+": " + stringEqualsHints.get(i));
+            //    }
+            //}
+            //input.allHints = stringEqualsHints;
+            //input.recs = new LinkedList<>(recommendation);
+            if (recommendation.size() > 0) {
+                zest.recommend(input.id, recommendation, stringEqualsHints);
             }
             //for(Branch b : branchesInThisRecSet){
             //    if(b.suggestedHints.size() > 0)
@@ -455,6 +419,7 @@ public class Coordinator implements Runnable {
     public final void setKnarrWorker(KnarrWorker knarr, ZestWorker zest) {
         synchronized (this.inputs) {
             this.knarr = knarr;
+            this.knarr.setConfig(config);
             this.zest = zest;
 
             if (config.usez3Hints) {
@@ -462,6 +427,13 @@ public class Coordinator implements Runnable {
                 startZ3Thread();
             }
             this.inputs.notifyAll();
+            while(!this.inputsToSendToKnarr.isEmpty()){
+                try {
+                    this.knarr.sendInputToKnarr(this.inputsToSendToKnarr.pop());
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
         }
 
     }
@@ -676,7 +648,7 @@ public class Coordinator implements Runnable {
         public boolean recommendedBefore;
         //We store the set of random requests from the original input - if we use Z3
         // to generate some hints, we'll need to position them using this
-        public LinkedList<int[]> requestsForRandom;
+        public int[] requestsForRandom;
         //We might decide we are done with an input and don't want to explore it anymore, but will hang onto it for book keeping
         public boolean evicted;
         public HashSet<TargetedHint> targetedHints;
@@ -687,6 +659,8 @@ public class Coordinator implements Runnable {
         public Integer score = 0;
         public boolean isValid;
         public LinkedList<StringHintGroup> hintGroups;
+
+        public transient boolean isSentToKnarr;
 
         //Map from generator functions to the concrete values that we made.
         public transient HashMap<String, String> generatedStrings;
@@ -725,9 +699,9 @@ public class Coordinator implements Runnable {
             if (requestsForRandom == null) {
                 out.writeInt(-1);
             } else {
-                out.writeInt(requestsForRandom.size());
-                for (int[] req : requestsForRandom) {
-                    out.writeObject(req);
+                out.writeInt(requestsForRandom.length);
+                for(int i = 0; i < requestsForRandom.length; i++){
+                    out.writeInt(requestsForRandom[i]);
                 }
             }
             out.writeBoolean(isNew);
@@ -773,9 +747,13 @@ public class Coordinator implements Runnable {
             }
             this.recommendedBefore = in.readBoolean();
             int nReqs = in.readInt();
-            this.requestsForRandom = new LinkedList<>();
-            for(int i = 0; i < nReqs; i++){
-                this.requestsForRandom.add((int[]) in.readObject());
+            if (nReqs == -1) {
+                this.requestsForRandom = null;
+            } else {
+                this.requestsForRandom = new int[nReqs];
+                for (int i = 0; i < nReqs; i++) {
+                    this.requestsForRandom[i] = in.readInt();
+                }
             }
             this.isNew = in.readBoolean();
             this.coveragePercentage = in.readDouble();
@@ -1387,17 +1365,17 @@ public class Coordinator implements Runnable {
         }
 
 
+        private ConstraintDeserializer deserializer = new ConstraintDeserializer();
         private LinkedList<Expression> readConstraintsFromFile() {
 
-            FileInputStream fileIn = null;
+            InputStream fileIn = null;
             try {
-                fileIn = new FileInputStream(this.exprFile);
-                ObjectInputStream objectIn = new ObjectInputStream(new BufferedInputStream(fileIn));
-                Object constraints = objectIn.readObject();
-                fileIn.close();
-                return (LinkedList<Expression>) constraints;
-
-            } catch (IOException | ClassNotFoundException e) {
+                System.out.println("Reading constraints from " + this.exprFile);
+                fileIn = new BufferedInputStream(new FileInputStream(this.exprFile));
+                return deserializer.fromInputStream(fileIn);
+            } catch (IOException e) {
+                e.printStackTrace();
+                System.exit(-1); //TODO debugging
                 return new LinkedList<Expression>();
             }
         }

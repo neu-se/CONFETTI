@@ -150,7 +150,10 @@ public class ZestClient extends Central {
         }
     }
 
-    private static final int MIN_TIME_BEFORE_BUGGING_CENTRAL = 1000; //msec..
+    /* If things are going very fast, it's likely that there will be some GC pauses on central,
+    reducing how often we reach out reduces the likelihood of us eating the big cheese, too,
+    while that pause happens.*/
+    private static final int MIN_TIME_BEFORE_BUGGING_CENTRAL = 2000; //msec..
     private long lastCentralGetInputCall;
     private long lastCentralGetRecsCall;
     public Coordinator.Input getInput() {

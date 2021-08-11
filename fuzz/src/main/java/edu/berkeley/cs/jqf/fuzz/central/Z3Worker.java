@@ -403,9 +403,9 @@ public class Z3Worker {
         Coordinator.StringHintGroup hintGroup = new Coordinator.StringHintGroup();
 
         int[] lastReqGroup = null;
-        for(int[] requestGroup : originalInput.requestsForRandom){
-            int offset = requestGroup[0];
-            int length = requestGroup[1];
+        for(int i = 0; i < originalInput.requestsForRandom.length; i+=2){
+            int offset = originalInput.requestsForRandom[i];
+            int length = originalInput.requestsForRandom[i+1];
             if(hints.get(offset) != null){
                 Set<String> strings = hints.remove(offset);
                 if(strings.size() > 1){
@@ -413,7 +413,7 @@ public class Z3Worker {
                     System.err.println("Jon didn't think this was possible, we should figure out what's happening");
                 }
                 String hint = strings.iterator().next();
-                hintGroup.instructions.add(requestGroup);
+                hintGroup.instructions.add(new int[]{offset, length});
                 hintGroup.hints.add(new Coordinator.StringHint(hint, Coordinator.HintType.Z3, null));
             }
         }

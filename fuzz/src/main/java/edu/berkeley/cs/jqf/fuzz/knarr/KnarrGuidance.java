@@ -222,7 +222,7 @@ public class KnarrGuidance implements Guidance {
 
         // Send constraints
         try {
-            this.client.sendConstraints(constraints, generatedStrings);
+            this.client.sendConstraints(this.input.id, constraints, new HashMap<>(generatedStrings));
         } catch (IOException e) {
             throw new Error(e);
         }

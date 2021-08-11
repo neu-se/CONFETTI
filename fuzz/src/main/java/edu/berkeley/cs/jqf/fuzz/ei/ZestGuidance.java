@@ -1033,12 +1033,20 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
                 if (numChildrenGeneratedForCurrentParentInput >= targetNumChildren) {
                     // Select the next saved input to fuzz
-                    if(FETCH_HINTS_MID_CYCLE && recommendedInputsToFuzz.isEmpty() && central != null && triggerClient != null){
+                    if (FETCH_HINTS_MID_CYCLE && recommendedInputsToFuzz.isEmpty() && central != null && triggerClient != null) {
                         recommendedInputsToFuzz = triggerClient.getRecommendations();
                     }
-                    if(FETCH_HINTS_MID_CYCLE && !recommendedInputsToFuzz.isEmpty()){
-                        currentParentInputIdx = recommendedInputsToFuzz.pop();
-                        getRecommendations = true;
+                    if (FETCH_HINTS_MID_CYCLE && !recommendedInputsToFuzz.isEmpty()) {
+                        if (recommendedInputsToFuzz.peek() > currentParentInputCounter + 1) {
+                            currentParentInputCounter++;
+                            currentParentInputIdx = currentParentInputCounter;
+                        } else {
+                            currentParentInputIdx = recommendedInputsToFuzz.pop();
+                            if(currentParentInputIdx == currentParentInputCounter + 1){
+                                currentParentInputCounter++;
+                            }
+                            getRecommendations = true;
+                        }
                     }
                     else if (priorityQueueConfig.usePriorityQueue)
                         currentParentInputIdx = savedInputsAccess.remove().id;
@@ -1062,6 +1070,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     newParent = true;
                 }
                 Input parent = savedInputs.get(currentParentInputIdx);
+                parent.lastFuzzedCycle = cyclesCompleted;
 
                 if(newParent){
                     parent.numHintsAppliedThisRound = 0;
@@ -1992,6 +2001,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         protected int offsetOfLastHintAdded = -1;
 
         public MutationType mutationType;
+        public int lastFuzzedCycle = -1;
 
         /**
          * Create an empty input.
