@@ -186,7 +186,7 @@ public class KnarrWorker extends Worker {
             }
         } else if (e instanceof Operation) {
             Operation op = (Operation) e;
-            if(controlledBranch != null) {
+            if(true || controlledBranch != null) { //TODO why only when controlledBranch is not null?
                 if (e.metadata != null && op.getOperator() == Operation.Operator.EQ || op.getOperator() == Operation.Operator.NE) {
                     //is this a char comparison?
                     Z3Worker.StringEqualsVisitor leftOfEQ = new Z3Worker.StringEqualsVisitor(op.getOperand(0));
@@ -212,9 +212,12 @@ public class KnarrWorker extends Worker {
                         //skip, this is just some check to make sure it's not a null char, we'll never generate that anyway...
                     } else if (symbolicString != null) {
                         Z3Worker.GeneratedCharacter symbChar = symbolicString.getSymbolicChars().getFirst();
-                        //TODO this seems like more noise than utility
-                        //input.targetedHints.add(new Coordinator.CharHint(comparedChar, input.generatedStrings.get(symbolicString.getFunctionName()), Coordinator.HintType.EQUALS,
-                        //        symbChar.bytePositionInRandomGen, symbChar.numBytesInRandomGen, symbChar.index));
+                        String actualStr = input.generatedStrings.get(symbolicString.getFunctionName());
+                        if(actualStr != null && actualStr.charAt(symbChar.index) != comparedChar && !controlledBranch.isSolved && controlledBranch.tryCharHint()) {
+                            //check to make sure there is no other targeted hint for this branch for this input
+                            input.targetedHints.add(new Coordinator.CharHint(comparedChar, input.generatedStrings.get(symbolicString.getFunctionName()), Coordinator.HintType.EQUALS,
+                                    symbChar.bytePositionInRandomGen, symbChar.numBytesInRandomGen, symbChar.index, controlledBranch));
+                        }
                     }
                 }
                 if (e.metadata != null && e.metadata instanceof HashSet) {
@@ -249,11 +252,9 @@ public class KnarrWorker extends Worker {
                         if (v.getGeneratorFunctionNames().size() > 1) {
                             ignore = true;
                         }
+                        if(controlledBranch.isInFilter && controlledBranch.isSolved)
+                            ignore = true;
                         if (!ignore) {
-                            //TODO debug when we're looking at the setCode branch
-                            if (controlledBranch != null && controlledBranch.source != null && controlledBranch.source.contains("isLineTerminator")) {
-                                System.out.println("...");
-                            }
                             switch (cur.getComparisionType()) {
                                 case EQUALS:
                                     if (originalString != null && !originalString.equals(cur.getStringCompared())) {
@@ -311,7 +312,7 @@ public class KnarrWorker extends Worker {
     private static void addStringHintIfNew(HashSet<Coordinator.StringHint> hints, Coordinator.StringHint hintToAdd){
         int c = hintToAdd.targetBranch.addSuggestion(hintToAdd);
         hintToAdd.priority = c;
-            hints.add(hintToAdd);
+        hints.add(hintToAdd);
     }
 
     @Override

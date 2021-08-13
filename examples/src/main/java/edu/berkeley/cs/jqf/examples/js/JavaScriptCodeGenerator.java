@@ -1,12 +1,11 @@
 package edu.berkeley.cs.jqf.examples.js;
 
-import java.util.*;
-import java.util.function.*;
-
 import com.pholser.junit.quickcheck.generator.GenerationStatus;
 import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
 import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
+import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
+import edu.berkeley.cs.jqf.fuzz.guidance.RecordingInputStream;
 import edu.berkeley.cs.jqf.fuzz.guidance.StringEqualsHintingInputStream;
 import edu.berkeley.cs.jqf.fuzz.knarr.KnarrGuidance;
 import edu.columbia.cs.psl.phosphor.runtime.Taint;
@@ -17,6 +16,12 @@ import edu.gmu.swe.knarr.runtime.Symbolicator;
 import za.ac.sun.cs.green.expr.Expression;
 import za.ac.sun.cs.green.expr.FunctionCall;
 import za.ac.sun.cs.green.expr.IntConstant;
+
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.function.Function;
 
 /* Generates random strings that are syntactically valid JavaScript */
 public class JavaScriptCodeGenerator extends Generator<String> {
@@ -41,6 +46,9 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     // - JSB
     private static final String[] IDENTIFIERS = {"z_0", "m_1", "r_2", "e_3", "r_4", "l_5", "h_6", "p_7", "y_8", "r_9", "t_10", "u_11", "s_12", "x_13", "l_14", "t_15", "s_16", "m_17", "r_18", "j_19", "i_20", "q_21", "g_22", "n_23", "y_24", "t_25", "o_26", "q_27", "v_28", "d_29", "b_30", "n_31", "j_32", "g_33", "w_34", "t_35", "z_36", "t_37", "h_38", "r_39", "l_40", "b_41", "d_42", "r_43", "o_44", "i_45", "a_46", "p_47", "x_48", "b_49", "t_50", "h_51", "z_52", "q_53", "b_54", "a_55", "h_56", "m_57", "w_58", "o_59", "y_60", "w_61", "p_62", "d_63", "v_64", "d_65", "u_66", "i_67", "w_68", "x_69", "i_70", "a_71", "t_72", "b_73", "b_74", "d_75", "s_76", "a_77", "w_78", "q_79", "x_80", "n_81", "u_82", "g_83", "s_84", "l_85", "n_86", "j_87", "q_88", "x_89", "q_90", "r_91", "c_92", "m_93", "e_94", "t_95", "i_96", "l_97", "g_98", "x_99", };
 
+    private static final ArrayList<String> globalStringHints = new ArrayList<>();
+    private static final HashSet<String> globalStringHintsSet = new HashSet<>();
+
 
     private static final String[] UNARY_TOKENS = {
             "!", "++", "--", "~",
@@ -53,6 +61,15 @@ public class JavaScriptCodeGenerator extends Generator<String> {
             ">", ">=", ">>", ">>=", ">>>", ">>>=", "^", "^=", "|", "|=", "||",
             "in", "instanceof"
     };
+
+    static {
+        for (String s : IDENTIFIERS)
+            globalStringHintsSet.add(s);
+        for (String s : UNARY_TOKENS)
+            globalStringHintsSet.add(s);
+        for (String s : BINARY_TOKENS)
+            globalStringHintsSet.add(s);
+    }
 
     /** Main entry point. Called once per test case. Returns a random JS program. */
     @Override
@@ -255,10 +272,30 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
         if (hints != null && hints.length > 0 ) {
             token = new String(hints[0].getHint());
+
+            if(globalStringHintsSet.add(token)){
+                globalStringHints.add(token);
+            }
+
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         } else {
-            choice = choice % BINARY_TOKENS.length;
-            token = new String(BINARY_TOKENS[choice]);
+            choice = choice % (BINARY_TOKENS.length + globalStringHints.size());
+            if(RecordingInputStream.lastReadBytes != null && RecordingInputStream.lastReadBytes.length == 4){
+                //Update the recorded value with one that does NOT wrap around
+                ByteBuffer.wrap(RecordingInputStream.lastReadBytes).putInt(choice);
+            }
+            if (choice >= BINARY_TOKENS.length) {
+                int[] pos = new int[]{RecordingInputStream.lastReadOffset - 4, 4};
+                token = new String(globalStringHints.get(choice - BINARY_TOKENS.length));
+                if (ZestGuidance.currentInput != null){
+                    ZestGuidance.currentInput.addSingleHintInPlace(
+                            new Coordinator.StringHint(token, Coordinator.HintType.GLOBAL_DICTIONARY, null), pos);
+                    ZestGuidance.currentInput.numGlobalDictionaryHintsApplied++;
+                }
+
+            }
+            else
+                token = new String(BINARY_TOKENS[choice]);
         }
         token = applyTaints(token, choice);
 
@@ -367,10 +404,27 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
         if (hints != null && hints.length > 0 ) {
             identifier = new String(hints[0].getHint());
+            if(globalStringHintsSet.add(identifier)){
+                globalStringHints.add(identifier);
+            }
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         } else {
-            choice = choice % IDENTIFIERS.length;
-            identifier = new String(IDENTIFIERS[choice]);
+            choice = choice % (IDENTIFIERS.length + globalStringHints.size());
+            if(RecordingInputStream.lastReadBytes != null && RecordingInputStream.lastReadBytes.length == 4){
+                //Update the recorded value with one that does NOT wrap around
+                ByteBuffer.wrap(RecordingInputStream.lastReadBytes).putInt(choice);
+            }
+            if (choice >= IDENTIFIERS.length) {
+                int[] pos = new int[]{RecordingInputStream.lastReadOffset-4,4};
+                identifier = new String(globalStringHints.get(choice - IDENTIFIERS.length));
+                if(ZestGuidance.currentInput != null) {
+                    ZestGuidance.currentInput.addSingleHintInPlace(
+                            new Coordinator.StringHint(identifier, Coordinator.HintType.GLOBAL_DICTIONARY, null), pos);
+                    ZestGuidance.currentInput.numGlobalDictionaryHintsApplied++;
+                }
+            } else {
+                identifier = new String(IDENTIFIERS[choice]);
+            }
         }
 
         identifier = applyTaints(identifier, choice);
@@ -477,10 +531,28 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
         if (hints != null && hints.length > 0 ) {
             token = new String(hints[0].getHint());
+
+            if(globalStringHintsSet.add(token)){
+                globalStringHints.add(token);
+            }
+
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         } else {
-            choice = choice % UNARY_TOKENS.length;
-            token = new String(UNARY_TOKENS[choice]);
+            choice = choice % (UNARY_TOKENS.length + globalStringHints.size());
+            if (RecordingInputStream.lastReadBytes != null && RecordingInputStream.lastReadBytes.length == 4) {
+                //Update the recorded value with one that does NOT wrap around
+                ByteBuffer.wrap(RecordingInputStream.lastReadBytes).putInt(choice);
+            }
+            if (choice >= UNARY_TOKENS.length) {
+                int[] pos = new int[]{RecordingInputStream.lastReadOffset - 4, 4};
+                token = new String(globalStringHints.get(choice - UNARY_TOKENS.length));
+                if (ZestGuidance.currentInput != null) {
+                    ZestGuidance.currentInput.addSingleHintInPlace(
+                            new Coordinator.StringHint(token, Coordinator.HintType.GLOBAL_DICTIONARY, null), pos);
+                    ZestGuidance.currentInput.numGlobalDictionaryHintsApplied++;
+                }
+            } else
+                token = new String(UNARY_TOKENS[choice]);
         }
 
         token = applyTaints(token, choice);

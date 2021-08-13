@@ -130,6 +130,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private long[] countOfInputsSavedWithHintMutationCounts = new long[countOfInputsSavedWithMutationCountsRanges.length];
     private static long[] countOfInputsCreatedWithHintMutationCounts = new long[countOfInputsSavedWithMutationCountsRanges.length];
 
+    public long numInputsSavedWithExtendedDictionaryHints;
+    public long numInputsCreatedWithExtendedDictionaryHints;
+
 
     /**
      * If the central says that there is a recommendation for something, it will jump up to the front here
@@ -286,7 +289,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private Deque<SeedInput> seedInputs = new ArrayDeque<>();
 
     /** Current input that's running -- valid after getInput() and before handleResult(). */
-    private Input<?> currentInput;
+    public static Input<?> currentInput;
 
     /** Index of currentInput in the savedInputs -- valid after seeds are processed (OK if this is inaccurate). */
     private int currentParentInputIdx = 0;
@@ -814,14 +817,15 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 countOfInputsCreatedByMutation[MutationType.APPLY_Z3_HINT.ordinal()]);
         console.printf("    An Z3 hint, extended: %,d/%,d\n", countOfInputsSavedByMutation[MutationType.APPLY_Z3_HINT_EXTENDED.ordinal()],
                 countOfInputsCreatedByMutation[MutationType.APPLY_Z3_HINT_EXTENDED.ordinal()]);
-        console.printf("    Mutating before hints:%,d/%,d\n", countOfInputsSavedByMutation[MutationType.BEFORE_HINTS.ordinal()],
-                countOfInputsCreatedByMutation[MutationType.BEFORE_HINTS.ordinal()]);
-        console.printf("    Mutating after hints: %,d/%,d\n", countOfInputsSavedByMutation[MutationType.AFTER_HINTS.ordinal()],
-                countOfInputsCreatedByMutation[MutationType.AFTER_HINTS.ordinal()]);
-        console.printf("    Mutating near hints:  %,d/%,d\n", countOfInputsSavedByMutation[MutationType.AFTER_HINTS_BUT_NEAR.ordinal()],
-                countOfInputsCreatedByMutation[MutationType.AFTER_HINTS_BUT_NEAR.ordinal()]);
+        //console.printf("    Mutating before hints:%,d/%,d\n", countOfInputsSavedByMutation[MutationType.BEFORE_HINTS.ordinal()],
+                //countOfInputsCreatedByMutation[MutationType.BEFORE_HINTS.ordinal()]);
+        //console.printf("    Mutating after hints: %,d/%,d\n", countOfInputsSavedByMutation[MutationType.AFTER_HINTS.ordinal()],
+                //countOfInputsCreatedByMutation[MutationType.AFTER_HINTS.ordinal()]);
+        //console.printf("    Mutating near hints:  %,d/%,d\n", countOfInputsSavedByMutation[MutationType.AFTER_HINTS_BUT_NEAR.ordinal()],
+        //        countOfInputsCreatedByMutation[MutationType.AFTER_HINTS_BUT_NEAR.ordinal()]);
         console.printf("    Mutating randomly:    %,d/%,d\n", countOfInputsSavedByMutation[MutationType.RANDOM.ordinal()],
                 countOfInputsCreatedByMutation[MutationType.RANDOM.ordinal()]);
+        console.printf("     (Extended dictionary)%,d/%,d\n", numInputsSavedWithExtendedDictionaryHints, numInputsCreatedWithExtendedDictionaryHints);
         console.printf("    Mutating targeted:    %,d/%,d\n", countOfInputsSavedByMutation[MutationType.TARGETED_RANDOM.ordinal()],
                 countOfInputsCreatedByMutation[MutationType.TARGETED_RANDOM.ordinal()]);
         console.printf("Inputs saved by mutation count:\n");
@@ -1211,6 +1215,12 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     @Override
     public void handleResult(Result result, Throwable error) throws GuidanceException {
 
+        if(currentInput.numGlobalDictionaryHintsApplied > 0) {
+            this.numInputsCreatedWithExtendedDictionaryHints++;
+            if(currentInput.seedSource == SeedSource.RANDOM)
+                currentInput.seedSource = SeedSource.HINTS;
+        }
+
         if(!this.startedCentral && this.startCentral) {
             this.startedCentral = true;
 
@@ -1327,9 +1337,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                                     || currentInput.mutationType == MutationType.APPLY_SINGLE_HINT) {
                                 this.countOfInputsSavedWithHintMutationCounts[i]++;
                             } else if (currentInput.mutationType == MutationType.RANDOM
-                                    || currentInput.mutationType == MutationType.AFTER_HINTS_BUT_NEAR
-                                    || currentInput.mutationType == MutationType.AFTER_HINTS
-                                    || currentInput.mutationType == MutationType.BEFORE_HINTS
+                                    //|| currentInput.mutationType == MutationType.AFTER_HINTS_BUT_NEAR
+                                    //|| currentInput.mutationType == MutationType.AFTER_HINTS
+                                    //|| currentInput.mutationType == MutationType.BEFORE_HINTS
                             ) {
                                 this.countOfInputsSavedWithMutationCounts[i]++;
                             }
@@ -1366,6 +1376,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             if (toSave) {
                 if(currentInput.seedSource != null)
                     countOfSavedInputsBySeedSource[currentInput.seedSource.ordinal()]++;
+                if(currentInput.numGlobalDictionaryHintsApplied > 0)
+                    numInputsSavedWithExtendedDictionaryHints++;
 
                 infoLog("Saving new input (at run %d): " +
                                 "input #%d " +
@@ -1395,14 +1407,14 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                         Boolean hintsUsed = StringEqualsHintingInputStream.hintUsedInCurrentInput;
 
                         Double coveragePercentage = totalCoverage.getNonZeroCount() * 100.0 / totalCoverage.size();
-                        if (!(currentInput instanceof SeedInput)) {
+                        //if (!(currentInput instanceof SeedInput)) {
                             //Don't send seed inputs to central, they should already have hints
                             central.sendInput(ris.getRequests(), result, currentInput,
                                     coveragePercentage, numTrials);
 
                             // Send updated coverage
                             central.sendCoverage(totalCoverage);
-                        }
+                        //}
                         StringEqualsHintingInputStream.hintUsedInCurrentInput = false;
                     } catch (IOException e) {
                         throw new Error(e);
@@ -1566,6 +1578,14 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             out.writeInt(input.offsetOfLastHintAdded);
             out.writeObject(input.allInstructions);
             out.writeObject(input.allStringEqualsHints);
+
+            /** Also write out some book-keeping info, maybe useful for analysis later **/
+            out.writeInt(currentParentInputIdx);
+            out.writeObject(input.seedSource);
+            out.writeObject(input.mutationType);
+            out.writeInt(input.numGlobalDictionaryHintsApplied);
+            out.writeInt(input.numHintsAppliedThisRound);
+            out.writeInt(input.numMutations);
         }
     }
 
@@ -1769,6 +1789,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
         public int numHintsAppliedThisRound;
         public int hintsRemaining;
+        public int numGlobalDictionaryHintsApplied;
+        public int numMutations;
 
         /**
          * The file where this input is saved.
@@ -2171,10 +2193,11 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         RANDOM,
         APPLY_SINGLE_HINT,
         APPLY_Z3_HINT,
-        BEFORE_HINTS,
-        AFTER_HINTS,
+        //BEFORE_HINTS,
+        //AFTER_HINTS,
         TARGETED_RANDOM,
-        AFTER_HINTS_BUT_NEAR, APPLY_Z3_HINT_EXTENDED, APPLY_SINGLE_CHAR_HINT,
+        //AFTER_HINTS_BUT_NEAR,
+        APPLY_Z3_HINT_EXTENDED, APPLY_SINGLE_CHAR_HINT,
         APPLY_MULTIPLE_HINTS;
     }
 
@@ -2191,7 +2214,6 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         protected int requested = 0;
 
 
-        public int numMutations;
 
 
         public LinearInput() {
@@ -2386,7 +2408,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 while(hintIterator.hasNext()){
                     newInput.addSingleHintInPlace(hintIterator.next(), insnIterator.next());
                 }
-            } else if (this.allStringEqualsHintsByOffset != null && random.nextBoolean()) {
+            } else if (this.allStringEqualsHintsByOffset != null && random.nextInt(10) == 1) { /* 10% chance of doign multi-hint only mutation */
                 int numMutations = sampleGeometric(random, this.allStringEqualsHintsByOffset.size()/2);
                 if(numMutations == 0){
                     numMutations = 1;
@@ -2429,37 +2451,37 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
                 int mutateOnlyAfter = 0;
                 int mutateOnlyBefore = newInput.values.size();
-                if (this.offsetOfLastHintAdded >= 0) {
-                    if (random.nextBoolean()) {
-                        // Also constrain how far out we look for mutations to stay close to this hint.
-                        mutateOnlyAfter = this.offsetOfLastHintAdded;
-                        mutateOnlyBefore = this.offsetOfLastHintAdded + 40;
-                        if (mutateOnlyAfter >= newInput.values.size()) {
-                            mutateOnlyAfter = 0;
-                        }
-                        if (mutateOnlyBefore >= newInput.values.size()) {
-                            mutateOnlyBefore = newInput.values.size();
-                        }
-                        newInput.desc += ",afterHint:" + this.offsetOfLastHintAdded + ",before:" + mutateOnlyBefore;
-                        newInput.mutationType = MutationType.AFTER_HINTS_BUT_NEAR;
-
-                    } else if (random.nextBoolean()) {
-                        // If adding a hint was useful for this input (that is - it resulted in the input
-                        // being saved), then we will apply half of the mutations *after* that hint,
-                        // rather than before
-                        mutateOnlyAfter = this.offsetOfLastHintAdded;
-                        newInput.desc += ",afterHint:" + this.offsetOfLastHintAdded;
-                        if (mutateOnlyAfter >= newInput.values.size()) {
-                            //Hmm... not sure what to do here.
-                            mutateOnlyAfter = 0;
-                        }
-                        newInput.mutationType = MutationType.AFTER_HINTS;
-                    } else {
-                        newInput.mutationType = MutationType.RANDOM;
-                    }
-                } else {
+                //if (this.offsetOfLastHintAdded >= 0) {
+                //    if (random.nextBoolean()) {
+                //        // Also constrain how far out we look for mutations to stay close to this hint.
+                //        mutateOnlyAfter = this.offsetOfLastHintAdded;
+                //        mutateOnlyBefore = this.offsetOfLastHintAdded + 40;
+                //        if (mutateOnlyAfter >= newInput.values.size()) {
+                //            mutateOnlyAfter = 0;
+                //        }
+                //        if (mutateOnlyBefore >= newInput.values.size()) {
+                //            mutateOnlyBefore = newInput.values.size();
+                //        }
+                //        newInput.desc += ",afterHint:" + this.offsetOfLastHintAdded + ",before:" + mutateOnlyBefore;
+                //        newInput.mutationType = MutationType.AFTER_HINTS_BUT_NEAR;
+                //
+                //    } else if (random.nextBoolean()) {
+                //        // If adding a hint was useful for this input (that is - it resulted in the input
+                //        // being saved), then we will apply half of the mutations *after* that hint,
+                //        // rather than before
+                //        mutateOnlyAfter = this.offsetOfLastHintAdded;
+                //        newInput.desc += ",afterHint:" + this.offsetOfLastHintAdded;
+                //        if (mutateOnlyAfter >= newInput.values.size()) {
+                //            //Hmm... not sure what to do here.
+                //            mutateOnlyAfter = 0;
+                //        }
+                //        newInput.mutationType = MutationType.AFTER_HINTS;
+                //    } else {
+                //        newInput.mutationType = MutationType.RANDOM;
+                //    }
+                //} else {
                     newInput.mutationType = MutationType.RANDOM;
-                }
+                //}
 
                 for (int mutation = 1; mutation <= numMutations; mutation++) {
 

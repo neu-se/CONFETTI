@@ -128,15 +128,14 @@ public class Coordinator implements Runnable {
         if (b.source == null)
             return;
 
-        for (String f : config.filter)
-            if (b.source.contains(f))
-                return;
-
         Branch existing;
         if (!branches.containsKey(b)) {
             synchronized (branches) {
                 existing = branches.get(b);
                 if(existing == null) {
+                    for (String f : config.filter)
+                        if (b.source.contains(f))
+                            b.isInFilter = true;
                     existing = b;
                     existing.inputsTried = new IntHashSet();
                     if(b.isSwitch()){
@@ -210,18 +209,12 @@ public class Coordinator implements Runnable {
         }
     }
 
-    public void process(LinkedList<Coordinator.Branch> bs, HashMap<Integer, HashSet<Coordinator.StringHint>> stringEqualsArgs, Expression e, String[] filter, Coordinator.Input input) {
+    public void process(LinkedList<Coordinator.Branch> bs, HashMap<Integer, HashSet<Coordinator.StringHint>> stringEqualsArgs, Expression e, Coordinator.Input input) {
         Coverage.CoverageData b = (Coverage.CoverageData) e.metadata;
 
 
         if (b == null)
             return;
-
-        for (String f : filter) {
-            if (b.source != null && b.source.contains(f)) {
-                return;
-            }
-        }
 
         Coordinator.Branch bb = new Coordinator.Branch(b);
         bb.controllingBytes = new HashSet<>();
@@ -230,14 +223,15 @@ public class Coordinator implements Runnable {
 
         updateBranchCoverageInformation(bb, input);
         Branch existing = branches.get(bb);
-        KnarrWorker.findControllingBytes(e, bb.controllingBytes, eq, input, existing); //TODO this can block, it's really bad when it does...
+        KnarrWorker.findControllingBytes(e, bb.controllingBytes, eq, input, existing == null ? bb : existing); //TODO this can block, it's really bad when it does...
         bs.add(bb);
 
         IntArrayList bytes = new IntArrayList();
         for(Integer i : bb.controllingBytes)
             bytes.add(i);
         bytes.sortThis();
-        existing.control.put(input.id, bytes.toArray());
+        if(existing != null)
+            existing.control.put(input.id, bytes.toArray());
 
         if (!eq.isEmpty()) {
             for (Integer i : bb.controllingBytes) {
@@ -308,7 +302,7 @@ public class Coordinator implements Runnable {
             long start = System.currentTimeMillis();
             KnarrWorker.constraintsProcessed = 0;
             for (Expression e : cs)
-                process(bs, eqs, e, config.filter, input);
+                process(bs, eqs, e, input);
             long end = System.currentTimeMillis();
 
             //update_score(bs, input);
@@ -491,7 +485,7 @@ public class Coordinator implements Runnable {
                 Branch top = null;
                 Input inputToTarget = null;
                 long num = branches.values().stream()
-                        .filter(b -> b.source != null)
+                        .filter(b -> b.source != null && !b.isInFilter)
                         .filter(b -> !triedTops.contains(b))
                         .filter(b -> isInWhitelist(b.source))
                         .filter(b -> !b.isSolved && !b.isTimedOut)
@@ -887,18 +881,20 @@ public class Coordinator implements Runnable {
         int lengthOfStringInInput;
         int offsetOfCharInString;
         String originalString;
+        Branch targetedBranch;
 
         public CharHint(){
 
         }
 
-        public CharHint(int hint, String originalString, HintType type, int positionOfStringInInput, int lengthOfStringInInput, int offsetOfCharInString) {
+        public CharHint(int hint, String originalString, HintType type, int positionOfStringInInput, int lengthOfStringInInput, int offsetOfCharInString, Branch targetedBranch) {
             this.hint = hint;
             this.type = type;
             this.positionOfStringInInput = positionOfStringInInput;
             this.lengthOfStringInInput = lengthOfStringInInput;
             this.offsetOfCharInString = offsetOfCharInString;
             this.originalString = originalString;
+            this.targetedBranch = targetedBranch;
         }
 
         @Override
@@ -1088,7 +1084,8 @@ public class Coordinator implements Runnable {
         LENGTH,
         ISEMPTY,
         Z3,
-        CHAR
+        CHAR,
+        GLOBAL_DICTIONARY
     }
     public static class Branch implements Externalizable {
         private static final long serialVersionUID = -6900391468143442577L;
@@ -1108,6 +1105,7 @@ public class Coordinator implements Runnable {
         transient boolean[] armsSolved;
         transient boolean isSolved;
         transient boolean isTimedOut;
+        transient boolean isInFilter;
 
 
         public boolean isUsefulInputForNegation(Input input) {
@@ -1256,6 +1254,17 @@ public class Coordinator implements Runnable {
             int rec = suggestedHints.getIfAbsentPut(hint, 0);
             suggestedHints.put(hint, rec + 1);
             return rec + 1;
+        }
+
+        private int branchCharHintsTried = 0;
+        public boolean tryCharHint() {
+            branchCharHintsTried++;
+            int targetHints = 10;
+            if(this.isSwitch())
+                targetHints *= this.armsNotExplored.length;
+            if(branchCharHintsTried <= targetHints)
+                return true;
+            return false;
         }
     }
 

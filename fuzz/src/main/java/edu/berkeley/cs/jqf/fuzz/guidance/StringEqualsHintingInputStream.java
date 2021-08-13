@@ -77,10 +77,12 @@ public class StringEqualsHintingInputStream extends InputStream {
         } else if (offset >= curReqs[0] + curReqs[1] && !reqs.isEmpty()) {
             curReqs = reqs.removeFirst();
             curHints = hints.removeFirst();
+            offset += read;
             return setHints(read);
         } else {
             curReqs = null;
             curHints = null;
+            offset += read;
         }
 
         return read;
@@ -88,7 +90,9 @@ public class StringEqualsHintingInputStream extends InputStream {
 
     @Override
     public int read() throws IOException {
-        return setHints(is.read());
+        int ret = is.read();
+        setHints(ret == -1 ? 0 : 1);
+        return ret;
     }
 
     @Override
