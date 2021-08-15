@@ -28,6 +28,8 @@ import java.util.function.Function;
 public class JavaScriptCodeGenerator extends Generator<String> {
     public JavaScriptCodeGenerator() {
         super(String.class); // Register type of generated object
+        if(!PreMain.RUNTIME_INST)
+            ZestGuidance.extendedDictionarySize = globalStringHints.size();
     }
 
     private GenerationStatus status; // saved state object when generating
@@ -70,7 +72,6 @@ public class JavaScriptCodeGenerator extends Generator<String> {
             globalStringHintsSet.add(s);
         for (String s : BINARY_TOKENS)
             globalStringHintsSet.add(s);
-        ZestGuidance.extendedDictionarySize = globalStringHintsSet.size();
     }
 
     /** Main entry point. Called once per test case. Returns a random JS program. */
@@ -269,6 +270,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     /** Generates a random binary expression (e.g. A op B) */
     private String generateBinaryNode(SourceOfRandomness random) {
         int choice = random.nextInt(0, Integer.MAX_VALUE);
+        boolean useExtendedDict = random.nextBoolean();
 
         String token;
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
@@ -283,7 +285,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
 
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         } else {
-            choice = choice % (BINARY_TOKENS.length + globalStringHints.size());
+            choice = choice % (BINARY_TOKENS.length + (useExtendedDict ? globalStringHints.size() : 0));
             if(RecordingInputStream.lastReadBytes != null && RecordingInputStream.lastReadBytes.length == 4){
                 //Update the recorded value with one that does NOT wrap around
                 ByteBuffer.wrap(RecordingInputStream.lastReadBytes).putInt(choice);
@@ -404,6 +406,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         //}
 
         int choice = random.nextInt(0, Integer.MAX_VALUE);
+        boolean useExtendedDict = random.nextBoolean();
 
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
         if (hints != null && hints.length > 0 ) {
@@ -415,7 +418,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
             }
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         } else {
-            choice = choice % (IDENTIFIERS.length + globalStringHints.size());
+            choice = choice % (IDENTIFIERS.length +  (useExtendedDict ? globalStringHints.size() : 0));
             if(RecordingInputStream.lastReadBytes != null && RecordingInputStream.lastReadBytes.length == 4){
                 //Update the recorded value with one that does NOT wrap around
                 ByteBuffer.wrap(RecordingInputStream.lastReadBytes).putInt(choice);
@@ -532,6 +535,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
 
     private String generateUnaryNode(SourceOfRandomness random) {
         int choice = random.nextInt(0, Integer.MAX_VALUE);
+        boolean useExtendedDict = random.nextBoolean();
 
         String token;
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
@@ -546,7 +550,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
 
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         } else {
-            choice = choice % (UNARY_TOKENS.length + globalStringHints.size());
+            choice = choice % (UNARY_TOKENS.length +  (useExtendedDict ? globalStringHints.size() : 0));
             if (RecordingInputStream.lastReadBytes != null && RecordingInputStream.lastReadBytes.length == 4) {
                 //Update the recorded value with one that does NOT wrap around
                 ByteBuffer.wrap(RecordingInputStream.lastReadBytes).putInt(choice);

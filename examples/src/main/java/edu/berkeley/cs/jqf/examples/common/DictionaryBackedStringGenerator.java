@@ -66,6 +66,9 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
         this.globalDictionarySet = new HashSet<>();
         this.fallback = fallback;
 
+        if(!PreMain.RUNTIME_INST)
+            ZestGuidance.extendedDictionarySize = 0;
+
         // Read dictionary words
         try (InputStream in = ClassLoader.getSystemClassLoader().getResourceAsStream(source)) {
             if (in == null) {
@@ -84,6 +87,7 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
     @Override
     public String generate(SourceOfRandomness random, GenerationStatus status) {
         int choice = random.nextInt(0, Integer.MAX_VALUE);
+        boolean useExtendedDict = random.nextBoolean();
 
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
 
@@ -111,7 +115,7 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
             }
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         } else {
-            choice = choice % (dictionary.size() + globalDictionary.size());
+            choice = choice % (dictionary.size() + (useExtendedDict ? globalDictionary.size() : 0));
             if(RecordingInputStream.lastReadBytes != null && RecordingInputStream.lastReadBytes.length == 4){
                 //Update the recorded value with one that does NOT wrap around
                 ByteBuffer.wrap(RecordingInputStream.lastReadBytes).putInt(choice);
