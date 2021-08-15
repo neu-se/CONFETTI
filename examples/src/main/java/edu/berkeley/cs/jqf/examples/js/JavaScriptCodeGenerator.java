@@ -8,6 +8,7 @@ import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
 import edu.berkeley.cs.jqf.fuzz.guidance.RecordingInputStream;
 import edu.berkeley.cs.jqf.fuzz.guidance.StringEqualsHintingInputStream;
 import edu.berkeley.cs.jqf.fuzz.knarr.KnarrGuidance;
+import edu.columbia.cs.psl.phosphor.PreMain;
 import edu.columbia.cs.psl.phosphor.runtime.Taint;
 import edu.columbia.cs.psl.phosphor.struct.LazyCharArrayObjTags;
 import edu.columbia.cs.psl.phosphor.struct.TaintedObjectWithObjTag;
@@ -69,6 +70,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
             globalStringHintsSet.add(s);
         for (String s : BINARY_TOKENS)
             globalStringHintsSet.add(s);
+        ZestGuidance.extendedDictionarySize = globalStringHintsSet.size();
     }
 
     /** Main entry point. Called once per test case. Returns a random JS program. */
@@ -275,6 +277,8 @@ public class JavaScriptCodeGenerator extends Generator<String> {
 
             if(globalStringHintsSet.add(token)){
                 globalStringHints.add(token);
+                if(!PreMain.RUNTIME_INST)
+                    ZestGuidance.extendedDictionarySize++;
             }
 
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
@@ -405,6 +409,8 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         if (hints != null && hints.length > 0 ) {
             identifier = new String(hints[0].getHint());
             if(globalStringHintsSet.add(identifier)){
+                if(!PreMain.RUNTIME_INST)
+                    ZestGuidance.extendedDictionarySize++;
                 globalStringHints.add(identifier);
             }
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
@@ -534,6 +540,8 @@ public class JavaScriptCodeGenerator extends Generator<String> {
 
             if(globalStringHintsSet.add(token)){
                 globalStringHints.add(token);
+                if(!PreMain.RUNTIME_INST)
+                    ZestGuidance.extendedDictionarySize++;
             }
 
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;

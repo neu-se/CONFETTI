@@ -32,8 +32,11 @@ import com.pholser.junit.quickcheck.generator.GenerationStatus;
 import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
 import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
+import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
+import edu.berkeley.cs.jqf.fuzz.guidance.RecordingInputStream;
 import edu.berkeley.cs.jqf.fuzz.guidance.StringEqualsHintingInputStream;
 import edu.berkeley.cs.jqf.fuzz.knarr.KnarrGuidance;
+import edu.columbia.cs.psl.phosphor.PreMain;
 import edu.columbia.cs.psl.phosphor.runtime.Taint;
 import edu.columbia.cs.psl.phosphor.struct.LazyCharArrayObjTags;
 import edu.columbia.cs.psl.phosphor.struct.TaintedObjectWithObjTag;
@@ -44,13 +47,14 @@ import za.ac.sun.cs.green.expr.FunctionCall;
 import za.ac.sun.cs.green.expr.IntConstant;
 
 import java.io.*;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
+import java.nio.ByteBuffer;
+import java.util.*;
 
 public class DictionaryBackedStringGenerator extends Generator<String> {
 
     private final List<String> dictionary;
+    private final Set<String> globalDictionarySet;
+    private final List<String> globalDictionary;
     private Generator<String> fallback;
 
     public static Boolean useHints = false;
@@ -58,6 +62,8 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
     public DictionaryBackedStringGenerator(String source, Generator<String> fallback) throws IOException {
         super(String.class);
         this.dictionary = new ArrayList<>();
+        this.globalDictionary = new ArrayList<>();
+        this.globalDictionarySet = new HashSet<>();
         this.fallback = fallback;
 
         // Read dictionary words
@@ -92,14 +98,34 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
                     word = origWord.substring(0, middle) + word + origWord.substring(middle);
                 }
             }
+            if(globalDictionarySet.add(word)){
+                if(!PreMain.RUNTIME_INST)
+                    ZestGuidance.extendedDictionarySize++;
+                globalDictionary.add(word);
+            }
+
             //System.out.println("Hint word: " + word);
             if (hints[0].getType() == Coordinator.HintType.Z3) {
                 StringEqualsHintingInputStream.z3HintsUsedInCurrentInput = true;
             }
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         } else {
-            choice = choice % dictionary.size();
-            word = dictionary.get(choice);
+            choice = choice % (dictionary.size() + globalDictionary.size());
+            if(RecordingInputStream.lastReadBytes != null && RecordingInputStream.lastReadBytes.length == 4){
+                //Update the recorded value with one that does NOT wrap around
+                ByteBuffer.wrap(RecordingInputStream.lastReadBytes).putInt(choice);
+            }
+            if(choice < dictionary.size()) {
+                word = dictionary.get(choice);
+            } else{
+                int[] pos = new int[]{RecordingInputStream.lastReadOffset-4,4};
+                word = globalDictionary.get(choice - dictionary.size());
+                if(ZestGuidance.currentInput != null) {
+                    ZestGuidance.currentInput.addSingleHintInPlace(
+                            new Coordinator.StringHint(word, Coordinator.HintType.GLOBAL_DICTIONARY, null), pos);
+                    ZestGuidance.currentInput.numGlobalDictionaryHintsApplied++;
+                }
+            }
         }
 
         return applyTaints(word, choice);
