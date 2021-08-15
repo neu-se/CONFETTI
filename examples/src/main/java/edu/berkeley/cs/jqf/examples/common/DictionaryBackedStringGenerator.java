@@ -76,6 +76,7 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
             String item;
             while ((item = br.readLine()) != null) {
                 dictionary.add(item);
+                globalDictionarySet.add(item);
             }
         }
     }
