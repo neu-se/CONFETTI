@@ -86,8 +86,8 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
 
     @Override
     public String generate(SourceOfRandomness random, GenerationStatus status) {
-        int choice = random.nextInt(0, Integer.MAX_VALUE);
         boolean useExtendedDict = random.nextBoolean();
+        int choice = random.nextInt(0, Integer.MAX_VALUE);
 
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
 

@@ -269,8 +269,8 @@ public class JavaScriptCodeGenerator extends Generator<String> {
 
     /** Generates a random binary expression (e.g. A op B) */
     private String generateBinaryNode(SourceOfRandomness random) {
-        int choice = random.nextInt(0, Integer.MAX_VALUE);
         boolean useExtendedDict = random.nextBoolean();
+        int choice = random.nextInt(0, Integer.MAX_VALUE);
 
         String token;
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
@@ -405,8 +405,8 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         //    identifiersList.add(identifier);
         //}
 
-        int choice = random.nextInt(0, Integer.MAX_VALUE);
         boolean useExtendedDict = random.nextBoolean();
+        int choice = random.nextInt(0, Integer.MAX_VALUE);
 
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
         if (hints != null && hints.length > 0 ) {
@@ -534,8 +534,8 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     }
 
     private String generateUnaryNode(SourceOfRandomness random) {
-        int choice = random.nextInt(0, Integer.MAX_VALUE);
         boolean useExtendedDict = random.nextBoolean();
+        int choice = random.nextInt(0, Integer.MAX_VALUE);
 
         String token;
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
