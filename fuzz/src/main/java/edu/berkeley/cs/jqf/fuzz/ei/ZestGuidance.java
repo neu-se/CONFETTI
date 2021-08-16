@@ -2223,16 +2223,16 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
         @Override
         public int getOrGenerateFresh(Integer key, Random random) {
+            // Don't generate over the limit
+            if (requested >= MAX_INPUT_SIZE) {
+                return -1;
+            }
+
             // Otherwise, make sure we are requesting just beyond the end-of-list
             // assert (key == values.size());
             if (key != requested) {
                 throw new GuidanceException(String.format("Bytes from linear input out of order. " +
                         "Size = %d, Key = %d", values.size(), key));
-            }
-
-            // Don't generate over the limit
-            if (requested >= MAX_INPUT_SIZE) {
-                return -1;
             }
 
             // If it exists in the list, return it
