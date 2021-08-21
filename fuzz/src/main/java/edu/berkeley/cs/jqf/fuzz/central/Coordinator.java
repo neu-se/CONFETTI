@@ -987,9 +987,9 @@ public class Coordinator implements Runnable {
     public static class StringHint implements Externalizable {
         private static final long serialVersionUID = -1812382770909515539L;
         public int priority;
-        String hint;
-        HintType type;
-        Branch targetBranch;
+        public String hint;
+        public HintType type;
+        public Branch targetBranch;
         transient String comparedString;
 
         public StringHint(){

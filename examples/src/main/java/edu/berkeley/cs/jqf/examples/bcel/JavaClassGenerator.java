@@ -34,8 +34,11 @@ import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.internal.GeometricDistribution;
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
 import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
+import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
+import edu.berkeley.cs.jqf.fuzz.guidance.RecordingInputStream;
 import edu.berkeley.cs.jqf.fuzz.guidance.StringEqualsHintingInputStream;
 import edu.berkeley.cs.jqf.fuzz.knarr.KnarrGuidance;
+import edu.columbia.cs.psl.phosphor.PreMain;
 import edu.columbia.cs.psl.phosphor.runtime.Taint;
 import edu.columbia.cs.psl.phosphor.struct.LazyCharArrayObjTags;
 import edu.columbia.cs.psl.phosphor.struct.TaintedObjectWithObjTag;
@@ -52,6 +55,10 @@ import org.junit.AssumptionViolatedException;
 import za.ac.sun.cs.green.expr.Expression;
 import za.ac.sun.cs.green.expr.FunctionCall;
 import za.ac.sun.cs.green.expr.IntConstant;
+
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.HashSet;
 
 /**
  * @author Rohan Padhye
@@ -85,6 +92,9 @@ public class JavaClassGenerator extends Generator<JavaClass> {
             "D"
     };
 
+    private HashSet<String> globalDictionarySet = new HashSet<>();
+    private ArrayList<String> globalDictionary = new ArrayList<>();
+
     private static GeometricDistribution geom = new GeometricDistribution();
 
 
@@ -96,62 +106,57 @@ public class JavaClassGenerator extends Generator<JavaClass> {
 
     public JavaClassGenerator() {
         super(JavaClass.class);
+        for(String s : memberDictionary)
+            globalDictionarySet.add(s);
+        for(String s : interestingClasses)
+            globalDictionarySet.add(s);
+    }
+
+    public String useHintOrDefault(SourceOfRandomness r, String def){
+        boolean useExtendedDict = r.nextBoolean();
+        int choice = r.nextInt(0, Integer.MAX_VALUE);
+        Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
+        int[] pos = new int[]{RecordingInputStream.lastReadOffset-4,4};
+
+        String ret = def;
+        if (useExtendedDict) {
+            if (globalDictionary.size() == 0) {
+                ret = def;
+            } else {
+                choice = choice % globalDictionary.size();
+                ret = globalDictionary.get(choice);
+                if(ZestGuidance.currentInput != null)
+                    ZestGuidance.currentInput.numGlobalDictionaryHintsApplied++;
+            }
+            if(ZestGuidance.currentInput != null) {
+                ZestGuidance.currentInput.addSingleHintInPlace(
+                        new Coordinator.StringHint(ret, Coordinator.HintType.GLOBAL_DICTIONARY, null), pos);
+            }
+        } else if (hints != null && hints.length > 0 ) {
+            choice = choice % hints.length;
+            ret = new String(hints[choice].getHint());
+            if(globalDictionarySet.add(ret)){
+                globalDictionary.add(ret);
+                if(!PreMain.RUNTIME_INST)
+                    ZestGuidance.extendedDictionarySize++;
+            }
+            StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
+        }
+        return applyTaints(ret, choice);
     }
 
     public JavaClass generate(SourceOfRandomness r, GenerationStatus s) {
         constants = new ConstantPoolGen();
 
         // Generate a class with its meta-data
-        String className;
-        {
-            int choice = r.nextInt();
-            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
-            className = "example.A";
-            if (hints != null && hints.length > 0 ) {
-                className = new String(hints[0].getHint());
-                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
-            }
-
-            className = applyTaints(className, choice);
-        }
-        String superName;
-        {
-            int choice = r.nextInt();
-            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
-            superName = r.nextBoolean() ? "example.B" : "java.lang.Object";
-            if (hints != null && hints.length > 0 ) {
-                superName = new String(hints[0].getHint());
-                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
-            }
-
-            superName = applyTaints(superName, choice);
-        }
-        String fileName;
-        {
-            int choice = r.nextInt();
-            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
-            fileName = r.nextBoolean() ? "A.class" : "A.class";
-            if (hints != null && hints.length > 0 ) {
-                fileName = new String(hints[0].getHint());
-                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
-            }
-            fileName = applyTaints(fileName, choice);
-        }
+        String className = useHintOrDefault(r, "example.A");
+        String superName = useHintOrDefault(r, r.nextBoolean() ? "example.B" : "java.lang.Object");
+        String fileName = useHintOrDefault(r, "A.class");
         int flags = r.nextInt(0, Short.MAX_VALUE);
         int numInterfaces = r.nextBoolean() ? 0 : geom.sampleWithMean(MEAN_INTERFACE_COUNT, r);
         String[] interfaces = new String[numInterfaces];
         for (int i = 0; i < numInterfaces; i++) {
-            int choice = r.nextInt();
-            Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
-            interfaces[i] = r.nextBoolean() ? "example.I"+i : "example.I"+i;
-
-            if (hints != null && hints.length > 0 ) {
-
-                interfaces[i] = new String(hints[0].getHint());
-                StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
-            }
-            interfaces[i] = applyTaints(interfaces[i], choice);
-
+            interfaces[i] = useHintOrDefault(r, "example.I"+i);
         }
         try {
             ClassGen classGen = new ClassGen(className, superName, fileName, flags, interfaces, constants);
@@ -215,6 +220,7 @@ public class JavaClassGenerator extends Generator<JavaClass> {
     }
 
     private String generateMemberName(SourceOfRandomness r) {
+        boolean useExtendedDict = r.nextBoolean();
         int choice = r.nextInt(0, Integer.MAX_VALUE);
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
 
@@ -222,15 +228,32 @@ public class JavaClassGenerator extends Generator<JavaClass> {
         String ret = r.nextChar('a', 'z') + "_" + r.nextInt(10);
 
         if (hints != null && hints.length > 0 ) {
-
-            //random.nextInt(0, Integer.MAX_VALUE);
             choice = choice % hints.length;
-
             ret = new String(hints[choice].getHint());
+            if(globalDictionarySet.add(ret)){
+                globalDictionary.add(ret);
+                if(!PreMain.RUNTIME_INST)
+                    ZestGuidance.extendedDictionarySize++;
+            }
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         }else{
-            if (choice % 2 == 0) {
-                ret = memberDictionary[choice % memberDictionary.length];
+            if (useExtendedDict || choice % 2 == 0) {
+                choice = choice % (memberDictionary.length + (useExtendedDict ? globalDictionary.size() : 0));
+                if(RecordingInputStream.lastReadBytes != null && RecordingInputStream.lastReadBytes.length == 4){
+                    //Update the recorded value with one that does NOT wrap around
+                    ByteBuffer.wrap(RecordingInputStream.lastReadBytes).putInt(choice);
+                }
+                if(choice < memberDictionary.length)
+                    ret = memberDictionary[choice % memberDictionary.length];
+                else{
+                    int[] pos = new int[]{RecordingInputStream.lastReadOffset-4,4};
+                    ret = globalDictionary.get(choice - memberDictionary.length);
+                    if(ZestGuidance.currentInput != null) {
+                        ZestGuidance.currentInput.addSingleHintInPlace(
+                                new Coordinator.StringHint(ret, Coordinator.HintType.GLOBAL_DICTIONARY, null), pos);
+                        ZestGuidance.currentInput.numGlobalDictionaryHintsApplied++;
+                    }
+                }
             }
         }
 
@@ -239,8 +262,10 @@ public class JavaClassGenerator extends Generator<JavaClass> {
 
     private String generateTypeSignature(SourceOfRandomness r, boolean arraysAllowed) {
         String typeSig;
+        boolean useExtendedDict = r.nextBoolean();
         int choice = r.nextInt(0, Integer.MAX_VALUE);
 
+        int[] pos = new int[]{RecordingInputStream.lastReadOffset-4,4};
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
 
         if (r.nextBoolean()) {
@@ -258,12 +283,25 @@ public class JavaClassGenerator extends Generator<JavaClass> {
             }
         }
 
-        if (hints != null && hints.length > 0 ) {
-
-            //random.nextInt(0, Integer.MAX_VALUE);
+        if (useExtendedDict) {
+            if(globalDictionary.size() > 0) {
+                choice = choice % globalDictionary.size();
+                typeSig = globalDictionary.get(choice);
+                if(ZestGuidance.currentInput != null)
+                    ZestGuidance.currentInput.numGlobalDictionaryHintsApplied++;
+            }
+            if(ZestGuidance.currentInput != null) {
+                ZestGuidance.currentInput.addSingleHintInPlace(
+                        new Coordinator.StringHint(typeSig, Coordinator.HintType.GLOBAL_DICTIONARY, null), pos);
+            }
+        } else if (hints != null && hints.length > 0 ) {
             choice = choice % hints.length;
-
             typeSig = new String(hints[choice].getHint());
+            if(globalDictionarySet.add(typeSig)){
+                globalDictionary.add(typeSig);
+                if(!PreMain.RUNTIME_INST)
+                    ZestGuidance.extendedDictionarySize++;
+            }
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         }
 
@@ -602,6 +640,7 @@ public class JavaClassGenerator extends Generator<JavaClass> {
 
     String generateClassName(SourceOfRandomness r)
     {
+        boolean useExtendedDict = r.nextBoolean();
         int choice = r.nextInt(0, Integer.MAX_VALUE);
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
 
@@ -621,7 +660,22 @@ public class JavaClassGenerator extends Generator<JavaClass> {
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         }
         else if (choice % 2 == 0) {
-            ret =  interestingClasses[choice % interestingClasses.length];
+            choice = choice % (interestingClasses.length + (useExtendedDict ? globalDictionary.size() : 0));
+            if(RecordingInputStream.lastReadBytes != null && RecordingInputStream.lastReadBytes.length == 4){
+                //Update the recorded value with one that does NOT wrap around
+                ByteBuffer.wrap(RecordingInputStream.lastReadBytes).putInt(choice);
+            }
+            if(choice < interestingClasses.length)
+                ret =  interestingClasses[choice % interestingClasses.length];
+            else{
+                int[] pos = new int[]{RecordingInputStream.lastReadOffset-4,4};
+                ret = globalDictionary.get(choice - interestingClasses.length);
+                if(ZestGuidance.currentInput != null) {
+                    ZestGuidance.currentInput.addSingleHintInPlace(
+                            new Coordinator.StringHint(ret, Coordinator.HintType.GLOBAL_DICTIONARY, null), pos);
+                    ZestGuidance.currentInput.numGlobalDictionaryHintsApplied++;
+                }
+            }
         }
         return applyTaints(ret, choice);
     }

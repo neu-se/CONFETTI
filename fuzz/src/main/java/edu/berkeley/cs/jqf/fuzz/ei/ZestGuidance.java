@@ -640,7 +640,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
         appendToStatsFile("# unix_time, cycles_done, cur_path, paths_total, pending_total, " +
                 "pending_favs, map_size, unique_crashes, unique_hangs, max_depth, execs_per_sec, total_inputs, " +
-                "mutated_bytes, valid_inputs, invalid_inputs, valid_cov, z3, " +
+                "mutated_bytes, valid_inputs, invalid_inputs, all_cov, z3, " +
                 "inputsSavedBy_StrHint, inputsCreatedBy_StrHint, inputsSavedBy_MultipleStrHint, inputsCreatedBy_MultipleStrHint, inputsSavedBy_CharHint, inputsCreatedBy_CharHint, " +
                 "inputsSavedBy_Z3, inputsCreatedBy_Z3, " +
                 "inputsSavedBy_Random, inputsCreatedBy_Random, " +
@@ -857,7 +857,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         String plotData = String.format("%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %.2f, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",
                 TimeUnit.MILLISECONDS.toSeconds(now.getTime()), cyclesCompleted, currentParentInputIdx,
                 savedInputs.size(), 0, 0, nonZeroCount, uniqueFailures.size(), 0, 0, intervalExecsPerSecDouble,
-                numTrials, mutatedBytes/numTrials, numValid, numTrials-numValid, nonZeroValidCount,
+                numTrials, mutatedBytes/numTrials, numValid, numTrials-numValid, nonZeroCount,
                 (z3ThreadStartedInputNum != -1) && (numTrials >= z3ThreadStartedInputNum) ? 1: 0,
                 countOfInputsSavedByMutation[MutationType.APPLY_SINGLE_HINT.ordinal()],
                 countOfInputsCreatedByMutation[MutationType.APPLY_SINGLE_HINT.ordinal()],
@@ -1125,6 +1125,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 // Fuzz it to get a new input
                 infoLog("Mutating input: %s", parent.desc);
                 currentInput = parent.fuzz(random);
+                currentInput.parentInputIdx = currentParentInputIdx;
                 numChildrenGeneratedForCurrentParentInput++;
 
                 // Write it to disk for debugging
@@ -1570,7 +1571,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             out.writeObject(input.allStringEqualsHints);
 
             /** Also write out some book-keeping info, maybe useful for analysis later **/
-            out.writeInt(currentParentInputIdx);
+            out.writeInt(input.parentInputIdx);
             out.writeObject(input.seedSource);
             out.writeObject(input.mutationType);
             out.writeInt(input.numGlobalDictionaryHintsApplied);
@@ -1784,6 +1785,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         public int hintsRemaining;
         public int numGlobalDictionaryHintsApplied;
         public int numMutations;
+        public int parentInputIdx; //right now only set post-hoc when analyzing a saved corpus
 
         /**
          * The file where this input is saved.
@@ -1983,6 +1985,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 this.allUniqueHintPositions = new ArrayList<>(allStringEqualsHintsByOffset.keySet());
             }
         }
+
 
         static class HintChoice {
             int[] insn;
@@ -2197,7 +2200,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     public static class LinearInput extends Input<Integer> {
 
         /** A list of byte values (0-255) ordered by their index. */
-        protected ShortArrayList values;
+        public ShortArrayList values;
         //Note: Would save more space if this were a ByteArrayList, but the code as I found it
         //used an ArrayList<Integer> (and assumed all bytes were unsigned), so there would be more
         //refactoring needed to migrate to actual byte types, this gives a savings enough from avoiding
@@ -2220,6 +2223,33 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             this.values.addAll(other.values);
         }
 
+        public static LinearInput fromFile(File f) throws IOException, ClassNotFoundException {
+            LinearInput ret = new LinearInput();
+            try(ObjectInputStream ois = new ObjectInputStream(new BufferedInputStream(new FileInputStream(f)))){
+                int size = ois.readInt();
+                for(int i = 0; i < size; i++){
+                    ret.values.add((short) ois.read());
+                }
+                ret.instructions = (LinkedList<int[]>) ois.readObject();
+                ret.stringEqualsHints = (LinkedList<Coordinator.StringHint[]>) ois.readObject();
+                ret.appliedTargetedHints = (LinkedList<Coordinator.TargetedHint>) ois.readObject();
+                ret.offsetOfLastHintAdded = ois.readInt();
+                ret.allInstructions = (LinkedList<int[]>) ois.readObject();
+                ret.allStringEqualsHints = (LinkedList<Coordinator.StringHint[]>) ois.readObject();
+                ret.parentInputIdx = ois.readInt();
+                ret.seedSource = (SeedSource) ois.readObject();
+                ret.mutationType = (MutationType) ois.readObject();
+                ret.numGlobalDictionaryHintsApplied = ois.readInt();
+                ret.numHintsAppliedThisRound = ois.readInt();
+                ret.numMutations = ois.readInt();
+                ret.id = Integer.parseInt(f.getName().substring(3));
+                //TODO do we need these?
+                long execTime  =ois.readLong();
+                long numTrials = ois.readLong();
+                long extendedDictSize = ois.readLong();
+            }
+            return ret;
+        }
 
         @Override
         public int getOrGenerateFresh(Integer key, Random random) {

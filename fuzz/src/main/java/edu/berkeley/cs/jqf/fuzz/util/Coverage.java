@@ -234,6 +234,38 @@ public class Coverage implements TraceEventVisitor, CoverageListener {
         return changed;
     }
 
+    public CoverageComparisonResult compareCoverage(Coverage that){
+        synchronized (this.counter){
+            synchronized (that.counter){
+                Iterator<IntIntPair> thisIter = this.counter.map.keyValuesView().iterator();
+
+                boolean coversAllOfThis = true;
+                boolean coversAllOfThisSameOrGreaterHits = true;
+                while(thisIter.hasNext()){
+                    IntIntPair coverageEntry = thisIter.next();
+                    if(coverageEntry.getTwo() == 0)
+                        continue;
+                    int thatStatus = that.counter.map.get(coverageEntry.getOne());
+                    if(thatStatus == 0){
+                        coversAllOfThis = false;
+                        coversAllOfThisSameOrGreaterHits = false;
+                    }
+                    else if(thatStatus < coverageEntry.getTwo())
+                        coversAllOfThisSameOrGreaterHits = false;
+                }
+                if(coversAllOfThisSameOrGreaterHits)
+                    return CoverageComparisonResult.THAT_COVERS_ALL_OF_THIS_SAME_OR_GREATER_HITS;
+                if(coversAllOfThis)
+                    return CoverageComparisonResult.THAT_COVERS_ALL_OF_THIS;
+                return CoverageComparisonResult.THAT_DOES_NOT_COVER_ALL_OF_THIS;
+            }
+        }
+    }
+    public static enum CoverageComparisonResult{
+        THAT_COVERS_ALL_OF_THIS,
+        THAT_COVERS_ALL_OF_THIS_SAME_OR_GREATER_HITS,
+        THAT_DOES_NOT_COVER_ALL_OF_THIS
+    }
 
     @Override
     public void logCoverage(int iid, int arm) {

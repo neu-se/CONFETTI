@@ -27,24 +27,20 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package edu.berkeley.cs.jqf.fuzz.repro;
-
-import java.io.File;
-import java.util.ArrayList;
-import java.util.LinkedList;
+package edu.berkeley.cs.jqf.fuzz.extendedDictionary;
 
 import edu.berkeley.cs.jqf.fuzz.junit.GuidedFuzzing;
 import edu.berkeley.cs.jqf.fuzz.knarr.KnarrGuidance;
 import edu.columbia.cs.psl.phosphor.PreMain;
 
-/**
- * @author Rohan Padhye
- */
-public class ReproDriver {
+import java.io.File;
+import java.util.ArrayList;
+
+public class ExtendedDictionaryEvaluatorDriver {
 
     public static void main(String[] args) {
         if (args.length < 3){
-            System.err.println("Usage: java " + ReproDriver.class + " TEST_CLASS TEST_METHOD TEST_INPUT_FILE...");
+            System.err.println("Usage: java " + ExtendedDictionaryEvaluatorDriver.class + " TEST_CLASS TEST_METHOD TEST_INPUT_FILE...");
             System.exit(1);
         }
 
@@ -69,35 +65,38 @@ public class ReproDriver {
         testInputFiles = validFiles.toArray(testInputFiles);
         try {
             // Maybe log the trace
-            String traceDirName = System.getProperty("jqf.repro.traceDir");
-            File traceDir = traceDirName != null ? new File(traceDirName) : null;
+            String outputFileName = System.getenv("EVAL_FILE");
+            File outputFile = outputFileName != null ? new File(outputFileName) : null;
 
             // Load the guidance
-            ReproGuidance guidance = new ReproGuidance(testInputFiles, traceDir);
+            ExtendedDictionaryEvaluatorGuidance guidance = new ExtendedDictionaryEvaluatorGuidance(testInputFiles, outputFile);
 
             // Run the Junit test
-            GuidedFuzzing.run(testClassName, testMethodName, guidance, System.out);
+            GuidedFuzzing.run(testClassName, testMethodName, guidance, (System.getenv("QUIET")  == null ? System.out : null));
 
-            if(PreMain.RUNTIME_INST){
-                KnarrGuidance.printOutStringHints();
-            }
+            guidance.close();
 
-
-            if (guidance.getBranchesCovered() != null) {
-                String cov = "";
-                for (String s : guidance.getBranchesCovered()) {
-                    cov += "# Covered: " + s + "\n";
+            int nInputsWithExtendedDictHints = 0;
+            int nInputsWithEQNonExtendedDictHints = 0;
+            int nInputsWithEQNoNExtendedDictHintsButNotCounts = 0;
+            for(ExtendedDictionaryEvaluatorGuidance.ExtendedDictionaryLinearInput input : guidance.analyzedInputs){
+                if(!input.indicesOfHintsThatAreGlobalDictionaryHints.isEmpty()){
+                    nInputsWithExtendedDictHints++;
+                    if(input.numChildrenSameCovAndCounts > 0){
+                        nInputsWithEQNonExtendedDictHints++;
+                    } else if(input.numChildrenSameCovLessCounts > 0 ){
+                        nInputsWithEQNoNExtendedDictHintsButNotCounts++;
+                    }
                 }
-                final String finalFooter = cov;
-                System.out.println(finalFooter);
             }
-
-            if (Boolean.getBoolean("jqf.logCoverage")) {
-                System.out.println(String.format("Covered %d edges.",
-                        guidance.getCoverage().getNonZeroCount()));
-            }
-
-
+            System.out.format("Examined %d inputs, %d with extended dict at %d trials per input. %d/%d could be replicated without the hints and get same counts, plus %d/%d that got same branches but not same hit counts.\n",
+                    guidance.analyzedInputs.size(),
+                    nInputsWithExtendedDictHints,
+                    ExtendedDictionaryEvaluatorGuidance.NUM_TRIALS_PER_INPUT,
+                    nInputsWithEQNonExtendedDictHints,
+                    nInputsWithExtendedDictHints,
+                    nInputsWithEQNoNExtendedDictHintsButNotCounts,
+                    nInputsWithExtendedDictHints);
         } catch (Exception e) {
             e.printStackTrace();
             System.exit(2);

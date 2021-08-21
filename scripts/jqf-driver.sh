@@ -42,11 +42,14 @@ if [ -n "$JAVA_HOME" ]; then
 else
     java="java"
 fi
+if [ -z "$JANALA_CONF_NAME" ]; then
+  JANALA_CONF_NAME="janala.conf"
+fi
 "$java" -ea \
   -Xbootclasspath/a:"$INST_CLASSPATH" \
   ${JAVAAGENT} \
   ${JACOCO_JVM_OPTS} \
-  -Djanala.conf="${SCRIPT_DIR}/janala.conf" \
+  -Djanala.conf="${SCRIPT_DIR}/${JANALA_CONF_NAME}" \
   -cp "${FUZZ_CLASSPATH}:${CLASSPATH}" \
   ${JVM_OPTS} \
   $@

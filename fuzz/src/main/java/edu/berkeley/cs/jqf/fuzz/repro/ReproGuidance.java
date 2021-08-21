@@ -132,7 +132,6 @@ public class ReproGuidance implements Guidance {
      */
     @Override
     public InputStream getInput() {
-        try {
             File inputFile = inputFiles[nextFileIdx];
             this.currentInput = inputFile;
 
@@ -166,6 +165,8 @@ public class ReproGuidance implements Guidance {
                 }
             } catch (ClassNotFoundException e) {
                 e.printStackTrace();
+            } catch(IOException e){
+                throw new GuidanceException("Failed to read " + inputFile, e);
             }
 
             if (central != null) {
@@ -179,9 +180,6 @@ public class ReproGuidance implements Guidance {
 
 
             return this.inputStream;
-        } catch (IOException e) {
-            throw new GuidanceException(e);
-        }
     }
 
     /**
