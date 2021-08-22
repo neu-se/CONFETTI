@@ -55,7 +55,7 @@ public class ExtendedDictionaryEvaluatorGuidance implements Guidance {
     private Set<String> allBranchesCovered;
     private boolean ignoreInvalidCoverage;
     private Coverage runCoverage = new Coverage();
-    public static final int NUM_TRIALS_PER_INPUT = 10;
+    public static final int NUM_TRIALS_PER_INPUT = System.getenv("TRIALS") == null ? 10 : Integer.parseInt(System.getenv("TRIALS"));
 
 
     private ZestClient central;
@@ -159,7 +159,7 @@ public class ExtendedDictionaryEvaluatorGuidance implements Guidance {
                     this.seedSource.toString(),
                     this.parentInputIdx,
                     this.values.size(),
-                    this.numGlobalDictionaryHintsApplied,
+                    this.indicesOfHintsThatAreGlobalDictionaryHints.size(),
                     this.numCharHintsApplied,
                     this.numStringHintsApplied,
                     this.numZ3HintsApplied,
