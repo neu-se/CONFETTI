@@ -6,7 +6,6 @@ import edu.gmu.swe.knarr.server.ConstraintOptionGenerator;
 import edu.gmu.swe.knarr.server.HashMapStateStore;
 import edu.gmu.swe.knarr.server.StateStore;
 import org.eclipse.collections.api.iterator.IntIterator;
-import org.eclipse.collections.api.list.primitive.IntList;
 import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
 import za.ac.sun.cs.green.Green;
 import za.ac.sun.cs.green.expr.*;
@@ -31,6 +30,8 @@ public class Z3Worker {
 
     static final boolean PRINT_Z3_DEBUG_INFO = false;
 
+    static PrintWriter statsLogger;
+
     static {
         String z3Dir = System.getProperty("Z3_OUTPUT_DIR");
         if (z3Dir != null) {
@@ -44,6 +45,37 @@ public class Z3Worker {
             Z3_OUTPUT_DIR = f;
         } else {
             Z3_OUTPUT_DIR = null;
+        }
+        String z3StatsFile = System.getProperty("z3StatsLog");
+        if(z3StatsFile != null){
+            try {
+                statsLogger = new PrintWriter(new BufferedWriter(new FileWriter(z3StatsFile)));
+                Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if(statsLogger != null)
+                            statsLogger.close();
+                    }
+                }));
+                statsLogger.println("time,numBranchesUnsolved,selectedBranch,numInputsNotTried,selectedInput,timeSpent,result");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+    static long campaignStart = System.currentTimeMillis();
+
+    public static void appendToLogFile(int numBranchesUnsolved, String selectedBranch, int numInputsNotTried, int numInputsTried, int selectedInput, int timeSpent, String result){
+
+        if(statsLogger != null) {
+            statsLogger.println(String.format("%d,%d,%s,%d,%d,%d,%d,%s",
+                    (System.currentTimeMillis() - campaignStart),
+                    numBranchesUnsolved,
+                    selectedBranch,
+                    numInputsNotTried,
+                    numInputsTried, selectedInput, timeSpent, result
+            ));
+            statsLogger.flush();
         }
     }
 
@@ -524,6 +556,7 @@ public class Z3Worker {
 
             Set<Expression> stringHintConstraints = hintsToConstraints(t.constraints, t.hints);
             Optional<Coordinator.Input> input = negateConstraint(t, stringHintConstraints);
+
             return input;
 
         } catch(TimeoutException ex){
