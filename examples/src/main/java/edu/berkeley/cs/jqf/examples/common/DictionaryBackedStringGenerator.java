@@ -33,6 +33,7 @@ import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
 import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
 import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
+import edu.berkeley.cs.jqf.fuzz.extendedDictionary.ExtendedDictionaryEvaluatorGuidance;
 import edu.berkeley.cs.jqf.fuzz.guidance.RecordingInputStream;
 import edu.berkeley.cs.jqf.fuzz.guidance.StringEqualsHintingInputStream;
 import edu.berkeley.cs.jqf.fuzz.knarr.KnarrGuidance;
@@ -139,6 +140,8 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
     private static int currentFunctionNumber = 0;
 
     private static String applyTaints(String result, Object taint) {
+        if(!PreMain.RUNTIME_INST)
+            ExtendedDictionaryEvaluatorGuidance.generatedStrings++;
         if (result == null || result.length() == 0 || !(taint instanceof TaintedObjectWithObjTag))
             return result;
 

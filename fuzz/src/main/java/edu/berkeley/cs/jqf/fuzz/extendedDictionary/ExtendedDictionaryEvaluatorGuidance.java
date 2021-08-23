@@ -81,6 +81,7 @@ public class ExtendedDictionaryEvaluatorGuidance implements Guidance {
             this.logger.close();
     }
 
+    public static int generatedStrings = 0;
     class ExtendedDictionaryLinearInput extends ZestGuidance.LinearInput {
         Coverage coverage;
         int numTimesSelectedForFuzzing;
@@ -98,6 +99,7 @@ public class ExtendedDictionaryEvaluatorGuidance implements Guidance {
         int numHintPositionsAvailable;
         int maxHintsPerPosition = -1;
         int minHintsPerPosition = Integer.MAX_VALUE;
+        int numStrings;
 
         IntArrayList indicesOfHintsThatAreGlobalDictionaryHints = new IntArrayList();
 
@@ -143,7 +145,7 @@ public class ExtendedDictionaryEvaluatorGuidance implements Guidance {
         }
 
         public void logStats(){
-            //("inputIdx,seedSource,parentInputIdx,inputSizeBytes,numGlobalDictHints,numCharHints,numStringHints,
+            //("inputIdx,seedSource,parentInputIdx,inputSizeBytes,numStringsTotal,numGlobalDictHints,numCharHints,numStringHints,
             // numZ3Hints,numHintsAvailable,numHintPositionsAvailable,minHintsPerPosition,
             // maxHintsPerPosition,numGlobalDictHintsWithRegularHintAlso,
             // numGlobalDictHintsWithoutRegularHintsAlso,numChildrenSameCovAndCounts,
@@ -152,13 +154,14 @@ public class ExtendedDictionaryEvaluatorGuidance implements Guidance {
                 this.maxHintsPerPosition = 0;
             if(this.minHintsPerPosition == Integer.MAX_VALUE)
                 this.minHintsPerPosition = 0;
-            appendToLog(String.format("%s,%s,%d,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+            appendToLog(String.format("%s,%s,%d,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
                     appName,
                     experimentName,
                     this.id,
                     this.seedSource.toString(),
                     this.parentInputIdx,
                     this.values.size(),
+                    this.numStrings,
                     this.indicesOfHintsThatAreGlobalDictionaryHints.size(),
                     this.numCharHintsApplied,
                     this.numStringHintsApplied,
@@ -278,7 +281,7 @@ public class ExtendedDictionaryEvaluatorGuidance implements Guidance {
         try {
             if (this.traceDir != null) {
                 this.logger = new PrintWriter(new FileWriter(traceDir));
-                appendToLog("app,experiment,inputIdx,seedSource,parentInputIdx,inputSizeBytes,numGlobalDictHints,numCharHints,numStringHints,numZ3Hints,numHintsAvailable,numHintPositionsAvailable,minHintsPerPosition,maxHintsPerPosition,numGlobalDictHintsWithRegularHintAlso,numGlobalDictHintsWithoutRegularHintsAlso,numChildrenSameCovAndCounts,numChildrenSameCovLessCounts,numChildrenLessCov");
+                appendToLog("app,experiment,inputIdx,seedSource,parentInputIdx,inputSizeBytes,numStringsTotal,numGlobalDictHints,numCharHints,numStringHints,numZ3Hints,numHintsAvailable,numHintPositionsAvailable,minHintsPerPosition,maxHintsPerPosition,numGlobalDictHintsWithRegularHintAlso,numGlobalDictHintsWithoutRegularHintsAlso,numChildrenSameCovAndCounts,numChildrenSameCovLessCounts,numChildrenLessCov");
             } else {
                 this.logger = new PrintWriter(System.out);
             }
@@ -298,6 +301,7 @@ public class ExtendedDictionaryEvaluatorGuidance implements Guidance {
     @Override
     public InputStream getInput() {
         runCoverage.clear();
+        generatedStrings = 0;
         if (this.inputUnderAnalysis != null && this.inputUnderAnalysis.hasInputsToTry()) {
             currentInput = (ZestGuidance.LinearInput) inputUnderAnalysis.fuzz(random);
         } else {
@@ -380,6 +384,7 @@ public class ExtendedDictionaryEvaluatorGuidance implements Guidance {
         if(this.currentInput == this.inputUnderAnalysis){
             //We just ran the input as-is, record the coverage!
             this.inputUnderAnalysis.coverage = new Coverage(runCoverage);
+            this.inputUnderAnalysis.numStrings = generatedStrings;
         }else{
             //Fuzzed version, see if coverage is same or not
             Coverage.CoverageComparisonResult res = this.inputUnderAnalysis.coverage.compareCoverage(runCoverage);

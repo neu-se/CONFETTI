@@ -5,6 +5,7 @@ import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
 import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
 import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
+import edu.berkeley.cs.jqf.fuzz.extendedDictionary.ExtendedDictionaryEvaluatorGuidance;
 import edu.berkeley.cs.jqf.fuzz.guidance.RecordingInputStream;
 import edu.berkeley.cs.jqf.fuzz.guidance.StringEqualsHintingInputStream;
 import edu.berkeley.cs.jqf.fuzz.knarr.KnarrGuidance;
@@ -33,6 +34,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     }
 
     private GenerationStatus status; // saved state object when generating
+
 
     private static final int MAX_IDENTIFIERS = 100;
     private static final int MAX_EXPRESSION_DEPTH = 10;
@@ -185,6 +187,9 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     private static int currentFunctionNumber = 0;
 
     private static String applyTaints(String result, Object taint) {
+        if(!PreMain.RUNTIME_INST)
+            ExtendedDictionaryEvaluatorGuidance.generatedStrings++;
+
         if (result == null || result.length() == 0 || !(taint instanceof TaintedObjectWithObjTag))
             return result;
 

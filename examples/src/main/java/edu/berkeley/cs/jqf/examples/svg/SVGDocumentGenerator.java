@@ -10,8 +10,10 @@ import edu.berkeley.cs.jqf.examples.common.AlphaStringGenerator;
 import edu.berkeley.cs.jqf.examples.common.Dictionary;
 import edu.berkeley.cs.jqf.examples.common.DictionaryBackedStringGenerator;
 import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
+import edu.berkeley.cs.jqf.fuzz.extendedDictionary.ExtendedDictionaryEvaluatorGuidance;
 import edu.berkeley.cs.jqf.fuzz.guidance.StringEqualsHintingInputStream;
 import edu.berkeley.cs.jqf.fuzz.knarr.KnarrGuidance;
+import edu.columbia.cs.psl.phosphor.PreMain;
 import edu.columbia.cs.psl.phosphor.runtime.Taint;
 import edu.columbia.cs.psl.phosphor.struct.LazyCharArrayObjTags;
 import edu.columbia.cs.psl.phosphor.struct.TaintedObjectWithObjTag;
@@ -264,6 +266,8 @@ public class SVGDocumentGenerator extends Generator<Document> {
     private static int currentFunctionNumber = 0;
 
     private static String applyTaints(String result, Object taint) {
+        if(!PreMain.RUNTIME_INST)
+            ExtendedDictionaryEvaluatorGuidance.generatedStrings++;
         if (result == null || result.length() == 0 || !(taint instanceof TaintedObjectWithObjTag))
             return result;
 
