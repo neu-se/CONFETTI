@@ -440,13 +440,16 @@ public class Z3Worker {
             int length = originalInput.requestsForRandom[i+1];
             if(hints.get(offset) != null){
                 Set<String> strings = hints.remove(offset);
-                for (String s : strings) {
-                    hintGroup.instructions.add(new int[]{offset, length});
-                    hintGroup.hints.add(new Coordinator.StringHint(s, Coordinator.HintType.Z3, null));
+                if(strings.size() > 1){
+                    System.err.println("Found multiple strings from Z3 : " + strings);
+                    System.err.println("Jon didn't think this was possible, we should figure out what's happening");
                 }
+                String hint = strings.iterator().next();
+                hintGroup.instructions.add(new int[]{offset, length});
+                hintGroup.hints.add(new Coordinator.StringHint(hint, Coordinator.HintType.Z3, null));
             }
         }
-        if (PRINT_Z3_DEBUG_INFO)
+        if(PRINT_Z3_DEBUG_INFO)
             System.out.println(hintGroup);
 
         return hintGroup;

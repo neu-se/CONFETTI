@@ -1001,23 +1001,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     currentInput.mutationType = MutationType.APPLY_Z3_HINT;
                     Coordinator.StringHintGroup hints = inputFromCentral.hintGroups.getFirst();
                     currentInput.stringEqualsHints = new LinkedList<>();
-                    currentInput.instructions = new LinkedList<>();
-
-                    // There might be multiple hints for the same position in what we get back here
-                    // We can explore them as "hints to explore in children" though!
-                    IntHashSet offsetsAddedToInput = new IntHashSet();
-                    Iterator<int[]> insnIter = hints.instructions.iterator();
-                    Iterator<Coordinator.StringHint> hintsIter = hints.hints.iterator();
-                    for (int i = 0; i < hints.instructions.size(); i++) {
-                        int[] insn = insnIter.next();
-                        Coordinator.StringHint h = hintsIter.next();
-                        if (offsetsAddedToInput.add(insn[0])) {
-                            currentInput.instructions.add(insn);
-                            currentInput.stringEqualsHints.add(new Coordinator.StringHint[]{h});
-                        } else {
-                            currentInput.instructionsToTryInChildren.add(insn);
-                            currentInput.stringEqualsHintsToTryInChildren.add(new Coordinator.StringHint[]{h});
-                        }
+                    currentInput.instructions = hints.instructions;
+                    for(Coordinator.StringHint h : hints.hints){
+                        currentInput.stringEqualsHints.add(new Coordinator.StringHint[]{h});
                     }
                     //Heuristic: We might be getting strings out of Z3 that are too short ot process. Try also running the same input with longer strings
                     Coordinator.StringHintGroup doubled = new Coordinator.StringHintGroup();
@@ -1343,14 +1329,14 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             // Save if new total coverage found
             if (nonZeroAfter > nonZeroBefore) {
                 // Must be responsible for some branch
-                //assert(responsibilities.size() > 0);
+                assert(responsibilities.size() > 0);
                 toSave = true;
                 why = why + "+cov";
             }
 
             if (validNonZeroAfter > validNonZeroBefore) {
                 // Must be responsible for some branch
-                //assert(responsibilities.size() > 0);
+                assert(responsibilities.size() > 0);
                 currentInput.valid = true;
                 toSave = true;
                 why = why + "+valid";
@@ -2398,10 +2384,6 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     newInput.desc += ",hint:" + hint.getType() + "=" + hint.getHint() + "@" + insn[0];
                     newInput.mutationType = MutationType.APPLY_SINGLE_HINT;
                     newInput.seedSource = SeedSource.HINTS;
-                    if(currentInput.z3) {
-                        newInput.mutationType = MutationType.APPLY_Z3_HINT;
-                        newInput.seedSource = SeedSource.Z3;
-                    }
                     infoLog("Applied hint: %s", newInput.desc);
                     newInput.addSingleHintInPlace(hint, insn);
                     if(hint.getType() == Coordinator.HintType.CHAR)
