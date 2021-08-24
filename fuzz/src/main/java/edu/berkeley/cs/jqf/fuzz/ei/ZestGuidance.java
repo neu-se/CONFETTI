@@ -2999,7 +2999,6 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     public static class SeedInput extends LinearInput {
         final Optional<File> seedFile;
-        InputStream in;
 
         /**
          * WARNING This version assumes we saved the hints into the file...
@@ -3023,12 +3022,11 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 this.instructions = instructions;
                 this.appliedTargetedHints = targetedHints;
                 this.organizeStringHintsForCombinations();
-                this.in = new ByteArrayInputStream(input);
-                if(instructions != null && stringHints != null){
-                    if(instructions.size() != stringHints.size())
-                        throw new GuidanceException("Invalid hint structure");
-                    this.in = new StringEqualsHintingInputStream(this.in, null, this);
+                this.values = new ShortArrayList(input.length);
+                for(int i = 0; i < input.length; i++){
+                    this.values.add((short) (input[i] & 0xff));
                 }
+
             } catch (ClassNotFoundException e) {
                 e.printStackTrace();
             }
@@ -3043,42 +3041,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
          */
         public SeedInput(byte[] seedBytes, String desc) {
             this.seedFile = Optional.empty();
-            this.in = new ByteArrayInputStream(seedBytes);
             this.desc = desc;
-        }
-
-        @Override
-        public int getOrGenerateFresh(Integer key, Random random) {
-            int value;
-            try {
-                value = in.read();
-            } catch (IOException e) {
-                throw new GuidanceException("Error reading from seed file: " + seedFile.map(s -> s.getName()).orElse(desc), e);
-
-            }
-
-            // assert (key == values.size())
-            if (key != values.size()) {
-                throw new IllegalStateException(String.format("Bytes from seed out of order. " +
-                        "Size = %d, Key = %d", values.size(), key));
-            }
-
-            if (value >= 0) {
-                requested++;
-                values.add((short) value);
-            }
-
-            // If value is -1, then it is returned (as EOF) but not added to the list
-            return value;
-        }
-
-        @Override
-        public void gc() {
-            super.gc();
-            try {
-                in.close();
-            } catch (IOException e) {
-                throw new GuidanceException("Error closing seed file:" + seedFile.map(s -> s.getName()).orElse(desc), e);
+            this.values = new ShortArrayList(seedBytes.length);
+            for(int i = 0; i < seedBytes.length; i++){
+                this.values.add((short) (seedBytes[i] & 0xff));
             }
         }
 
