@@ -104,9 +104,8 @@ public class DictionaryBackedStringGenerator extends Generator<String> {
                     word = origWord.substring(0, middle) + word + origWord.substring(middle);
                 }
             }
-            if(globalDictionarySet.add(word)){
-                if(!PreMain.RUNTIME_INST)
-                    ZestGuidance.extendedDictionarySize++;
+            if (!PreMain.RUNTIME_INST && !ZestGuidance.IGNORE_GLOBAL_DICTIONARY && globalDictionarySet.add(word)) {
+                ZestGuidance.extendedDictionarySize++;
                 globalDictionary.add(word);
             }
 

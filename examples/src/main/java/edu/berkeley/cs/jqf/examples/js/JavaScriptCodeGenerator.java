@@ -282,10 +282,9 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         if (hints != null && hints.length > 0 ) {
             token = new String(hints[0].getHint());
 
-            if(globalStringHintsSet.add(token)){
+            if (!PreMain.RUNTIME_INST && !ZestGuidance.IGNORE_GLOBAL_DICTIONARY && globalStringHintsSet.add(token)) {
                 globalStringHints.add(token);
-                if(!PreMain.RUNTIME_INST)
-                    ZestGuidance.extendedDictionarySize++;
+                ZestGuidance.extendedDictionarySize++;
             }
 
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
@@ -416,9 +415,8 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
         if (hints != null && hints.length > 0 ) {
             identifier = new String(hints[0].getHint());
-            if(globalStringHintsSet.add(identifier)){
-                if(!PreMain.RUNTIME_INST)
-                    ZestGuidance.extendedDictionarySize++;
+            if (!PreMain.RUNTIME_INST && !ZestGuidance.IGNORE_GLOBAL_DICTIONARY && globalStringHintsSet.add(identifier)) {
+                ZestGuidance.extendedDictionarySize++;
                 globalStringHints.add(identifier);
             }
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
@@ -547,10 +545,9 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         if (hints != null && hints.length > 0 ) {
             token = new String(hints[0].getHint());
 
-            if(globalStringHintsSet.add(token)){
+            if (!PreMain.RUNTIME_INST && !ZestGuidance.IGNORE_GLOBAL_DICTIONARY && globalStringHintsSet.add(token)) {
                 globalStringHints.add(token);
-                if(!PreMain.RUNTIME_INST)
-                    ZestGuidance.extendedDictionarySize++;
+                ZestGuidance.extendedDictionarySize++;
             }
 
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;

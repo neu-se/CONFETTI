@@ -136,10 +136,9 @@ public class JavaClassGenerator extends Generator<JavaClass> {
         } else if (hints != null && hints.length > 0 ) {
             choice = choice % hints.length;
             ret = new String(hints[choice].getHint());
-            if(globalDictionarySet.add(ret)){
+            if (!PreMain.RUNTIME_INST && !ZestGuidance.IGNORE_GLOBAL_DICTIONARY && globalDictionarySet.add(ret)) {
                 globalDictionary.add(ret);
-                if(!PreMain.RUNTIME_INST)
-                    ZestGuidance.extendedDictionarySize++;
+                ZestGuidance.extendedDictionarySize++;
             }
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         }
@@ -231,10 +230,9 @@ public class JavaClassGenerator extends Generator<JavaClass> {
         if (hints != null && hints.length > 0 ) {
             choice = choice % hints.length;
             ret = new String(hints[choice].getHint());
-            if(globalDictionarySet.add(ret)){
+            if (!PreMain.RUNTIME_INST && !ZestGuidance.IGNORE_GLOBAL_DICTIONARY && globalDictionarySet.add(ret)) {
                 globalDictionary.add(ret);
-                if(!PreMain.RUNTIME_INST)
-                    ZestGuidance.extendedDictionarySize++;
+                ZestGuidance.extendedDictionarySize++;
             }
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         }else{
@@ -298,10 +296,9 @@ public class JavaClassGenerator extends Generator<JavaClass> {
         } else if (hints != null && hints.length > 0 ) {
             choice = choice % hints.length;
             typeSig = new String(hints[choice].getHint());
-            if(globalDictionarySet.add(typeSig)){
+            if (!PreMain.RUNTIME_INST && !ZestGuidance.IGNORE_GLOBAL_DICTIONARY && globalDictionarySet.add(typeSig)) {
                 globalDictionary.add(typeSig);
-                if(!PreMain.RUNTIME_INST)
-                    ZestGuidance.extendedDictionarySize++;
+                ZestGuidance.extendedDictionarySize++;
             }
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         }

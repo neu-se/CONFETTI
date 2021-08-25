@@ -176,6 +176,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     public static PriorityQueueConfig priorityQueueConfig;
 
+    public static boolean IGNORE_GLOBAL_DICTIONARY = System.getenv("NO_GLOBAL_DICT") != null;
+
     static {
         try {
 
