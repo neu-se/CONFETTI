@@ -234,10 +234,16 @@ public class Coverage implements TraceEventVisitor, CoverageListener {
         return changed;
     }
 
+    private int cachedSize = -1;
+
     public CoverageComparisonResult compareCoverage(Coverage that){
         synchronized (this.counter){
             synchronized (that.counter){
                 Iterator<IntIntPair> thisIter = this.counter.map.keyValuesView().iterator();
+                if(cachedSize == -1)
+                    this.cachedSize = this.counter.map.size();
+                if(that.counter.map.size() < cachedSize)
+                    return CoverageComparisonResult.THAT_DOES_NOT_COVER_ALL_OF_THIS;
 
                 boolean coversAllOfThis = true;
                 boolean coversAllOfThisSameOrGreaterHits = true;
@@ -249,9 +255,11 @@ public class Coverage implements TraceEventVisitor, CoverageListener {
                     if(thatStatus == 0){
                         coversAllOfThis = false;
                         coversAllOfThisSameOrGreaterHits = false;
+                        break;
                     }
-                    else if(thatStatus < coverageEntry.getTwo())
+                    else if(thatStatus < coverageEntry.getTwo()) {
                         coversAllOfThisSameOrGreaterHits = false;
+                    }
                 }
                 if(coversAllOfThisSameOrGreaterHits)
                     return CoverageComparisonResult.THAT_COVERS_ALL_OF_THIS_SAME_OR_GREATER_HITS;

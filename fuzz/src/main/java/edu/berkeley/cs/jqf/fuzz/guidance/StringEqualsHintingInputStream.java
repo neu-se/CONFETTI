@@ -25,7 +25,6 @@ public class StringEqualsHintingInputStream extends InputStream {
     public static Boolean hintUsedInCurrentInput = false;
     public static Boolean z3HintsUsedInCurrentInput = false;
 
-    private static LinkedList<Coordinator.StringHint[]> globalHints;
 
     private static LinkedList<Coordinator.StringHint[]> aggregatedHints =  new LinkedList<>();
 
@@ -41,7 +40,6 @@ public class StringEqualsHintingInputStream extends InputStream {
         this.hints = new LinkedList<>(input.stringEqualsHints);
         this.ris = ris;
 
-        globalHints = new LinkedList<>(hints);
         aggregatedHints = new LinkedList<>();
 
         if (this.reqs.size() != this.hints.size())

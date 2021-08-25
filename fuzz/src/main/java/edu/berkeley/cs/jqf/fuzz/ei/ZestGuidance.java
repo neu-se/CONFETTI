@@ -2223,6 +2223,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             this.values.addAll(other.values);
         }
 
+        public void reset(){
+            this.requested = 0;
+        }
+
         public static LinearInput fromFile(File f) throws IOException, ClassNotFoundException {
             LinearInput ret = new LinearInput();
             try(ObjectInputStream ois = new ObjectInputStream(new BufferedInputStream(new FileInputStream(f)))){

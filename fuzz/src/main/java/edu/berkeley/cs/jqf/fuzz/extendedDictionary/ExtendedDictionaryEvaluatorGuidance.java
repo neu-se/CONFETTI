@@ -37,6 +37,7 @@ import edu.berkeley.cs.jqf.instrument.tracing.SingleSnoop;
 import edu.berkeley.cs.jqf.instrument.tracing.events.TraceEvent;
 import org.eclipse.collections.api.iterator.IntIterator;
 import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
+import org.eclipse.collections.impl.list.mutable.primitive.ShortArrayList;
 import org.eclipse.collections.impl.map.mutable.primitive.IntObjectHashMap;
 
 import java.io.*;
@@ -71,17 +72,19 @@ public class ExtendedDictionaryEvaluatorGuidance implements Guidance {
     public String experimentName;
     public String appName;
 
-    public void appendToLog(String str){
+    public void appendToLog(String str) {
         this.logger.println(str);
     }
+
     public void close() {
-        if(this.inputUnderAnalysis != null)
+        if (this.inputUnderAnalysis != null)
             this.inputUnderAnalysis.logStats();
-        if(this.traceDir != null)
+        if (this.traceDir != null)
             this.logger.close();
     }
 
     public static int generatedStrings = 0;
+
     class ExtendedDictionaryLinearInput extends ZestGuidance.LinearInput {
         Coverage coverage;
         int numTimesSelectedForFuzzing;
@@ -103,56 +106,78 @@ public class ExtendedDictionaryEvaluatorGuidance implements Guidance {
 
         IntArrayList indicesOfHintsThatAreGlobalDictionaryHints = new IntArrayList();
 
-        ExtendedDictionaryLinearInput(ZestGuidance.LinearInput other){
+        //Allocate these lists once and reuse them for each child input
+        private ShortArrayList mutatedArrayList;
+        private LinkedList<int[]> nonGlobalDictInsns;
+        private LinkedList<Coordinator.StringHint[]> nonGlobalDictHints;
+        private int[] positionsToMutateInChildren;
+
+        ExtendedDictionaryLinearInput(ZestGuidance.LinearInput other) {
             super(other);
+            this.mutatedArrayList = new ShortArrayList(other.values.size());
+            for (int i = 0; i < other.values.size(); i++) {
+                this.mutatedArrayList.add(other.values.get(i));
+            }
+
             this.parentInputIdx = other.parentInputIdx;
             this.numGlobalDictionaryHintsApplied = other.numGlobalDictionaryHintsApplied;
-            if(other.allInstructions != null)
+            if (other.allInstructions != null)
                 this.allInstructions = new LinkedList<>(other.allInstructions);
-            if(other.allStringEqualsHints != null)
+            if (other.allStringEqualsHints != null)
                 this.allStringEqualsHints = new LinkedList<>(other.allStringEqualsHints);
 
             this.organizeHintsByPosition();
-            for(int i = 0; i < this.stringEqualsHints.size(); i++){
-                if(this.stringEqualsHints.get(i)[0].type == Coordinator.HintType.GLOBAL_DICTIONARY){
+            for (int i = 0; i < this.stringEqualsHints.size(); i++) {
+                if (this.stringEqualsHints.get(i)[0].type == Coordinator.HintType.GLOBAL_DICTIONARY) {
                     indicesOfHintsThatAreGlobalDictionaryHints.add(i);
                     //Is there also a regular string hint here for the same value?
                     int[] pos = this.instructions.get(i);
                     String val = this.stringEqualsHints.get(i)[0].hint;
                     if (hintsAtOffsets.containsKey(pos[0])) {
                         boolean found = false;
-                        for(Coordinator.StringHint h : hintsAtOffsets.get(pos[0])){
-                            if(h.getType() != Coordinator.HintType.GLOBAL_DICTIONARY && h.getHint().equals(val)){
-                               this.numGlobalDictHintsWithRegularHintAlso++;
-                               found = true;
+                        for (Coordinator.StringHint h : hintsAtOffsets.get(pos[0])) {
+                            if (h.getType() != Coordinator.HintType.GLOBAL_DICTIONARY && h.getHint().equals(val)) {
+                                this.numGlobalDictHintsWithRegularHintAlso++;
+                                found = true;
                             }
                         }
-                        if(!found)
+                        if (!found)
                             this.numGlobalDictHintsWithoutRegularHintsAlso++;
-                    }
-                    else{
+                    } else {
                         this.numGlobalDictHintsWithoutRegularHintsAlso++;
                     }
-                }else if(this.stringEqualsHints.get(i)[0].type == Coordinator.HintType.Z3){
+                } else if (this.stringEqualsHints.get(i)[0].type == Coordinator.HintType.Z3) {
                     this.numZ3HintsApplied++;
-                }else if(this.stringEqualsHints.get(i)[0].type == Coordinator.HintType.CHAR){
+                } else if (this.stringEqualsHints.get(i)[0].type == Coordinator.HintType.CHAR) {
                     this.numCharHintsApplied++;
-                }else{
+                } else {
                     this.numStringHintsApplied++;
                 }
             }
             indicesOfHintsThatAreGlobalDictionaryHints.reverseThis();
+            this.nonGlobalDictHints = new LinkedList<>(this.stringEqualsHints);
+            this.nonGlobalDictInsns = new LinkedList<>(this.instructions);
+            this.positionsToMutateInChildren = new int[indicesOfHintsThatAreGlobalDictionaryHints.size()];
+            IntIterator iter = indicesOfHintsThatAreGlobalDictionaryHints.intIterator();
+            int i = 0;
+            while (iter.hasNext()) {
+                int hintToRemove = iter.next();
+                this.nonGlobalDictHints.remove(hintToRemove);
+                int[] pos = this.nonGlobalDictInsns.remove(hintToRemove);
+                this.positionsToMutateInChildren[i] = pos[0];
+                i++;
+            }
         }
 
-        public void logStats(){
+        public void logStats() {
             //("inputIdx,seedSource,parentInputIdx,inputSizeBytes,numStringsTotal,numGlobalDictHints,numCharHints,numStringHints,
             // numZ3Hints,numHintsAvailable,numHintPositionsAvailable,minHintsPerPosition,
             // maxHintsPerPosition,numGlobalDictHintsWithRegularHintAlso,
             // numGlobalDictHintsWithoutRegularHintsAlso,numChildrenSameCovAndCounts,
             // numChildrenSameCovLessCounts,numChildrenLessCov");
-            if(this.maxHintsPerPosition < 0)
+            if (this.maxHintsPerPosition < 0)
                 this.maxHintsPerPosition = 0;
-            if(this.minHintsPerPosition == Integer.MAX_VALUE)
+            if (this.minHintsPerPosition == Integer.MAX_VALUE)
                 this.minHintsPerPosition = 0;
             appendToLog(String.format("%s,%s,%d,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
                     appName,
@@ -175,75 +200,87 @@ public class ExtendedDictionaryEvaluatorGuidance implements Guidance {
                     this.numChildrenSameCovAndCounts,
                     this.numChildrenSameCovLessCounts,
                     this.numChildrenLessCov));
+            //Reduce memory pressure by allowing this all to be freed...
+            this.coverage = null;
+            this.nonGlobalDictHints = null;
+            this.nonGlobalDictInsns = null;
+            this.stringEqualsHints = null;
+            this.instructions = null;
         }
 
         private IntObjectHashMap<ArrayList<Coordinator.StringHint>> hintsAtOffsets;
-        private void organizeHintsByPosition(){
+
+        private void organizeHintsByPosition() {
             hintsAtOffsets = new IntObjectHashMap<>();
-            if(this.allInstructions == null)
+            if (this.allInstructions == null)
                 return;
             Iterator<int[]> insnIter = allInstructions.iterator();
             Iterator<Coordinator.StringHint[]> hintIter = allStringEqualsHints.iterator();
-            while(insnIter.hasNext()){
+            while (insnIter.hasNext()) {
                 int[] insn = insnIter.next();
                 Coordinator.StringHint[] hints = hintIter.next();
-                if(!hintsAtOffsets.containsKey(insn[0])){
+                if (!hintsAtOffsets.containsKey(insn[0])) {
                     hintsAtOffsets.put(insn[0], new ArrayList<>());
                 }
-                for(Coordinator.StringHint hint : hints){
-                    if(hint.getType() != Coordinator.HintType.GLOBAL_DICTIONARY)
+                for (Coordinator.StringHint hint : hints) {
+                    if (hint.getType() != Coordinator.HintType.GLOBAL_DICTIONARY)
                         hintsAtOffsets.get(insn[0]).add(hint);
                 }
             }
             IntIterator allHintsIter = hintsAtOffsets.keysView().intIterator();
-            while(allHintsIter.hasNext()){
+            while (allHintsIter.hasNext()) {
                 int pos = allHintsIter.next();
                 ArrayList<Coordinator.StringHint> hints = hintsAtOffsets.get(pos);
                 this.numHintsAvailable += hints.size();
-                if(hints.size() > 0)
+                if (hints.size() > 0)
                     this.numHintPositionsAvailable++;
-                if(hints.size() > this.maxHintsPerPosition)
+                if (hints.size() > this.maxHintsPerPosition)
                     this.maxHintsPerPosition = hints.size();
-                if(hints.size() < this.minHintsPerPosition)
+                if (hints.size() < this.minHintsPerPosition)
                     this.minHintsPerPosition = hints.size();
             }
         }
 
+
+        private ZestGuidance.LinearInput childInput;
         @Override
         public ZestGuidance.Input fuzz(Random random) {
             // Create a new input that is the same as this one, but with the hints removed, and the corresponding input bytes
             // replaced to pick something at random from the dictionary
-            ZestGuidance.LinearInput newInput = new ZestGuidance.LinearInput(this);
-            IntIterator iter = indicesOfHintsThatAreGlobalDictionaryHints.intIterator();
-            while(iter.hasNext()){
-                int hintToRemove = iter.next();
-                newInput.stringEqualsHints.remove(hintToRemove);
-                int[] pos = newInput.instructions.remove(hintToRemove);
-                //Patch the byte before this hint from 1 to 0 ("don't use extended dict") and then the choice to a random value
-                if(newInput.values.get(pos[0] - 1) == 0) {
-                    throw new IllegalStateException("Expected not 0 but got " + this.values.get(pos[0] - 1));
-                }
-                newInput.values.set(pos[0] - 1, (short) 0);
+            if (this.childInput == null) {
+                childInput = new ZestGuidance.LinearInput();
+                childInput.values = this.mutatedArrayList;
+                childInput.stringEqualsHints = this.nonGlobalDictHints;
+                childInput.instructions = this.nonGlobalDictInsns;
+            } else {
+                childInput.reset();
+            }
+            for (int i = 0; i < this.positionsToMutateInChildren.length; i++) {
+                int pos = this.positionsToMutateInChildren[i];
+                childInput.values.set(pos - 1, (short) 0);
                 int newChoice = random.nextInt();
                 if (newChoice < 0)
                     newChoice = 0 - newChoice;
-                newInput.values.set(pos[0], (byte) newChoice);
-                newInput.values.set(pos[0] + 1, (byte) (newChoice >> 8));
-                newInput.values.set(pos[0] + 2, (byte) (newChoice >> 16));
-                newInput.values.set(pos[0] + 3, (byte) (newChoice >> 24));
+                childInput.values.set(pos, (byte) newChoice);
+                childInput.values.set(pos + 1, (byte) (newChoice >> 8));
+                childInput.values.set(pos + 2, (byte) (newChoice >> 16));
+                childInput.values.set(pos + 3, (byte) (newChoice >> 24));
             }
             numTimesSelectedForFuzzing++;
-            return newInput;
+            return childInput;
         }
 
         public boolean hasInputsToTry() {
-            if(this.numChildrenSameCovAndCounts > 0)
+            if (this.numChildrenSameCovAndCounts > 0)
                 return false;
-            if(!this.indicesOfHintsThatAreGlobalDictionaryHints.isEmpty() && numTimesSelectedForFuzzing < NUM_TRIALS_PER_INPUT)
+            if (!this.indicesOfHintsThatAreGlobalDictionaryHints.isEmpty() && numTimesSelectedForFuzzing < NUM_TRIALS_PER_INPUT)
                 return true;
             return false;
         }
     }
+
+    long startTime;
+    long executions;
 
     /**
      * Constructs an instance of ReproGuidance with a list of
@@ -258,6 +295,8 @@ public class ExtendedDictionaryEvaluatorGuidance implements Guidance {
     public ExtendedDictionaryEvaluatorGuidance(File[] inputFiles, File traceDir) {
         this.inputFiles = inputFiles;
         this.traceDir = traceDir;
+
+        this.startTime = System.currentTimeMillis();
 
         String appName = System.getenv("APP_NAME");
         String expName = System.getenv("EXP_NAME");
@@ -302,11 +341,17 @@ public class ExtendedDictionaryEvaluatorGuidance implements Guidance {
     public InputStream getInput() {
         runCoverage.clear();
         generatedStrings = 0;
+        executions++;
         if (this.inputUnderAnalysis != null && this.inputUnderAnalysis.hasInputsToTry()) {
             currentInput = (ZestGuidance.LinearInput) inputUnderAnalysis.fuzz(random);
         } else {
-            if(this.inputUnderAnalysis != null)
+            if (this.inputUnderAnalysis != null)
                 this.inputUnderAnalysis.logStats();
+
+            if(nextFileIdx % 100 == 0){
+                int speed = (int) (1000*executions / (System.currentTimeMillis() - startTime));
+                System.out.println("Status: " + nextFileIdx + "/" + inputFiles.length + " seeds evaluated, " + executions + " executions, at " + speed + " execs/sec");
+            }
 
             File inputFile = inputFiles[nextFileIdx];
             nextFileIdx++;
@@ -351,7 +396,7 @@ public class ExtendedDictionaryEvaluatorGuidance implements Guidance {
      */
     @Override
     public boolean hasInput() {
-        if(this.inputUnderAnalysis != null && this.inputUnderAnalysis.hasInputsToTry())
+        if (this.inputUnderAnalysis != null && this.inputUnderAnalysis.hasInputsToTry())
             return true;
         return nextFileIdx < inputFiles.length;
     }
@@ -381,16 +426,16 @@ public class ExtendedDictionaryEvaluatorGuidance implements Guidance {
             throw new GuidanceException(e);
         }
         runCoverage.lock();
-        if(this.currentInput == this.inputUnderAnalysis){
+        if (this.currentInput == this.inputUnderAnalysis) {
             //We just ran the input as-is, record the coverage!
             this.inputUnderAnalysis.coverage = new Coverage(runCoverage);
             this.inputUnderAnalysis.numStrings = generatedStrings;
-        }else{
+        } else {
             //Fuzzed version, see if coverage is same or not
             Coverage.CoverageComparisonResult res = this.inputUnderAnalysis.coverage.compareCoverage(runCoverage);
-            if(res == Coverage.CoverageComparisonResult.THAT_COVERS_ALL_OF_THIS)
+            if (res == Coverage.CoverageComparisonResult.THAT_COVERS_ALL_OF_THIS)
                 this.inputUnderAnalysis.numChildrenSameCovLessCounts++;
-            else if(res == Coverage.CoverageComparisonResult.THAT_COVERS_ALL_OF_THIS_SAME_OR_GREATER_HITS)
+            else if (res == Coverage.CoverageComparisonResult.THAT_COVERS_ALL_OF_THIS_SAME_OR_GREATER_HITS)
                 this.inputUnderAnalysis.numChildrenSameCovAndCounts++;
             else
                 this.inputUnderAnalysis.numChildrenLessCov++;
@@ -420,10 +465,9 @@ public class ExtendedDictionaryEvaluatorGuidance implements Guidance {
      */
     @Override
     public Consumer<TraceEvent> generateCallBack(Thread thread) {
-        if( thread.getName().endsWith("main")) {
+        if (thread.getName().endsWith("main")) {
             return this::handleEvent;
-        }
-        else return this.emptyEvent;
+        } else return this.emptyEvent;
     }
 
     private Consumer<TraceEvent> emptyEvent = new Consumer<TraceEvent>() {
@@ -432,6 +476,7 @@ public class ExtendedDictionaryEvaluatorGuidance implements Guidance {
 
         }
     };
+
     private void handleEvent(TraceEvent e) {
         // Collect totalCoverage
         runCoverage.handleEvent(e);
