@@ -33,6 +33,7 @@ import com.pholser.junit.quickcheck.generator.GenerationStatus;
 import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.internal.GeometricDistribution;
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
+import edu.berkeley.cs.jqf.examples.common.ConfettiHelper;
 import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
 import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
 import edu.berkeley.cs.jqf.fuzz.extendedDictionary.ExtendedDictionaryEvaluatorGuidance;
@@ -116,33 +117,7 @@ public class JavaClassGenerator extends Generator<JavaClass> {
     public String useHintOrDefault(SourceOfRandomness r, String def){
         boolean useExtendedDict = r.nextBoolean();
         int choice = r.nextInt(0, Integer.MAX_VALUE);
-        Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
-        int[] pos = new int[]{RecordingInputStream.lastReadOffset-4,4};
-
-        String ret = def;
-        if (useExtendedDict) {
-            if (globalDictionary.size() == 0) {
-                ret = def;
-            } else {
-                choice = choice % globalDictionary.size();
-                ret = globalDictionary.get(choice);
-                if(ZestGuidance.currentInput != null)
-                    ZestGuidance.currentInput.numGlobalDictionaryHintsApplied++;
-            }
-            if(ZestGuidance.currentInput != null) {
-                ZestGuidance.currentInput.addSingleHintInPlace(
-                        new Coordinator.StringHint(ret, Coordinator.HintType.GLOBAL_DICTIONARY, null), pos);
-            }
-        } else if (hints != null && hints.length > 0 ) {
-            choice = choice % hints.length;
-            ret = new String(hints[choice].getHint());
-            if (!PreMain.RUNTIME_INST && !ZestGuidance.IGNORE_GLOBAL_DICTIONARY && globalDictionarySet.add(ret)) {
-                globalDictionary.add(ret);
-                ZestGuidance.extendedDictionarySize++;
-            }
-            StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
-        }
-        return applyTaints(ret, choice);
+        return ConfettiHelper.chooseString(choice, useExtendedDict, def);
     }
 
     public JavaClass generate(SourceOfRandomness r, GenerationStatus s) {
@@ -224,39 +199,8 @@ public class JavaClassGenerator extends Generator<JavaClass> {
         int choice = r.nextInt(0, Integer.MAX_VALUE);
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
 
-
         String ret = r.nextChar('a', 'z') + "_" + r.nextInt(10);
-
-        if (hints != null && hints.length > 0 ) {
-            choice = choice % hints.length;
-            ret = new String(hints[choice].getHint());
-            if (!PreMain.RUNTIME_INST && !ZestGuidance.IGNORE_GLOBAL_DICTIONARY && globalDictionarySet.add(ret)) {
-                globalDictionary.add(ret);
-                ZestGuidance.extendedDictionarySize++;
-            }
-            StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
-        }else{
-            if (useExtendedDict || choice % 2 == 0) {
-                choice = choice % (memberDictionary.length + (useExtendedDict ? globalDictionary.size() : 0));
-                if(RecordingInputStream.lastReadBytes != null && RecordingInputStream.lastReadBytes.length == 4){
-                    //Update the recorded value with one that does NOT wrap around
-                    ByteBuffer.wrap(RecordingInputStream.lastReadBytes).putInt(choice);
-                }
-                if(choice < memberDictionary.length)
-                    ret = memberDictionary[choice % memberDictionary.length];
-                else{
-                    int[] pos = new int[]{RecordingInputStream.lastReadOffset-4,4};
-                    ret = globalDictionary.get(choice - memberDictionary.length);
-                    if(ZestGuidance.currentInput != null) {
-                        ZestGuidance.currentInput.addSingleHintInPlace(
-                                new Coordinator.StringHint(ret, Coordinator.HintType.GLOBAL_DICTIONARY, null), pos);
-                        ZestGuidance.currentInput.numGlobalDictionaryHintsApplied++;
-                    }
-                }
-            }
-        }
-
-        return applyTaints(ret, choice);
+        return ConfettiHelper.chooseFromDictionaryOrUseDefault(choice, useExtendedDict, useExtendedDict || choice % 2 == 0, ret, memberDictionary, hints);
     }
 
     private String generateTypeSignature(SourceOfRandomness r, boolean arraysAllowed) {
@@ -281,29 +225,7 @@ public class JavaClassGenerator extends Generator<JavaClass> {
                 typeSig = "[" + typeSig;
             }
         }
-
-        if (useExtendedDict) {
-            if(globalDictionary.size() > 0) {
-                choice = choice % globalDictionary.size();
-                typeSig = globalDictionary.get(choice);
-                if(ZestGuidance.currentInput != null)
-                    ZestGuidance.currentInput.numGlobalDictionaryHintsApplied++;
-            }
-            if(ZestGuidance.currentInput != null) {
-                ZestGuidance.currentInput.addSingleHintInPlace(
-                        new Coordinator.StringHint(typeSig, Coordinator.HintType.GLOBAL_DICTIONARY, null), pos);
-            }
-        } else if (hints != null && hints.length > 0 ) {
-            choice = choice % hints.length;
-            typeSig = new String(hints[choice].getHint());
-            if (!PreMain.RUNTIME_INST && !ZestGuidance.IGNORE_GLOBAL_DICTIONARY && globalDictionarySet.add(typeSig)) {
-                globalDictionary.add(typeSig);
-                ZestGuidance.extendedDictionarySize++;
-            }
-            StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
-        }
-
-        return applyTaints(typeSig, choice);
+        return ConfettiHelper.chooseString(choice, useExtendedDict, typeSig);
     }
 
     private Type generateType(SourceOfRandomness r, boolean arraysAllowed) {
@@ -649,33 +571,7 @@ public class JavaClassGenerator extends Generator<JavaClass> {
         }
 
         String ret = String.join("/", parts);
-
-        if (hints != null && hints.length > 0 ) {
-            //random.nextInt(0, Integer.MAX_VALUE);
-            choice = choice % hints.length;
-
-            ret = new String(hints[choice].getHint());
-            StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
-        }
-        else if (choice % 2 == 0) {
-            choice = choice % (interestingClasses.length + (useExtendedDict ? globalDictionary.size() : 0));
-            if(RecordingInputStream.lastReadBytes != null && RecordingInputStream.lastReadBytes.length == 4){
-                //Update the recorded value with one that does NOT wrap around
-                ByteBuffer.wrap(RecordingInputStream.lastReadBytes).putInt(choice);
-            }
-            if(choice < interestingClasses.length)
-                ret =  interestingClasses[choice % interestingClasses.length];
-            else{
-                int[] pos = new int[]{RecordingInputStream.lastReadOffset-4,4};
-                ret = globalDictionary.get(choice - interestingClasses.length);
-                if(ZestGuidance.currentInput != null) {
-                    ZestGuidance.currentInput.addSingleHintInPlace(
-                            new Coordinator.StringHint(ret, Coordinator.HintType.GLOBAL_DICTIONARY, null), pos);
-                    ZestGuidance.currentInput.numGlobalDictionaryHintsApplied++;
-                }
-            }
-        }
-        return applyTaints(ret, choice);
+        return ConfettiHelper.chooseFromDictionaryOrUseDefault(choice, useExtendedDict, choice % 2 == 0, ret, interestingClasses, hints);
     }
 
     int generateFieldRef(SourceOfRandomness r) {
@@ -696,42 +592,6 @@ public class JavaClassGenerator extends Generator<JavaClass> {
 
     int generateClassRef(SourceOfRandomness r) {
         return constants.addClass(generateClassName(r));
-    }
-
-    private static int currentFunctionNumber = 0;
-
-    private static String applyTaints(String result, Object taint) {
-        if(!PreMain.RUNTIME_INST)
-            ExtendedDictionaryEvaluatorGuidance.generatedStrings++;
-        if (result == null || result.length() == 0 || !(taint instanceof TaintedObjectWithObjTag))
-            return result;
-
-        // New string to avoid adding taints to the dictionary itself
-        String ret = new String(result.getBytes(), 0, result.length());
-
-        Expression t = (Expression) ((Taint)((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG()).getSingleLabel();
-
-        if (Symbolicator.getTaints(ret) instanceof LazyCharArrayObjTags) {
-            LazyCharArrayObjTags taints = (LazyCharArrayObjTags) Symbolicator.getTaints(ret);
-            // Don't taint what's already tainted
-            if (taints.taints != null)
-                return result;
-
-            taints.taints = new Taint[ret.length()];
-            for (int i = 0 ; i< taints.taints.length ; i++) {
-                taints.taints[i] = new ExpressionTaint(new FunctionCall(
-                        "gen" + currentFunctionNumber,
-                        new Expression[]{ new IntConstant(i), t}));
-            }
-            KnarrGuidance.generatedStrings.put("gen"+currentFunctionNumber, ret);
-            currentFunctionNumber += 1;
-
-        }
-
-        // New string so that Phosphor can compute the tag for the string itself based on the tag for each character
-        ret = new String(ret.getBytes(), 0, ret.length());
-
-        return ret;
     }
 
 }

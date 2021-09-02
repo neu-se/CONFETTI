@@ -3,6 +3,7 @@ package edu.berkeley.cs.jqf.examples.js;
 import com.pholser.junit.quickcheck.generator.GenerationStatus;
 import com.pholser.junit.quickcheck.generator.Generator;
 import com.pholser.junit.quickcheck.random.SourceOfRandomness;
+import edu.berkeley.cs.jqf.examples.common.ConfettiHelper;
 import edu.berkeley.cs.jqf.fuzz.central.Coordinator;
 import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
 import edu.berkeley.cs.jqf.fuzz.extendedDictionary.ExtendedDictionaryEvaluatorGuidance;
@@ -166,60 +167,6 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         return result;
     }
 
-//    private static String applyTaints(String result, Object taint) {
-//        if (!(taint instanceof TaintedObjectWithObjTag))
-//            return result;
-//
-//        String ret = new String(result);
-//
-//        if (Symbolicator.getTaints(result) instanceof LazyCharArrayObjTags) {
-//            LazyCharArrayObjTags taints = (LazyCharArrayObjTags) Symbolicator.getTaints(result);
-//            if (taints.taints != null)
-//                for (int i = 0 ; i < taints.taints.length ; i++)
-//                    taints.taints[i] = (taints.taints[i] == null ? ((Taint)((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG()) : taints.taints[i]);
-//            else
-//                taints.setTaints(((Taint)((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG()));
-//        }
-//
-//        return ret;
-//    }
-
-    private static int currentFunctionNumber = 0;
-
-    private static String applyTaints(String result, Object taint) {
-        if(!PreMain.RUNTIME_INST)
-            ExtendedDictionaryEvaluatorGuidance.generatedStrings++;
-
-        if (result == null || result.length() == 0 || !(taint instanceof TaintedObjectWithObjTag))
-            return result;
-
-        // New string to avoid adding taints to the dictionary itself
-        String ret = new String(result.getBytes(), 0, result.length());
-
-        Expression t = (Expression) ((Taint)((TaintedObjectWithObjTag)taint).getPHOSPHOR_TAG()).getSingleLabel();
-
-        if (Symbolicator.getTaints(ret) instanceof LazyCharArrayObjTags) {
-            LazyCharArrayObjTags taints = (LazyCharArrayObjTags) Symbolicator.getTaints(ret);
-            // Don't taint what's already tainted
-            if (taints.taints != null)
-                return result;
-
-            taints.taints = new Taint[ret.length()];
-            for (int i = 0 ; i< taints.taints.length ; i++) {
-                taints.taints[i] = new ExpressionTaint(new FunctionCall(
-                        "gen" + currentFunctionNumber,
-                        new Expression[]{ new IntConstant(i), t}));
-            }
-            KnarrGuidance.generatedStrings.put("gen"+currentFunctionNumber, ret);
-            currentFunctionNumber += 1;
-
-        }
-
-        // New string so that Phosphor can compute the tag for the string itself based on the tag for each character
-        ret = new String(ret.getBytes(), 0, ret.length());
-
-        return ret;
-    }
 
     /** Generates a random JavaScript expression using recursive calls */
     private String generateExpression(SourceOfRandomness random) {
@@ -277,37 +224,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
         boolean useExtendedDict = random.nextBoolean();
         int choice = random.nextInt(0, Integer.MAX_VALUE);
 
-        String token;
-        Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
-        if (hints != null && hints.length > 0 ) {
-            token = new String(hints[0].getHint());
-
-            if (!PreMain.RUNTIME_INST && !ZestGuidance.IGNORE_GLOBAL_DICTIONARY && globalStringHintsSet.add(token)) {
-                globalStringHints.add(token);
-                ZestGuidance.extendedDictionarySize++;
-            }
-
-            StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
-        } else {
-            choice = choice % (BINARY_TOKENS.length + (useExtendedDict ? globalStringHints.size() : 0));
-            if(RecordingInputStream.lastReadBytes != null && RecordingInputStream.lastReadBytes.length == 4){
-                //Update the recorded value with one that does NOT wrap around
-                ByteBuffer.wrap(RecordingInputStream.lastReadBytes).putInt(choice);
-            }
-            if (choice >= BINARY_TOKENS.length) {
-                int[] pos = new int[]{RecordingInputStream.lastReadOffset - 4, 4};
-                token = new String(globalStringHints.get(choice - BINARY_TOKENS.length));
-                if (ZestGuidance.currentInput != null){
-                    ZestGuidance.currentInput.addSingleHintInPlace(
-                            new Coordinator.StringHint(token, Coordinator.HintType.GLOBAL_DICTIONARY, null), pos);
-                    ZestGuidance.currentInput.numGlobalDictionaryHintsApplied++;
-                }
-
-            }
-            else
-                token = new String(BINARY_TOKENS[choice]);
-        }
-        token = applyTaints(token, choice);
+        String token = ConfettiHelper.chooseFromDictionary(choice, useExtendedDict, BINARY_TOKENS);
 
         String lhs = generateExpression(random);
         String rhs = generateExpression(random);
@@ -411,36 +328,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
 
         boolean useExtendedDict = random.nextBoolean();
         int choice = random.nextInt(0, Integer.MAX_VALUE);
-
-        Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
-        if (hints != null && hints.length > 0 ) {
-            identifier = new String(hints[0].getHint());
-            if (!PreMain.RUNTIME_INST && !ZestGuidance.IGNORE_GLOBAL_DICTIONARY && globalStringHintsSet.add(identifier)) {
-                ZestGuidance.extendedDictionarySize++;
-                globalStringHints.add(identifier);
-            }
-            StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
-        } else {
-            choice = choice % (IDENTIFIERS.length +  (useExtendedDict ? globalStringHints.size() : 0));
-            if(RecordingInputStream.lastReadBytes != null && RecordingInputStream.lastReadBytes.length == 4){
-                //Update the recorded value with one that does NOT wrap around
-                ByteBuffer.wrap(RecordingInputStream.lastReadBytes).putInt(choice);
-            }
-            if (choice >= IDENTIFIERS.length) {
-                int[] pos = new int[]{RecordingInputStream.lastReadOffset-4,4};
-                identifier = new String(globalStringHints.get(choice - IDENTIFIERS.length));
-                if(ZestGuidance.currentInput != null) {
-                    ZestGuidance.currentInput.addSingleHintInPlace(
-                            new Coordinator.StringHint(identifier, Coordinator.HintType.GLOBAL_DICTIONARY, null), pos);
-                    ZestGuidance.currentInput.numGlobalDictionaryHintsApplied++;
-                }
-            } else {
-                identifier = new String(IDENTIFIERS[choice]);
-            }
-        }
-
-        identifier = applyTaints(identifier, choice);
-
+        identifier = ConfettiHelper.chooseFromDictionary(choice, useExtendedDict, IDENTIFIERS);
         return identifier;
     }
 
@@ -539,38 +427,7 @@ public class JavaScriptCodeGenerator extends Generator<String> {
     private String generateUnaryNode(SourceOfRandomness random) {
         boolean useExtendedDict = random.nextBoolean();
         int choice = random.nextInt(0, Integer.MAX_VALUE);
-
-        String token;
-        Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
-        if (hints != null && hints.length > 0 ) {
-            token = new String(hints[0].getHint());
-
-            if (!PreMain.RUNTIME_INST && !ZestGuidance.IGNORE_GLOBAL_DICTIONARY && globalStringHintsSet.add(token)) {
-                globalStringHints.add(token);
-                ZestGuidance.extendedDictionarySize++;
-            }
-
-            StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
-        } else {
-            choice = choice % (UNARY_TOKENS.length +  (useExtendedDict ? globalStringHints.size() : 0));
-            if (RecordingInputStream.lastReadBytes != null && RecordingInputStream.lastReadBytes.length == 4) {
-                //Update the recorded value with one that does NOT wrap around
-                ByteBuffer.wrap(RecordingInputStream.lastReadBytes).putInt(choice);
-            }
-            if (choice >= UNARY_TOKENS.length) {
-                int[] pos = new int[]{RecordingInputStream.lastReadOffset - 4, 4};
-                token = new String(globalStringHints.get(choice - UNARY_TOKENS.length));
-                if (ZestGuidance.currentInput != null) {
-                    ZestGuidance.currentInput.addSingleHintInPlace(
-                            new Coordinator.StringHint(token, Coordinator.HintType.GLOBAL_DICTIONARY, null), pos);
-                    ZestGuidance.currentInput.numGlobalDictionaryHintsApplied++;
-                }
-            } else
-                token = new String(UNARY_TOKENS[choice]);
-        }
-
-        token = applyTaints(token, choice);
-
+        String token = ConfettiHelper.chooseFromDictionary(choice, useExtendedDict, UNARY_TOKENS);
         return token + " " + generateExpression(random);
     }
 
