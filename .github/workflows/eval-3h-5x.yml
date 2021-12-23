@@ -1,0 +1,10 @@
+name: Thin and fast evaluation - 3 hours, 5 trials
+on: workflow_dispatch
+jobs:
+  evaluate:
+    uses: jon-bell/jqf/.github/workflows/evaluation-workflow.yml@reporting-ci
+    with:
+      duration: 3h
+      trials: 5
+      fuzzer_to_invoke: ./bin/confetti
+      java_home: /usr/lib/jvm/jdk1.8.0_301/
