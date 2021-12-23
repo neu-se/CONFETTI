@@ -1331,14 +1331,12 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             // Save if new total coverage found
             if (nonZeroAfter > nonZeroBefore) {
                 // Must be responsible for some branch
-                assert(responsibilities.size() > 0);
                 toSave = true;
                 why = why + "+cov";
             }
 
             if (validNonZeroAfter > validNonZeroBefore) {
                 // Must be responsible for some branch
-                assert(responsibilities.size() > 0);
                 currentInput.valid = true;
                 toSave = true;
                 why = why + "+valid";

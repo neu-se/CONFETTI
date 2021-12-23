@@ -21,7 +21,7 @@ INST_JAR="${INST_DIR}/$project-instrument-$version.jar"
 JACOCO_AGENT_JAR="${JACOCO_DIR}/jacocoagent.jar"
 #JACOCO_JVM_OPTS="-javaagent:${JACOCO_AGENT_JAR}=classdumpdir=${ROOT_DIR}/instrument/jacoco_dumped_classes"
 
-# Compute classpaths (the /classes are only for development; 
+# Compute classpaths (the /classes are only for development;
 #   if empty the JARs will have whatever is needed)
 INST_CLASSPATH="${INST_JAR}:${INST_DIR}/classes"
 FUZZ_CLASSPATH="${FUZZ_JAR}:${FUZZ_DIR}/classes"
@@ -29,7 +29,7 @@ FUZZ_CLASSPATH="${FUZZ_JAR}:${FUZZ_DIR}/classes"
 # If user-defined classpath is not set, default to '.'
 if [ -z "${CLASSPATH}" ]; then
   CLASSPATH="."
-fi  
+fi
 
 # Java Agent config (can be turned off using env var)
 if [ -z "$JQF_DISABLE_INSTRUMENTATION" ]; then
