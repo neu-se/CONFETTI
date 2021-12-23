@@ -1,0 +1,9 @@
+name: Smoke test evaluation - 5 minutes, 1 trial
+on: [push, pull_request]
+jobs:
+  evaluate:
+    uses: jon-bell/jqf/.github/workflows/evaluation-workflow.yml@reporting-ci
+    with:
+      duration: 5m
+      trials: 1
+      fuzzer_to_invoke: ./bin/confetti
