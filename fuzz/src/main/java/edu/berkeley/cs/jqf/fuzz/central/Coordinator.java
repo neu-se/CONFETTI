@@ -20,6 +20,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.BinaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.GZIPInputStream;
 
 public class Coordinator implements Runnable {
 
@@ -1388,7 +1389,7 @@ public class Coordinator implements Runnable {
             InputStream fileIn = null;
             try {
                 System.out.println("Reading constraints from " + this.exprFile);
-                fileIn = new BufferedInputStream(new FileInputStream(this.exprFile));
+                fileIn = new GZIPInputStream(new BufferedInputStream(new FileInputStream(this.exprFile)));
                 return deserializer.fromInputStream(fileIn);
             } catch (IOException e) {
                 e.printStackTrace();

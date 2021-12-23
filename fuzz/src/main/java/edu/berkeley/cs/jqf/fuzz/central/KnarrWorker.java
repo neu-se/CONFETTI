@@ -8,6 +8,7 @@ import za.ac.sun.cs.green.expr.*;
 
 import java.io.*;
 import java.util.*;
+import java.util.zip.GZIPOutputStream;
 
 public class KnarrWorker extends Worker {
     private ArrayList<LinkedList<byte[]>> inputs = new ArrayList<>();
@@ -138,7 +139,7 @@ public class KnarrWorker extends Worker {
                     if (config.useConstraints && config.constraintsPath != null) {
                         filename = config.constraintsPath + "/input_" + inputID;
                         try {
-                            fileOrNull = new BufferedOutputStream(new FileOutputStream(filename));
+                            fileOrNull = new GZIPOutputStream(new BufferedOutputStream(new FileOutputStream(filename)));
                         } catch (FileNotFoundException e) {
                             e.printStackTrace();
                         } catch (IOException e) {
