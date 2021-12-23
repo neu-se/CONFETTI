@@ -151,8 +151,12 @@ $KNARR_CMD &> $RES/knarr.log &
 KNARR_PID=$!
 echo "Knarr started in pid $KNARR_PID"
 
+cleanup(){
+  kill $KNARR_PID > /dev/null 2>&1
+  kill $CENTRAL_PID > /dev/null 2>&1
+}
 trap "exit" INT TERM ERR
-trap "kill $KNARR_PID; kill $CENTRAL_PID" EXIT
+trap "cleanup || true" EXIT
 
 # Launch JQF
 bash -c "$JQF_CMD"
