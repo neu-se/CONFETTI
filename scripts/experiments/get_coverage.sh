@@ -28,8 +28,9 @@ fi
 mkdir -p $ROOT_DIR/target/
 JACOCO_UTIL_JAR=$ROOT_DIR/target/jacoco-utils-1.0-SNAPSHOT.jar
 if [ ! -f $JACOCO_UTIL_JAR ]; then
-   mvn -q dependency:get -Dartifact=fun.jvm.jacoco:jacoco-utils:1.0-SNAPSHOT -DremoteRepositories=https://oss.sonatype.org/content/repositories/snapshots
-   mvn -q dependency:copy -Dartifact=fun.jvm.jacoco:jacoco-utils:1.0-SNAPSHOT -DoutputDirectory=$ROOT_DIR/target/
+   mvn dependency:get -Dartifact=fun.jvm.jacoco:jacoco-utils:1.0-SNAPSHOT -DremoteRepositories=https://oss.sonatype.org/content/repositories/snapshots
+   mvn dependency:copy -Dartifact=fun.jvm.jacoco:jacoco-utils:1.0-SNAPSHOT -DoutputDirectory=$ROOT_DIR/target/
+   (cd $ROOT_DIR/target && mv jacoco-utils-* $JACOCO_UTIL_JAR)
 fi
 
 export JACOCO_RUNNER_JAR=$ROOT_DIR/target/
