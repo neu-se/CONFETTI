@@ -7,3 +7,4 @@ jobs:
       duration: 5m
       trials: 1
       fuzzer_to_invoke: ./bin/confetti
+      java_home: /usr/lib/jvm/jdk1.8.0_301/

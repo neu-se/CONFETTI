@@ -63,7 +63,9 @@ fi
 
 KNARR_JAR=$ROOT_DIR/confetti-generated/Knarr-0.0.2-SNAPSHOT.jar
 if [ ! -f $KNARR_JAR ]; then
+  mvn -q dependency:get -Dartifact=edu.gmu.swe.knarr:Knarr:0.0.2-SNAPSHOT -DremoteRepositories=https://oss.sonatype.org/content/repositories/snapshots
   mvn -q dependency:copy -Dartifact=edu.gmu.swe.knarr:Knarr:0.0.2-SNAPSHOT -DoutputDirectory=$ROOT_DIR/confetti-generated/
+  (cd $ROOT_DIR/confetti-generated && mv Knarr-0.0* Knarr-0.0.2-SNAPSHOT.jar)
 fi
 
 Z3_DIR=$ROOT_DIR/z3
@@ -118,7 +120,7 @@ fi
 
 #JQF_DEBUG="-Xdebug -Xrunjdwp:server=y,transport=dt_socket,address=5555,suspend=n"
 JQF_OPTS="-Xmx3G -Dpriority=$EXP_PRI_FILE $JQF_OPTS"
-JQF_CMD="JVM_OPTS=\"-DcentralPort=$PORT -Dtime=$(($DURATION + 60)) $JQF_OPTS $JQF_DEBUG $EXP_EXTRA_OPTS\" $ROOT_DIR/bin/jqf-ei -c $CLASSPATH $@"
+JQF_CMD="JVM_OPTS=\"-DcentralPort=$PORT $JVM_OPTS $JQF_OPTS $JQF_DEBUG $EXP_EXTRA_OPTS\" $ROOT_DIR/bin/jqf-ei -c $CLASSPATH $@"
 
 Z3_OUTPUT_DIR=
 #CENTRAL_DEBUG="-Xdebug -Xrunjdwp:server=y,transport=dt_socket,address=5554,suspend=n"
