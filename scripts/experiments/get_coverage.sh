@@ -22,9 +22,10 @@ fi
 
 JACOCO_SOURCES=$ROOT_DIR/examples/target/dependency-sources
 if [ ! -d $JACOCO_SOURCES ]; then
-  (cd $ROOT_DIR/examples && mvn dependency:unpack-dependencies -Dclassifier=sources -DincludeArtifactIds=maven-model,closure-compiler,rhino,ant,bcel -DoutputDirectory=target/dependency-sources)
+  (cd $ROOT_DIR/examples && mvn -q dependency:unpack-dependencies -Dclassifier=sources -DincludeArtifactIds=maven-model,closure-compiler,rhino,ant,bcel -DoutputDirectory=target/dependency-sources)
 fi
 
+mkdir -p $ROOT_DIR/target/
 JACOCO_UTIL_JAR=$ROOT_DIR/target/jacoco-utils-1.0-SNAPSHOT.jar
 if [ ! -f $JACOCO_UTIL_JAR ]; then
    mvn -q dependency:get -Dartifact=fun.jvm.jacoco:jacoco-utils:1.0-SNAPSHOT -DremoteRepositories=https://oss.sonatype.org/content/repositories/snapshots
