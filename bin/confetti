@@ -1,7 +1,4 @@
 #!/bin/bash
-trap "exit" INT TERM ERR
-trap "kill 0" EXIT
-
 
 # Figure out script absolute path
 pushd `dirname $0` > /dev/null
@@ -142,13 +139,20 @@ KNARR_CMD="$INST_JVM_DIR/bin/java $JAVA_OPTS -DcentralPort=$PORT -Dsize=15 $KNAR
 mkdir -p $RES
 #Launch Central
 echo "Central server logging to $RES/central.log"
-bash -c "$CENTRAL_CMD &> $RES/central.log" &
+$CENTRAL_CMD &> $RES/central.log &
+CENTRAL_PID=$!
+echo "Central started in pid $CENTRAL_PID"
 
 sleep 5
 
 echo "Knarr process logging to $RES/knarr.log"
 # Launch Knarr
-bash -c "$KNARR_CMD &> $RES/knarr.log" &
+$KNARR_CMD &> $RES/knarr.log &
+KNARR_PID=$!
+echo "Knarr started in pid $KNARR_PID"
+
+trap "exit" INT TERM ERR
+trap "kill $KNARR_PID; kill $CENTRAL_PID" EXIT
 
 # Launch JQF
 bash -c "$JQF_CMD"
