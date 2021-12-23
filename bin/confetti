@@ -134,11 +134,12 @@ KNARR_CMD="$INST_JVM_DIR/bin/java $JAVA_OPTS -DcentralPort=$PORT -Dsize=15 $KNAR
 
 
 
-echo $CENTRAL_CMD > central.sh
-echo $KNARR_CMD > knarr.sh
-echo $JQF_CMD > jqf.sh
+#echo $CENTRAL_CMD > central.sh
+#echo $KNARR_CMD > knarr.sh
+#echo $JQF_CMD > jqf.sh
 #exit
 
+mkdir -p $RES
 #Launch Central
 echo "Central server logging to $RES/central.log"
 bash -c "$CENTRAL_CMD &> $RES/central.log" &
