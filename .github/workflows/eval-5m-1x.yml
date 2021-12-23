@@ -4,7 +4,7 @@ jobs:
   evaluate:
     uses: jon-bell/jqf/.github/workflows/evaluation-workflow.yml@reporting-ci
     with:
-      duration: 5m
+      duration: 1m
       trials: 1
       fuzzer_to_invoke: ./bin/confetti
       java_home: /usr/lib/jvm/jdk1.8.0_301/
