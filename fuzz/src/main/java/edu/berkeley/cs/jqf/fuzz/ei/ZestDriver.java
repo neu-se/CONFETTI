@@ -63,8 +63,13 @@ public class ZestDriver {
             // Load the guidance
             String title = testClassName+"#"+testMethodName;
             Duration d = null;
-            if (System.getProperty("time") != null)
-                d = Duration.ofSeconds(Long.parseLong(System.getProperty("time")));
+            if (System.getProperty("time") != null){
+                try {
+                    d = Duration.ofSeconds(Long.parseLong(System.getProperty("time")));
+                }catch(NumberFormatException ex){
+                    d = Duration.parse("PT"+System.getProperty("time"));
+                }
+            }
 
             Integer heartbeatDuration = 1000;
             if(System.getProperty("heartbeatDuration") != null)

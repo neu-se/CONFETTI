@@ -378,7 +378,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private long lastNumTrials = 0;
 
     /** Minimum amount of time (in millis) between two stats refreshes. */
-    private static final long STATS_REFRESH_TIME_PERIOD = 300;
+    private static final long STATS_REFRESH_TIME_PERIOD = Integer.getInteger("ZEST_STATS_REFRESH_TIME_PERIOD", 300);;
 
     /** The file where log data is written. */
     private static File logFile;
