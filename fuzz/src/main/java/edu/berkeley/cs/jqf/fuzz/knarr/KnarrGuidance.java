@@ -191,7 +191,7 @@ public class KnarrGuidance implements Guidance {
     public void handleResult(Result result, Throwable error) throws GuidanceException {
 
         //printOutStringHints();
-        System.out.println("#"+ this.input.id + " " + result + "(Expected: "+this.input.isValid+")");
+        //System.out.println("#"+ this.input.id + " " + result + "(Expected: "+this.input.isValid+")");
         if(result == Result.INVALID && this.input.isValid){
             error.printStackTrace();
         }

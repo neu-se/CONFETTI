@@ -194,14 +194,14 @@ public class Coordinator implements Runnable {
                 }
             } else {
                 if (b.result) {
-                    if (existing.trueExplored.isEmpty())
-                        System.out.println("\tInput " + input.id + " explores T on " + existing.takenID + " (" + existing.source + ")");
+                    //if (existing.trueExplored.isEmpty())
+                    //    System.out.println("\tInput " + input.id + " explores T on " + existing.takenID + " (" + existing.source + ")");
                     existing.trueExplored.add(input.id);
                     if (!existing.falseExplored.isEmpty())
                         existing.isSolved = true;
                 } else {
-                    if (existing.falseExplored.isEmpty())
-                        System.out.println("\tInput " + input.id + " explores F on " + existing.takenID + " (" + existing.source + ")");
+                    //if (existing.falseExplored.isEmpty())
+                    //    System.out.println("\tInput " + input.id + " explores F on " + existing.takenID + " (" + existing.source + ")");
                     existing.falseExplored.add(input.id);
                     if (!existing.trueExplored.isEmpty())
                         existing.isSolved = true;
@@ -492,7 +492,7 @@ public class Coordinator implements Runnable {
                         .filter(b -> !b.isSolved && !b.isTimedOut)
                         .count();
 
-                System.out.println("NEW Z3Loop: number of potential branches:" + num);
+                //System.out.println("NEW Z3Loop: number of potential branches:" + num);
                 while (triedTops.size() < branches.size()) {
                     //Garbage collect constraints that are not going to be useful
                     garbageCollect();
@@ -522,13 +522,13 @@ public class Coordinator implements Runnable {
 
                     triedTops.add(top);
                     if (!maybeInputToTarget.isPresent()) {
-                        System.out.println("Z3 couldn't find an input to target for " + branchToTarget);
+                        //System.out.println("Z3 couldn't find an input to target for " + branchToTarget);
                         Z3Worker.appendToLogFile((int) num, top.source,0,top.inputsTried.size(),0,0,"NO_INPUTS");
                         continue;
                     }
 
                     long start = System.currentTimeMillis();
-                    System.out.println("Targeting: " + branchToTarget);
+                    //System.out.println("Targeting: " + branchToTarget);
                     inputToTarget = maybeInputToTarget.get();
                     top.inputsTried.add(inputToTarget.id);
 
@@ -547,7 +547,7 @@ public class Coordinator implements Runnable {
 
                                     // Handle result
                                     if (newInput.isPresent()) {
-                                        System.out.println("Z3 found new input for " + inputToTarget.id + " " + target.branch.source);
+                                        //System.out.println("Z3 found new input for " + inputToTarget.id + " " + target.branch.source);
                                         zest.addInputFromZ3(newInput.get(), inputToTarget);
                                     }
                                 }
@@ -559,7 +559,7 @@ public class Coordinator implements Runnable {
 
                             // Handle result
                             if (newInput.isPresent()) {
-                                System.out.println("Z3 found new input for " + inputToTarget.id + " " + target.branch.source);
+                                //System.out.println("Z3 found new input for " + inputToTarget.id + " " + target.branch.source);
                                 zest.addInputFromZ3(newInput.get(), inputToTarget);
                             }
                         }
@@ -1388,7 +1388,7 @@ public class Coordinator implements Runnable {
 
             InputStream fileIn = null;
             try {
-                System.out.println("Reading constraints from " + this.exprFile);
+                //System.out.println("Reading constraints from " + this.exprFile);
                 fileIn = new GZIPInputStream(new BufferedInputStream(new FileInputStream(this.exprFile)));
                 return deserializer.fromInputStream(fileIn);
             } catch (IOException e) {

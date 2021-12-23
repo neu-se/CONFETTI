@@ -101,8 +101,13 @@ public class KnarrWorker extends Worker {
                             responses.wait();
                         }
                     }
-                    if (!pendingInputsNotSentYet.isEmpty()) {
-                        Coordinator.Input input = pendingInputsNotSentYet.pop();
+                    Coordinator.Input input = null;
+                    synchronized (pendingInputsNotSentYet){
+                        if(!pendingInputsNotSentYet.isEmpty()){
+                            input = pendingInputsNotSentYet.pop();
+                        }
+                    }
+                    if (input != null) {
                         oos.writeObject(input.bytes);
                         oos.writeObject(input.hints);
                         oos.writeObject(input.instructions);

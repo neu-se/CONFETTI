@@ -440,7 +440,7 @@ public class Z3Worker {
             int length = originalInput.requestsForRandom[i+1];
             if(hints.get(offset) != null){
                 Set<String> strings = hints.remove(offset);
-                if(strings.size() > 1){
+                if(PRINT_Z3_DEBUG_INFO && strings.size() > 1){
                     System.err.println("Found multiple strings from Z3 : " + strings);
                     System.err.println("Jon didn't think this was possible, we should figure out what's happening");
                 }

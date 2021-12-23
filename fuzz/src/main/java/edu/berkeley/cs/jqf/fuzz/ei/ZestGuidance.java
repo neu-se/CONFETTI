@@ -550,7 +550,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             }
         } else if(this.windowStartExecs != 0 && (numExecs - this.windowStartExecs) >= this.triggerClient.triggerZ3SampleWindow) {
             if( ((maxCoveragePercentageInWindow - this.windowStartCoverage) / this.windowStartCoverage) * 100.0  < this.triggerClient.triggerZ3SampleThreshold) {
-                System.out.println("STARTING CENTRAL NOW!!!!!");
+                //System.out.println("STARTING CENTRAL NOW!!!!!");
                 this.startCentral = true;
                 this.z3ThreadStartedInputNum = numExecs;
                 windowStartExecs = 0L;

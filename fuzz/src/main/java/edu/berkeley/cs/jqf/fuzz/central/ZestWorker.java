@@ -219,17 +219,17 @@ class ZestWorker extends Worker {
                     synchronized (fromZ3) {
                         next = (fromZ3.isEmpty() ? null : fromZ3.removeFirst());
                     }
-                    if (next != null) {
+                    //if (next != null) {
                         //System.out.println("WIN");
-                        System.out.println(next.hintGroups);
-                    }
+                        //System.out.println(next.hintGroups);
+                    //}
 
                     oos.writeObject(next);
                     break;
                 case GETRECOMMENDATIONS:
                     synchronized (recommendations){
-                        if(!newlyRecommendedInputsToQueue.isEmpty())
-                            System.out.println("Recommending inputs: " + newlyRecommendedInputsToQueue);
+                        //if(!newlyRecommendedInputsToQueue.isEmpty())
+                        //    System.out.println("Recommending inputs: " + newlyRecommendedInputsToQueue);
                         oos.writeObject(newlyRecommendedInputsToQueue);
                         newlyRecommendedInputsToQueue.clear();
                     }
@@ -241,9 +241,9 @@ class ZestWorker extends Worker {
 
                         while(true) {
                             n = (updatedScoreInputs.isEmpty() ? null : updatedScoreInputs.removeFirst());
-                            if (n != null) {
-                                System.out.println("SCORE UPDATES FOR INPUTS BEING SENT");
-                            }
+                            //if (n != null) {
+                                //System.out.println("SCORE UPDATES FOR INPUTS BEING SENT");
+                            //}
                             oos.writeObject(n);
                             if(n == null) break;
                         }

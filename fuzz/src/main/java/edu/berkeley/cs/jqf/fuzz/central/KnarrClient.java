@@ -80,7 +80,7 @@ public class KnarrClient extends Central {
                         }
                     }
                     long t1 = System.currentTimeMillis();
-                    System.out.println("Input " + constraintPayload.inputID + " constraint size: " + constraintPayload.constraints.size());
+                    //System.out.println("Input " + constraintPayload.inputID + " constraint size: " + constraintPayload.constraints.size());
                     oos.writeInt(constraintPayload.inputID);
 
                     //oos.writeInt(constraints.size());
@@ -98,16 +98,16 @@ public class KnarrClient extends Central {
                         oos.writeInt(4);
                         oos.writeInt(0);
                     }
-                    long writtenConstriants = System.currentTimeMillis();
-                    System.out.println("Wrote constraints in " + (writtenConstriants - doneSerializing));
+                    //long writtenConstriants = System.currentTimeMillis();
+                    //System.out.println("Wrote constraints in " + (writtenConstriants - doneSerializing));
 
                     oos.writeInt(constraintPayload.generatedStrings.size());
                     for (Map.Entry<String, String> entry : constraintPayload.generatedStrings.entrySet()) {
                         oos.writeUTF(entry.getKey());
                         oos.writeUTF(entry.getValue());
                     }
-                    long t2a = System.currentTimeMillis();
-                    System.out.println("Write strings to socket: " + (t2a - writtenConstriants));
+                    //long t2a = System.currentTimeMillis();
+                    //System.out.println("Write strings to socket: " + (t2a - writtenConstriants));
                     oos.reset();
                     oos.flush();
                     constraintSerializer.clear();
