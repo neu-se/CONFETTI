@@ -1,5 +1,5 @@
 name: Thin Evaluation - 24 hours, 5 trials
-on: [push, pull_request, workflow_dispatch]
+on: [workflow_dispatch]
 jobs:
   evaluate:
     uses: jon-bell/jqf/.github/workflows/evaluation-workflow.yml@reporting-ci
