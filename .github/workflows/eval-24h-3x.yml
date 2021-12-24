@@ -1,0 +1,10 @@
+name: Thin Evaluation - 24 hours, 5 trials
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  evaluate:
+    uses: jon-bell/jqf/.github/workflows/evaluation-workflow.yml@reporting-ci
+    with:
+      duration: 24h
+      trials: 5
+      fuzzer_to_invoke: ./bin/confetti
+      java_home: /usr/lib/jvm/jdk1.8.0_301/
