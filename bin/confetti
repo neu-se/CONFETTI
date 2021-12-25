@@ -116,7 +116,7 @@ if [ -z "$EXP_PRI_FILE" ]; then
 fi
 
 #JQF_DEBUG="-Xdebug -Xrunjdwp:server=y,transport=dt_socket,address=5555,suspend=n"
-JQF_OPTS="-Xmx2G -Dpriority=$EXP_PRI_FILE $JQF_OPTS"
+JQF_OPTS="-Xmx3G -Dpriority=$EXP_PRI_FILE $JQF_OPTS"
 JQF_CMD="JVM_OPTS=\"-DcentralPort=$PORT $JVM_OPTS $JQF_OPTS $JQF_DEBUG $EXP_EXTRA_OPTS\" $ROOT_DIR/bin/jqf-ei -c $CLASSPATH $@"
 
 Z3_OUTPUT_DIR=

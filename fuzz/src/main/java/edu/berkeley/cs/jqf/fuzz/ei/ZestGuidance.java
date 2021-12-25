@@ -1222,18 +1222,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         }
 
         if(!this.startedCentral && this.startCentral) {
-            this.startedCentral = true;
-
-            // send all the inputs...
-            for(Input i: this.savedInputs) {
-                try {
-                    triggerClient.sendInput(i.bytes, i.result, i,
-                            0.0, 0L); // TODO should coveragePercent be the actual amount!?
-                } catch (IOException e) {
-                }
-            }
-            this.central = triggerClient;
-
+            throw new UnsupportedOperationException("Trigger client code is removed, this shouldn't happen...");
         }
 
 
@@ -1387,11 +1376,6 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                     saveCurrentInput(responsibilities, why);
                 } catch (IOException e) {
                     throw new GuidanceException(e);
-                }
-
-                if (central != null || triggerClient != null) {
-                    currentInput.bytes = ris.getRequests();
-                    currentInput.result = result;
                 }
 
                 if(central != null) {
@@ -1658,7 +1642,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         // Third, store basic book-keeping data
         currentInput.id = newInputIdx;
         currentInput.saveFile = saveFile;
-        currentInput.coverage = new Coverage(runCoverage);
+        //currentInput.coverage = new Coverage(runCoverage);
         currentInput.nonZeroCoverage = runCoverage.getNonZeroCount();
         currentInput.offspring = 0;
         savedInputs.get(currentParentInputIdx).offspring += 1;
@@ -1817,7 +1801,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
          *
          * <p>This field is null for inputs that are not saved.</p>
          */
-        Coverage coverage = null;
+        //This field was written to but never read: bad news when we have lots of inputs saved!
+        //Coverage coverage = null;
 
         /**
          * The number of non-zero elements in `coverage`.
@@ -2017,8 +2002,6 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
         boolean z3 = false;
 
-        LinkedList<byte[]> bytes = new LinkedList<>();
-        Result result;
         protected int offsetOfLastHintAdded = -1;
 
         public MutationType mutationType;
