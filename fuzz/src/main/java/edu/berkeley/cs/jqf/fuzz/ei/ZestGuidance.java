@@ -389,7 +389,6 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     /** Whether to hide fuzzing statistics **/
     protected final boolean QUIET_MODE = Boolean.getBoolean("jqf.ei.QUIET_MODE");
 
-
     private Consumer<TraceEvent> emptyEvent = new Consumer<TraceEvent>() {
         @Override
         public void accept(TraceEvent traceEvent) {
@@ -484,6 +483,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     public static int extendedDictionarySize;
 
+    private static boolean exiting; //Used to help with cleanup and stats display, set at runtime end
+
     /**
      * @param testName the name of test to display on the status screen
      * Creates a new execution-index-parametric guidance.
@@ -525,7 +526,16 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         } catch (IOException e) {
             this.triggerClient = null;
         }
-
+        if (QUIET_MODE) {
+            Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    System.err.println("Exiting...");
+                    exiting = true;
+                    displayStats();
+                }
+            }));
+        }
 
     }
 
@@ -745,7 +755,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
         Date now = new Date();
         long intervalMilliseconds = now.getTime() - lastRefreshTime.getTime();
-        if (intervalMilliseconds < STATS_REFRESH_TIME_PERIOD) {
+        if (!exiting && intervalMilliseconds < STATS_REFRESH_TIME_PERIOD) {
             return;
         }
         long interlvalTrials = numTrials - lastNumTrials;
@@ -771,7 +781,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         double nonZeroFraction = nonZeroCount * 100.0 / totalCoverage.size();
         int nonZeroValidCount = validCoverage.getNonZeroCount();
         double nonZeroValidFraction = nonZeroValidCount * 100.0 / validCoverage.size();
-        if(!QUIET_MODE){
+        if(!QUIET_MODE || exiting){
             console.printf("\033[2J");
             console.printf("\033[H");
             console.printf("Zest: Validity Fuzzing with Parametric Generators\n");
