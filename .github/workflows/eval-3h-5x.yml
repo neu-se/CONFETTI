@@ -8,4 +8,4 @@ jobs:
       trials: 5
       fuzzer_to_invoke: ./bin/confetti
       java_home: /usr/lib/jvm/jdk1.8.0_301/
-      runs_on: self-hosted, 24gb
+      runs_on: [self-hosted, 24gb]
