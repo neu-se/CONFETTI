@@ -22,6 +22,7 @@ RES=fuzz-logs
 
 # Z3 Timeout
 Z3_TO=$((60*1000)) #10 sec
+echo $Z3_TO
 
 if [ -z "$PORT" ] ; then
     PORT=$((5000 + (RANDOM % 1000)))
@@ -116,16 +117,16 @@ if [ -z "$EXP_PRI_FILE" ]; then
 fi
 
 #JQF_DEBUG="-Xdebug -Xrunjdwp:server=y,transport=dt_socket,address=5555,suspend=n"
-JQF_OPTS="-Xmx2G -Dpriority=$EXP_PRI_FILE $JQF_OPTS"
+JQF_OPTS="-Xmx3G -Dpriority=$EXP_PRI_FILE $JQF_OPTS"
 JQF_CMD="JVM_OPTS=\"-DcentralPort=$PORT $JVM_OPTS $JQF_OPTS $JQF_DEBUG $EXP_EXTRA_OPTS\" $ROOT_DIR/bin/jqf-ei -c $CLASSPATH $@"
 
 Z3_OUTPUT_DIR=
 #CENTRAL_DEBUG="-Xdebug -Xrunjdwp:server=y,transport=dt_socket,address=5554,suspend=n"
-CENTRAL_OPTS="-Xmx3G -Xss1G"
+CENTRAL_OPTS="-Xmx8G -Xss1G"
 CENTRAL_CMD="$JAVA_HOME/bin/java $CENTRAL_DEBUG $CENTRAL_OPTS -Djava.library.path=$Z3_BIN $Z3_OUTPUT_DIR -DZ3_TIMEOUT=$Z3_TO $EXP_EXTRA_OPTS -cp "${FUZZ_CLASSPATH}:${CLASSPATH}" -DcentralPort=$PORT edu.berkeley.cs.jqf.fuzz.central.Central $EXP_CENTRAL_PROPS"
 
 #KNARR_DEBUG="-Xdebug -Xrunjdwp:server=y,transport=dt_socket,address=5556,suspend=n"
-KNARR_OPTS="-Xss1G -Xmx3g -Xbootclasspath/p:$KNARR_JAR -javaagent:$KNARR_JAR"
+KNARR_OPTS="-Xss1G -Xmx6g -Xbootclasspath/p:$KNARR_JAR -javaagent:$KNARR_JAR"
 KNARR_CMD="$INST_JVM_DIR/bin/java $JAVA_OPTS -DcentralPort=$PORT -Dsize=15 $KNARR_OPTS $KNARR_DEBUG $EXP_EXTRA_OPTS -cp "${FUZZ_CLASSPATH}:${CLASSPATH}" edu.berkeley.cs.jqf.fuzz.knarr.KnarrDriver $@"
 
 
