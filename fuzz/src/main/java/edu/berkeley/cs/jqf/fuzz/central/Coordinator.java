@@ -1063,7 +1063,7 @@ public class Coordinator implements Runnable {
 
         @Override
         public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-            this.hint = in.readUTF();
+            this.hint = in.readUTF().intern();
             int hintType = in.readInt();
             if(hintType == -1)
                 this.type = null;
