@@ -80,6 +80,8 @@ public class FuzzStatement extends Statement {
     private final GeneratorRepository generatorRepository;
     private final List<Class<?>> expectedExceptions;
     private final List<Throwable> failures = new ArrayList<>();
+    private final int MAX_FAILURES_TO_REPORT = Integer.getInteger("jqf.ei.MAX_FAILURES_REPORT", -1);
+
 
     public FuzzStatement(FrameworkMethod method, TestClass testClass,
                          GeneratorRepository generatorRepository) {
@@ -193,12 +195,7 @@ public class FuzzStatement extends Statement {
                     result = SUCCESS;
                 } catch (GuidanceException e) {
                     // Throw the guidance exception outside to stop fuzzing
-                    //TODO JSB: Someone needs to figure out what those actual knarr errors are and handle just those...
                     throw e;
-                    //JSB prior code here was:
-                    // TODO this is where Knarr errors get caught, remove this after fixed Knarr bugs
-                    //result = INVALID;
-                    //error = e;
                 } catch (org.junit.internal.AssumptionViolatedException e) {
                     result = INVALID;
                     error = e;
@@ -206,14 +203,15 @@ public class FuzzStatement extends Statement {
                     result = TIMEOUT;
                     error = e;
                 } catch (Throwable e) {
-
                     // Check if this exception was expected
                     if (isExceptionExpected(e.getClass())) {
                         result = SUCCESS; // Swallow the error
                     } else {
                         result = FAILURE;
                         error = e;
-                        failures.add(e);
+                        if (MAX_FAILURES_TO_REPORT < 0 || failures.size() < MAX_FAILURES_TO_REPORT) {
+                            failures.add(e);
+                        }
                     }
                 } finally {
                     // Inform guidance about the outcome of this trial
