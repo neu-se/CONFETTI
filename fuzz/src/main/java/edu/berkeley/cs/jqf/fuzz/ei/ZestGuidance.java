@@ -57,6 +57,8 @@ import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 import java.io.*;
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryMXBean;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -461,6 +463,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     static final int UNIQUE_SENSITIVITY = Integer.getInteger("jqf.ei.UNIQUE_SENSITIVITY", Integer.MAX_VALUE);
 
+    static final boolean PROFILE_HEAP_USAGE = System.getenv("PROFILE_HEAP") != null;
+
+    private MemoryMXBean memoryMXBean;
+
     /**
      * CONFETTI might ask that some specific bytes be mutated. This is how many times we'll try each place.
      */
@@ -482,8 +488,6 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private long campaignStartTime = System.currentTimeMillis();
 
     public static int extendedDictionarySize;
-
-    private static boolean exiting; //Used to help with cleanup and stats display, set at runtime end
 
     /**
      * @param testName the name of test to display on the status screen
@@ -526,17 +530,6 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         } catch (IOException e) {
             this.triggerClient = null;
         }
-        if (QUIET_MODE) {
-            Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    System.err.println("Exiting...");
-                    exiting = true;
-                    displayStats();
-                }
-            }));
-        }
-
     }
 
 
@@ -643,6 +636,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         }
 
         statsWriter = new PrintWriter(new FileWriter(this.statsFile));
+        if(PROFILE_HEAP_USAGE){
+            memoryMXBean = ManagementFactory.getMemoryMXBean();
+        }
         Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
             @Override
             public void run() {
@@ -663,7 +659,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 "inputsSavedWith_Z3Origin, " +
                 "inputsSavedWithoutHintsOrZ3,countOfSavedInputsWithExtendedDictionaryHints," +
                 "countOfCreatedInputsWithExtendedDictionaryHints," +
-                "extendedDictionarySize");
+                "extendedDictionarySize,heapUsageBytes,nonHeapUsageBytes");
     }
 
     static PrintWriter statsWriter;
@@ -744,6 +740,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 savedInputs.size(), 0, 0, nonZeroFraction, uniqueFailures.size(), 0, 0, intervalExecsPerSecDouble,
                 numTrials, mutatedBytes/numTrials, numValid, numTrials-numValid, nonZeroValidFraction,
                 (z3ThreadStartedInputNum != -1) && (numTrials >= z3ThreadStartedInputNum) ? 1: 0);
+        if(PROFILE_HEAP_USAGE){
+            plotData += memoryMXBean.getHeapMemoryUsage().getUsed() + ", " + memoryMXBean.getNonHeapMemoryUsage().getUsed();
+        }
         appendToStatsFile(plotData);
     }
 
@@ -755,7 +754,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
         Date now = new Date();
         long intervalMilliseconds = now.getTime() - lastRefreshTime.getTime();
-        if (!exiting && intervalMilliseconds < STATS_REFRESH_TIME_PERIOD) {
+        if (intervalMilliseconds < STATS_REFRESH_TIME_PERIOD) {
             return;
         }
         long interlvalTrials = numTrials - lastNumTrials;
@@ -781,7 +780,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         double nonZeroFraction = nonZeroCount * 100.0 / totalCoverage.size();
         int nonZeroValidCount = validCoverage.getNonZeroCount();
         double nonZeroValidFraction = nonZeroValidCount * 100.0 / validCoverage.size();
-        if(!QUIET_MODE || exiting){
+        if(!QUIET_MODE){
             console.printf("\033[2J");
             console.printf("\033[H");
             console.printf("Zest: Validity Fuzzing with Parametric Generators\n");
@@ -809,6 +808,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             console.printf("Queue size:           %,d (%,d favored last cycle)\n", savedInputs.size(), numFavoredLastCycle);
             console.printf("Current parent input: %s\n", currentParentInputDesc);
             console.printf("Execution speed:      %,d/sec now | %,d/sec overall\n", intervalExecsPerSec, execsPerSec);
+            if(PROFILE_HEAP_USAGE){
+                console.printf("Heap memory used:     %,d MB\n", memoryMXBean.getHeapMemoryUsage().getUsed()/(1024*1024));
+                console.printf("Non-heap memory used: %,d MB\n", memoryMXBean.getNonHeapMemoryUsage().getUsed()/(1024*1024));
+            }
             console.printf("Total coverage:       %,d (%.2f%% of map)\n", nonZeroCount, nonZeroFraction);
             console.printf("Valid coverage:       %,d (%.2f%% of map)\n", nonZeroValidCount, nonZeroValidFraction);
             console.printf("Extended dict size:   %,d\n", extendedDictionarySize);
@@ -891,6 +894,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 countOfSavedInputsWithExtendedDictionaryHints,
                 countOfCreatedInputsWithExtendedDictionaryHints,
                 ZestGuidance.extendedDictionarySize);
+        if(PROFILE_HEAP_USAGE){
+            plotData += memoryMXBean.getHeapMemoryUsage().getUsed() + ", " + memoryMXBean.getNonHeapMemoryUsage().getUsed();
+        }
         appendToStatsFile(plotData);
 
     }

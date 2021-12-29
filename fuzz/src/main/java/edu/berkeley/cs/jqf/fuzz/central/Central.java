@@ -1,6 +1,8 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
 import java.io.*;
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryMXBean;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -21,6 +23,7 @@ public class Central {
     }
 
     protected enum Type { Zest_Initial, Zest, Knarr };
+    static boolean PROFILE_HEAP_USAGE = System.getenv("PROFILE_HEAP") != null;
 
     /* Server:
      * 1. Receive input
@@ -37,15 +40,53 @@ public class Central {
         KnarrWorker knarr = null;
 
         Properties props = new Properties();
-        System.out.println(args.length);
-        if (args.length > 0) {
-            try (FileInputStream fis = new FileInputStream(args[0])) {
+        String outputDirectoryName = args.length > 0 ? args[0] : "fuzz-results";
+        File outputDirectory = new File(outputDirectoryName);
+        if (args.length > 1) {
+            try (FileInputStream fis = new FileInputStream(args[1])) {
                 props.load(fis);
                 System.out.println(props);
             }
         }
         Coordinator.Config config  = new Coordinator.Config(props);
         Coordinator c = new Coordinator(config);
+
+        if(PROFILE_HEAP_USAGE){
+            //Set up a thread to dump heap usage every ZEST_STATS_REFRESH_TIME_PERIOD millisec
+            try {
+                final PrintWriter pw = new PrintWriter(new FileWriter(new File(outputDirectory, "confetti-central-memory.csv")));
+                Thread statsThread = new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        int waitTime = Integer.getInteger("ZEST_STATS_REFRESH_TIME_PERIOD", 300);
+                        MemoryMXBean memoryMXBean = ManagementFactory.getMemoryMXBean();
+                        pw.println("unix_time,heapUsageBytes,nonHeapUsageBytes");
+                        while (PROFILE_HEAP_USAGE) {
+                            try {
+                                Thread.sleep(waitTime);
+                            } catch (InterruptedException e) {
+                                e.printStackTrace();
+                            }
+                            if (PROFILE_HEAP_USAGE) {
+                                pw.println(String.format("%s,%d,%d",System.currentTimeMillis(), memoryMXBean.getHeapMemoryUsage().getUsed(), memoryMXBean.getNonHeapMemoryUsage().getUsed()));
+                            }
+                        }
+                    }
+                }, "Memory Profile Logger");
+                Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        PROFILE_HEAP_USAGE = false;
+                        pw.flush();
+                        pw.close();
+                    }
+                }));
+                statsThread.setDaemon(true);
+                statsThread.start();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
 
         new Thread(c, "CONFETTI Coordinator").start();
 
