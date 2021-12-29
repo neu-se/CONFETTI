@@ -42,6 +42,9 @@ public class Central {
         Properties props = new Properties();
         String outputDirectoryName = args.length > 0 ? args[0] : "fuzz-results";
         File outputDirectory = new File(outputDirectoryName);
+        if(!outputDirectory.exists()){
+            outputDirectory.mkdirs();
+        }
         if (args.length > 1) {
             try (FileInputStream fis = new FileInputStream(args[1])) {
                 props.load(fis);
