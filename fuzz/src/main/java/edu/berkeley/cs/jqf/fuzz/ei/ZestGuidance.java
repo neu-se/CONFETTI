@@ -703,54 +703,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         result += seconds + "s";
         return result;
     }
-    private void logStatsWithoutDisplay(){
-
-        Date now = new Date();
-        long intervalMilliseconds = now.getTime() - lastRefreshTime.getTime();
-        if (intervalMilliseconds < STATS_REFRESH_TIME_PERIOD) {
-            return;
-        }
-        long interlvalTrials = numTrials - lastNumTrials;
-        long intervalExecsPerSec = interlvalTrials * 1000L / intervalMilliseconds;
-        double intervalExecsPerSecDouble = interlvalTrials * 1000.0 / intervalMilliseconds;
-        lastRefreshTime = now;
-        lastNumTrials = numTrials;
-        long elapsedMilliseconds = now.getTime() - startTime.getTime();
-        long execsPerSec = numTrials * 1000L / elapsedMilliseconds;
-
-        String currentParentInputDesc;
-        if (seedInputs.size() > 0 || savedInputs.isEmpty()) {
-            currentParentInputDesc = "<seed>";
-        } else {
-            Input currentParentInput = savedInputs.get(currentParentInputIdx);
-            currentParentInputDesc = currentParentInputIdx + " ";
-            currentParentInputDesc += currentParentInput.isFavored() ? "(favored)" : "(not favored)";
-            currentParentInputDesc += " {" + numChildrenGeneratedForCurrentParentInput +
-                    "/" + getTargetChildrenForParent(currentParentInput) + " mutations}";
-        }
-
-        int nonZeroCount = totalCoverage.getNonZeroCount();
-        double nonZeroFraction = nonZeroCount * 100.0 / totalCoverage.size();
-        int nonZeroValidCount = validCoverage.getNonZeroCount();
-        double nonZeroValidFraction = nonZeroValidCount * 100.0 / validCoverage.size();
-
-
-        String plotData = String.format("%d, %d, %d, %d, %d, %d, %.2f%%, %d, %d, %d, %.2f, %d, %d, %d, %d, %.2f%%, %d",
-                TimeUnit.MILLISECONDS.toSeconds(now.getTime()), cyclesCompleted, currentParentInputIdx,
-                savedInputs.size(), 0, 0, nonZeroFraction, uniqueFailures.size(), 0, 0, intervalExecsPerSecDouble,
-                numTrials, mutatedBytes/numTrials, numValid, numTrials-numValid, nonZeroValidFraction,
-                (z3ThreadStartedInputNum != -1) && (numTrials >= z3ThreadStartedInputNum) ? 1: 0);
-        if(PROFILE_HEAP_USAGE){
-            plotData += memoryMXBean.getHeapMemoryUsage().getUsed() + ", " + memoryMXBean.getNonHeapMemoryUsage().getUsed();
-        }
-        appendToStatsFile(plotData);
-    }
 
     // Call only if console exists
     private void displayStats() {
-        if (System.getenv("NO_CONSOLE") != null)
-            return;
-        assert (console != null);
 
         Date now = new Date();
         long intervalMilliseconds = now.getTime() - lastRefreshTime.getTime();
@@ -780,7 +735,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         double nonZeroFraction = nonZeroCount * 100.0 / totalCoverage.size();
         int nonZeroValidCount = validCoverage.getNonZeroCount();
         double nonZeroValidFraction = nonZeroValidCount * 100.0 / validCoverage.size();
-        if(!QUIET_MODE){
+        if(!QUIET_MODE && console != null){
             console.printf("\033[2J");
             console.printf("\033[H");
             console.printf("Zest: Validity Fuzzing with Parametric Generators\n");
@@ -895,7 +850,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 countOfCreatedInputsWithExtendedDictionaryHints,
                 ZestGuidance.extendedDictionarySize);
         if(PROFILE_HEAP_USAGE){
-            plotData += memoryMXBean.getHeapMemoryUsage().getUsed() + ", " + memoryMXBean.getNonHeapMemoryUsage().getUsed();
+            plotData += ", " + memoryMXBean.getHeapMemoryUsage().getUsed() + ", " + memoryMXBean.getNonHeapMemoryUsage().getUsed();
         }
         appendToStatsFile(plotData);
 
@@ -1466,12 +1421,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
             }
         }
 
-        if (console != null) {
-            displayStats();
-        }
-        else{
-            logStatsWithoutDisplay();
-        }
+        displayStats();
 
         runCoverage.unlock();
 
