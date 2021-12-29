@@ -1,0 +1,142 @@
+name: Execute and report a JQF performance evaluation campaign
+on: workflow_dispatch
+jobs:
+  build-matrix:
+    runs-on: self-hosted
+    outputs:
+      matrix-run: ${{ steps.set-matrix.outputs.matrix-run }}
+      matrix-analyze: ${{ steps.set-matrix.outputs.matrix-analyze }}
+      base-url: ${{ steps.set-matrix.outputs.base-url }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set matrix for evaluation
+        id: set-matrix
+        run: |
+          echo "::set-output name=matrix-run::$( python3 scripts/experiments/generate-experiment-matrix.py )"
+          echo "::set-output name=matrix-analyze::$( python3 scripts/experiments/generate-experiment-matrix.py )"
+          echo "::set-output name=base-url::https://ci.in.ripley.cloud/logs/public/${{ github.repository }}/${{ github.sha }}/$(./scripts/experiments/urlencode.sh "${{ github.workflow }}")/${{ github.run_id }}/${{ github.run_attempt }}/site/"
+  run-fuzzer:
+    runs-on: self-hosted.32gb
+    timeout-minutes: 1560
+    needs: build-matrix
+    env:
+      JAVA_HOME: /usr/lib/jvm/jdk1.8.0_301/
+      RESULTS_DIR: /ci-logs/public/${{ github.repository }}/${{ github.sha }}/${{ github.workflow }}/${{ github.run_id }}/${{ github.run_attempt }}/artifacts
+      JVM_OPTS: -Dtime=24h -Djqf.ei.QUIET_MODE=true -DZEST_STATS_REFRESH_TIME_PERIOD=60000 -DuseFastNonCollidingCoverageInstrumentation=true -Djqf.ei.MAX_FAILURES_REPORT=10
+      JQF_XMX: ${{ matrix.config.Xmx.JQF }}
+      KNARR_XMX: ${{ matrix.config.Xmx.Central }}
+      CENTRAL_XMX: ${{ matrix.config.Xmx.Knarr }}
+      PROFILE_HEAP: true
+    strategy:
+        matrix: ${{fromJson(needs.build-matrix.outputs.matrix-run)}}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build JQF
+        run: mvn -B -DskipTests install
+      - name: Run Fuzzer
+        run: timeout 25h bash -c "./bin/confetti -c $(scripts/examples_classpath.sh) ${{ matrix.config.class }} ${{ matrix.config.method }} fuzz-results"
+      - name: Collect Results
+        run: |
+          mkdir -p fuzz-logs
+          if [ -f "fuzz-results/fuzz.log" ]; then
+            mv fuzz-results/fuzz.log fuzz-logs
+          fi
+
+          mv fuzz-logs ${{ matrix.config.id }}_${{ matrix.config.runNumber }}_fuzz_logs
+
+          mv fuzz-results/corpus ${{ matrix.config.id }}_corpus_${{ matrix.config.runNumber }}
+          tar czf ${{ matrix.config.id }}_corpus_${{ matrix.config.runNumber }}.tgz ${{ matrix.config.id }}_corpus_${{ matrix.config.runNumber }}
+          mv fuzz-results/failures ${{ matrix.config.id }}_failures_${{ matrix.config.runNumber }}
+          tar czf ${{ matrix.config.id }}_failures_${{ matrix.config.runNumber }}.tgz ${{ matrix.config.id }}_failures_${{ matrix.config.runNumber }}
+          mv fuzz-results/plot_data ${{ matrix.config.id }}_plot_data_${{ matrix.config.runNumber }}
+
+          mkdir -p "$RESULTS_DIR"
+          cp ${{ matrix.config.id }}_corpus_${{ matrix.config.runNumber }}.tgz "$RESULTS_DIR/"
+          cp ${{ matrix.config.id }}_failures_${{ matrix.config.runNumber }}.tgz "$RESULTS_DIR/"
+          cp ${{ matrix.config.id }}_plot_data_${{ matrix.config.runNumber }} "$RESULTS_DIR/"
+
+          # Also save any debug log files locally
+          find fuzz-results -maxdepth 1 -type f \( -iname \*.csv -o -iname \*.log \) -exec sh -c 'cp {} "$RESULTS_DIR/${{ matrix.config.id }}_$(basename {})_${{ matrix.config.runNumber }}"' \;
+
+      - name: Archive Fuzz Logs
+        uses: actions/upload-artifact@v2
+        with:
+          path: ${{ matrix.config.id }}_${{ matrix.config.runNumber }}_fuzz_logs
+          name: ${{ matrix.config.id }}_${{ matrix.config.runNumber }}_fuzz_logs
+      - name: Archive Corpus
+        uses: actions/upload-artifact@v2
+        with:
+          path: ${{ matrix.config.id }}_corpus_${{ matrix.config.runNumber }}.tgz
+          name: archive_${{ matrix.config.id }}_corpus_${{ matrix.config.runNumber }}.tgz
+      - name: Archive Failures
+        uses: actions/upload-artifact@v2
+        with:
+         path: ${{ matrix.config.id }}_failures_${{ matrix.config.runNumber }}.tgz
+         name: archive_${{ matrix.config.id }}_failures_${{ matrix.config.runNumber }}.tgz
+      - name: Archive Plot Data
+        uses: actions/upload-artifact@v2
+        with:
+         path: ${{ matrix.config.id }}_plot_data_${{ matrix.config.runNumber }}
+         name: ${{ matrix.config.id }}_plot_data_${{ matrix.config.runNumber }}
+  repro-jacoco:
+    runs-on: self-hosted
+    needs: [run-fuzzer, build-matrix]
+    env:
+      RESULTS_DIR: /ci-logs/public/${{ github.repository }}/${{ github.sha }}/${{ github.workflow }}/${{ github.run_id }}/${{ github.run_attempt }}
+      TARGETS: ${{ needs.build-matrix.outputs.matrix-analyze }}
+      BASE_URL: ${{ needs.build-matrix.outputs.base-url }}
+      TRIALS: ${{ inputs.trials }}
+      DURATION: ${{ inputs.duration }}
+      JAVA_HOME: ${{ inputs.java_home }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/download-artifact@v2
+      - id: repro
+        name: Repro
+        run: |
+          mvn -B -q -DskipTests install
+          pwd
+          JACOCO_SUMMARY='{'
+          for k in $(jq '.config | keys | .[]' <<< "$TARGETS"); do
+            value=$(jq -c -r ".config[$k]" <<< $TARGETS)
+            method=$(jq -r ".method" <<< $value)
+            class=$(jq -r ".class" <<< $value)
+            id=$(jq -r ".id" <<< $value)
+            coveragePackages=$(jq -r ".coveragePackages" <<< $value)
+            echo $id
+            echo $coveragePackages
+            find . -maxdepth 2 -type f -name "${id}_corpus_*" -exec mv {} . \;
+            find . -maxdepth 1 -type f -name "${id}_corpus_*.tgz" -exec tar xzf {} \;
+            find . -maxdepth 1 -name "*${id}_*.tgz" -exec rm -rf {} \;
+            rm -f jacoco.exec
+
+            bash scripts/experiments/reproWithJacoco.sh $class $method jacoco.exec "$coveragePackages" "${id}_corpus_*"
+            bash scripts/experiments/get_coverage.sh jacoco.exec "$coveragePackages" jacoco-$id
+            JACOCO_SUMMARY+="\"${id}\": $(cat jacoco_summary.json),"
+            mv jacoco_summary.json "$RESULTS_DIR/artifacts/${id}_jacoco_summary.json"
+            cp -r jacoco-$id "$RESULTS_DIR/"
+          done
+          JACOCO_SUMMARY+='"site_url":"$BASE_URL"}'
+          echo "::set-output name=jacoco-summary::$JACOCO_SUMMARY"
+          mv "$RESULTS_DIR"/jacoco* "$RESULTS_DIR/artifacts/"
+  build-site:
+    runs-on: self-hosted
+    needs: [ repro-jacoco ]
+    env:
+      RENV_PATHS_ROOT: /ci-logs/renv
+      PROFILE_HEAP: true
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          repository: 'jon-bell/fuzzing-build-site-action'
+          ref: 'main'
+      - name: Fetch workflow runs to compare to
+        id: fetch-compare
+        uses: jon-bell/list-workflow-runs-by-branch-action@main
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build site
+        uses: jon-bell/fuzzing-build-site-action@main
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          comparisons: ${{ steps.fetch-compare.outputs.workflow_runs }}
