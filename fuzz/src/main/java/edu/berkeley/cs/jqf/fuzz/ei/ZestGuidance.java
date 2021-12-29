@@ -463,7 +463,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     static final int UNIQUE_SENSITIVITY = Integer.getInteger("jqf.ei.UNIQUE_SENSITIVITY", Integer.MAX_VALUE);
 
-    static final boolean PROFILE_HEAP_USAGE = System.getenv("PROFILE_HEAP") != null;
+    static final boolean PROFILE_HEAP_USAGE = Boolean.valueOf(System.getenv("PROFILE_HEAP") != null ? System.getenv("PROFILE_HEAP") : "false");
 
     private MemoryMXBean memoryMXBean;
 

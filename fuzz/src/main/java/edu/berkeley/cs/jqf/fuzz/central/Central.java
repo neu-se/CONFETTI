@@ -23,7 +23,7 @@ public class Central {
     }
 
     protected enum Type { Zest_Initial, Zest, Knarr };
-    static boolean PROFILE_HEAP_USAGE = System.getenv("PROFILE_HEAP") != null;
+    static boolean PROFILE_HEAP_USAGE = Boolean.valueOf(System.getenv("PROFILE_HEAP") != null ? System.getenv("PROFILE_HEAP") : "false");
 
     /* Server:
      * 1. Receive input

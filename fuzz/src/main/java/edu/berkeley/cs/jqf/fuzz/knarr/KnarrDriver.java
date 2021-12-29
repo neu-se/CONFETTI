@@ -10,7 +10,7 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 
 public class KnarrDriver {
-    static boolean PROFILE_HEAP_USAGE = System.getenv("PROFILE_HEAP") != null;
+    static boolean PROFILE_HEAP_USAGE = Boolean.valueOf(System.getenv("PROFILE_HEAP") != null ? System.getenv("PROFILE_HEAP") : "false");
 
     public static void main(String[] args) {
         if (args.length < 2){
