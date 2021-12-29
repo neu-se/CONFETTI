@@ -9,5 +9,4 @@ jobs:
       fuzzer_to_invoke: ./bin/confetti
       java_home: /usr/lib/jvm/jdk1.8.0_301/
       runs_on: self-hosted.32gb
-    env:
       PROFILE_HEAP: true
