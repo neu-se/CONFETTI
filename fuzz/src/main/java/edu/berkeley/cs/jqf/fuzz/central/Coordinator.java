@@ -1,6 +1,7 @@
 package edu.berkeley.cs.jqf.fuzz.central;
 
 import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
+import edu.berkeley.cs.jqf.fuzz.guidance.RecordingInputStream;
 import edu.gmu.swe.knarr.ConstraintDeserializer;
 import edu.gmu.swe.knarr.runtime.Coverage;
 import org.eclipse.collections.api.iterator.IntIterator;
@@ -51,9 +52,9 @@ public class Coordinator implements Runnable {
 
     protected LinkedList<Input> inputsToSendToKnarr = new LinkedList<>(); //Only used if knarr is not initialized
 
-    protected final void foundInput(int id, byte[] bytes, boolean valid, LinkedList<StringHint[]> hints, LinkedList<int[]> instructions, LinkedList<TargetedHint> targetedHints, Double coveragePercentage, long numExecutions, Integer score, LinkedList<int[]> requestOffsets) {
+    protected final void foundInput(int id, RecordingInputStream.MarkedInput recording, boolean valid, LinkedList<StringHint[]> hints, LinkedList<int[]> instructions, LinkedList<TargetedHint> targetedHints, Double coveragePercentage, long numExecutions, Integer score) {
         Input in = new Input();
-        in.bytes = bytes;
+        in.bytes = recording.getBytesRead();
         in.id = id;
         in.isNew = (config.useInvalid ? true : valid);
         in.hints = hints;
@@ -62,12 +63,14 @@ public class Coordinator implements Runnable {
         in.numExecutions = numExecutions;
         in.score = score;
         in.isValid = valid;
-        in.requestsForRandom = new int[requestOffsets.size() * 2];
+        in.requestsForRandom = new int[recording.getMarks().length * 2];
         int i = 0;
-        for (int[] ar : requestOffsets) {
-            in.requestsForRandom[i] = ar[0];
+        for (int k = 0; k < recording.getMarks().length; k++) {
+            int mark = recording.getMarks()[k];
+            int len = recording.getMarkLength(k);
+            in.requestsForRandom[i] = mark;
             i++;
-            in.requestsForRandom[i] = ar[1];
+            in.requestsForRandom[i] = len;
             i++;
         }
         in.targetedHints = new HashSet<>(targetedHints);
@@ -1390,7 +1393,12 @@ public class Coordinator implements Runnable {
             try {
                 //System.out.println("Reading constraints from " + this.exprFile);
                 fileIn = new GZIPInputStream(new BufferedInputStream(new FileInputStream(this.exprFile)));
-                return deserializer.fromInputStream(fileIn);
+                try {
+                    LinkedList<Expression> ret = deserializer.fromInputStream(fileIn);
+                    return ret;
+                }finally{
+                    fileIn.close();
+                }
             } catch (IOException e) {
                 e.printStackTrace();
                 System.exit(-1); //TODO debugging

@@ -2,8 +2,11 @@ package edu.berkeley.cs.jqf.fuzz.central;
 
 import edu.berkeley.cs.jqf.fuzz.ei.ZestGuidance;
 import edu.berkeley.cs.jqf.fuzz.guidance.GuidanceException;
+import edu.berkeley.cs.jqf.fuzz.guidance.RecordingInputStream;
 import edu.berkeley.cs.jqf.fuzz.guidance.Result;
 import edu.berkeley.cs.jqf.fuzz.util.Coverage;
+import org.eclipse.collections.impl.list.mutable.primitive.ByteArrayList;
+import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
 
 import java.io.IOException;
 import java.util.HashSet;
@@ -58,9 +61,9 @@ public class ZestClient extends Central {
      * 3. Select input
      * 3. Receive instructions
      */
-    public void sendInput(LinkedList<byte[]> inputRequests, Result result, ZestGuidance.Input input, Double coveragePercentage, Long totalExecutions) throws IOException {
+    public void sendInput(RecordingInputStream.MarkedInput recorded, Result result, ZestGuidance.Input input, double coveragePercentage, long totalExecutions) throws IOException {
         oos.writeObject(ZestMessageType.SENDINPUT);
-        oos.writeObject(inputRequests);
+        oos.writeObject(recorded);
         oos.writeObject(result);
         oos.writeInt(input.id);
         oos.writeObject(input.stringEqualsHints == null ? new LinkedList<Coordinator.StringHint[]>() : input.stringEqualsHints);

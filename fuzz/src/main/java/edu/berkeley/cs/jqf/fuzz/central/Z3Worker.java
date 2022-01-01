@@ -1039,7 +1039,8 @@ public class Z3Worker {
         }
 
         // Create a fresh Z3 Context
-        try (Context ctx = new Context()) {
+        Context ctx = new Context();
+        try  {
 
             // Translate from Green to Z3
             HashSet<Expr> vars = new HashSet<>();
@@ -1148,6 +1149,9 @@ public class Z3Worker {
             }
         } catch (VisitorException e) {
             e.printStackTrace();
+        } finally{
+            ctx.close();
+            Native.finalizeMemory();
         }
     }
 

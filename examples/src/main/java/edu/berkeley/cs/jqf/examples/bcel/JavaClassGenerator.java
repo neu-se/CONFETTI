@@ -208,7 +208,7 @@ public class JavaClassGenerator extends Generator<JavaClass> {
         boolean useExtendedDict = r.nextBoolean();
         int choice = r.nextInt(0, Integer.MAX_VALUE);
 
-        int[] pos = new int[]{RecordingInputStream.lastReadOffset-4,4};
+        int[] pos = new int[]{RecordingInputStream.unsafeGetLastMark()-4,4};
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
 
         if (r.nextBoolean()) {

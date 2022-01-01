@@ -8,4 +8,5 @@ jobs:
       trials: 5
       fuzzer_to_invoke: ./bin/confetti
       java_home: /usr/lib/jvm/jdk1.8.0_301/
+      report_on_branches: master, reduce-ram-consumption
       PROFILE_HEAP: true

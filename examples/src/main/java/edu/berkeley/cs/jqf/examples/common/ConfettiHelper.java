@@ -41,7 +41,7 @@ public class ConfettiHelper {
      */
     public static String chooseString(int choice, boolean useExtendedDict, String stringToUse){
         Coordinator.StringHint[] hints = StringEqualsHintingInputStream.getHintsForCurrentInput();
-        int[] pos = new int[]{RecordingInputStream.lastReadOffset-4,4};
+        int[] pos = new int[]{RecordingInputStream.unsafeGetLastMark()-4,4};
 
         String ret = stringToUse;
         if (useExtendedDict) {
@@ -88,14 +88,11 @@ public class ConfettiHelper {
         }
         else if (useDefault) {
             choice = choice % (dictionary.length + (useExtendedDict ? globalDictionary.size() : 0));
-            if(RecordingInputStream.lastReadBytes != null && RecordingInputStream.lastReadBytes.length == 4){
-                //Update the recorded value with one that does NOT wrap around
-                ByteBuffer.wrap(RecordingInputStream.lastReadBytes).putInt(choice);
-            }
+            RecordingInputStream.unsafePatchLastReadIntTo(choice);
             if(choice < dictionary.length)
                 ret =  dictionary[choice % dictionary.length];
             else{
-                int[] pos = new int[]{RecordingInputStream.lastReadOffset-4,4};
+                int[] pos = new int[]{RecordingInputStream.unsafeGetLastMark()-4,4};
                 ret = globalDictionary.get(choice - dictionary.length);
                 if(ZestGuidance.currentInput != null) {
                     ZestGuidance.currentInput.addSingleHintInPlace(
@@ -134,14 +131,11 @@ public class ConfettiHelper {
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         } else {
             choice = choice % (dictionary.length + (useExtendedDict ? globalDictionary.size() : 0));
-            if(RecordingInputStream.lastReadBytes != null && RecordingInputStream.lastReadBytes.length == 4){
-                //Update the recorded value with one that does NOT wrap around
-                ByteBuffer.wrap(RecordingInputStream.lastReadBytes).putInt(choice);
-            }
+            RecordingInputStream.unsafePatchLastReadIntTo(choice);
             if(choice < dictionary.length) {
                 word = dictionary[choice];
             } else{
-                int[] pos = new int[]{RecordingInputStream.lastReadOffset-4,4};
+                int[] pos = new int[]{RecordingInputStream.unsafeGetLastMark()-4,4};
                 word = globalDictionary.get(choice - dictionary.length);
                 if(ZestGuidance.currentInput != null) {
                     ZestGuidance.currentInput.addSingleHintInPlace(
@@ -179,14 +173,11 @@ public class ConfettiHelper {
             StringEqualsHintingInputStream.hintUsedInCurrentInput = true;
         } else {
             choice = choice % (dictionary.size() + (useExtendedDict ? globalDictionary.size() : 0));
-            if(RecordingInputStream.lastReadBytes != null && RecordingInputStream.lastReadBytes.length == 4){
-                //Update the recorded value with one that does NOT wrap around
-                ByteBuffer.wrap(RecordingInputStream.lastReadBytes).putInt(choice);
-            }
+            RecordingInputStream.unsafePatchLastReadIntTo(choice);
             if(choice < dictionary.size()) {
                 word = dictionary.get(choice);
             } else{
-                int[] pos = new int[]{RecordingInputStream.lastReadOffset-4,4};
+                int[] pos = new int[]{RecordingInputStream.unsafeGetLastMark()-4,4};
                 word = globalDictionary.get(choice - dictionary.size());
                 if(ZestGuidance.currentInput != null) {
                     ZestGuidance.currentInput.addSingleHintInPlace(

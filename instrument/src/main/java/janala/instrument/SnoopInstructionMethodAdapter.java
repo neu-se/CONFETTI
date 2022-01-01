@@ -103,6 +103,15 @@ public class SnoopInstructionMethodAdapter extends MethodVisitor implements Opco
     }
   }
 
+  @Override
+  public void visitCode() {
+    super.visitCode();
+    int iid = instrumentationState.incAndGetId();
+    addBipushInsn(mv, iid);
+    mv.visitInsn(ICONST_0);
+    mv.visitMethodInsn(INVOKESTATIC, Config.instance.analysisClass, "LOGJUMP", "(II)V", false);
+  }
+
   private void addConditionalJumpInstrumentation(int opcode, Label finalBranchTarget,
                                                  String instMethodName, String instMethodDesc) {
     int iid = instrumentationState.incAndGetId();

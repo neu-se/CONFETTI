@@ -45,6 +45,8 @@ import org.apache.bcel.classfile.JavaClass;
 import org.eclipse.collections.api.iterator.IntIterator;
 import org.eclipse.collections.api.iterator.ShortIterator;
 import org.eclipse.collections.api.list.primitive.IntList;
+import org.eclipse.collections.impl.list.mutable.primitive.ByteArrayList;
+import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
 import org.eclipse.collections.impl.list.mutable.primitive.ShortArrayList;
 import org.eclipse.collections.impl.set.mutable.primitive.IntHashSet;
 import org.paukov.combinatorics3.Generator;
@@ -310,7 +312,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private boolean currentParentExhaustedHints = false;
 
 
-    private Long z3ThreadStartedInputNum = -1L;
+    private long z3ThreadStartedInputNum = -1L;
 
     /** Number of mutated inputs generated from currentInput. */
     private int numChildrenGeneratedForCurrentParentInput = 0;
@@ -479,15 +481,22 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
     private RecordingInputStream ris;
 
 
-    private Long windowStartExecs = 0L;
-    private Double windowStartCoverage = 0.0;
-    private Double maxCoveragePercentageInWindow = 0.0;
+    private long windowStartExecs = 0L;
+    private double windowStartCoverage = 0.0;
+    private double maxCoveragePercentageInWindow = 0.0;
     private Boolean startedCentral = false;
     private Boolean startCentral = false;
 
     private long campaignStartTime = System.currentTimeMillis();
 
     public static int extendedDictionarySize;
+
+    /**
+     * These two buffers are used by recordinginpustream, and could become quite large. We don't want to allocate them for each
+     * input, and making them static in RecordingInputStream will cause a nasty thread safety bug one day, surely...
+     */
+    private final ByteArrayList  recordingInputStreamBuffer = new ByteArrayList(ZestGuidance.MAX_INPUT_SIZE / 4);
+    private final IntArrayList recordingInputStreamMarksBuffer = new IntArrayList(ZestGuidance.MAX_INPUT_SIZE / 16);
 
     /**
      * @param testName the name of test to display on the status screen
@@ -534,7 +543,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
 
 
-    protected final synchronized void handleHeartbeat(Long numExecs, Double coveragePercentage) {
+    protected final synchronized void handleHeartbeat(long numExecs, double coveragePercentage) {
         if (this.central == null && this.triggerClient == null )
             return;
 
@@ -1159,7 +1168,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         };
 
         if (central != null || triggerClient != null) {
-            ris = new RecordingInputStream(is);
+            ris = new RecordingInputStream(is, recordingInputStreamBuffer, recordingInputStreamMarksBuffer);
             is = ris;
 
             if ((currentInput.stringEqualsHints != null))
@@ -1217,7 +1226,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
         // send a
         if( !startedCentral &&  ((numTrials > 0 )&& (numTrials % heartbeatInterval ) == 0)) {
-            Double coveragePercentage = totalCoverage.getNonZeroCount() * 100.0 / totalCoverage.size();
+            double coveragePercentage = totalCoverage.getNonZeroCount() * 100.0 / totalCoverage.size();
             handleHeartbeat(numTrials, coveragePercentage);
 
         }
@@ -1355,10 +1364,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                         // Send new input / random requests used
                         Boolean hintsUsed = StringEqualsHintingInputStream.hintUsedInCurrentInput;
 
-                        Double coveragePercentage = totalCoverage.getNonZeroCount() * 100.0 / totalCoverage.size();
+                        double coveragePercentage = totalCoverage.getNonZeroCount() * 100.0 / totalCoverage.size();
                         //if (!(currentInput instanceof SeedInput)) {
                             //Don't send seed inputs to central, they should already have hints
-                            central.sendInput(ris.getRequests(), result, currentInput,
+                            central.sendInput(ris.getRecordedInput(), result, currentInput,
                                     coveragePercentage, numTrials);
 
                             // Send updated coverage
