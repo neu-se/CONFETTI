@@ -1,0 +1,13 @@
+name: Gold evaluation - 24 hours, 20 trials
+on: [workflow_dispatch]
+jobs:
+  evaluate:
+    uses: jon-bell/jqf/.github/workflows/evaluation-workflow.yml@reporting-ci
+    with:
+      duration: 24h
+      trials: 20
+      fuzzer_to_invoke: ./bin/confetti
+      java_home: /usr/lib/jvm/jdk1.8.0_301/
+      runs_on: self-hosted
+      report_on_branches: master, reduce-ram-consumption
+      PROFILE_HEAP: true
