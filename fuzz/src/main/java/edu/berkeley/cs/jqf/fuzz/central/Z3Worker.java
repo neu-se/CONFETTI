@@ -30,9 +30,8 @@ public class Z3Worker {
 
     static final boolean PRINT_Z3_DEBUG_INFO = false;
 
-    static PrintWriter statsLogger;
 
-    static {
+    static{
         String z3Dir = System.getProperty("Z3_OUTPUT_DIR");
         if (z3Dir != null) {
             File f = new File(z3Dir);
@@ -46,45 +45,37 @@ public class Z3Worker {
         } else {
             Z3_OUTPUT_DIR = null;
         }
-        String z3StatsFile = System.getProperty("z3StatsLog");
-        if(z3StatsFile != null){
-            try {
-                statsLogger = new PrintWriter(new BufferedWriter(new FileWriter(z3StatsFile)));
-                Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        if(statsLogger != null)
-                            statsLogger.close();
-                    }
-                }));
-                statsLogger.println("time,numBranchesUnsolved,selectedBranch,numInputsNotTried,selectedInput,timeSpent,result");
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
     }
-    static long campaignStart = System.currentTimeMillis();
 
-    public static void appendToLogFile(int numBranchesUnsolved, String selectedBranch, int numInputsNotTried, int numInputsTried, int selectedInput, int timeSpent, String result){
-
-        if(statsLogger != null) {
-            statsLogger.println(String.format("%d,%d,%s,%d,%d,%d,%d,%s",
-                    (System.currentTimeMillis() - campaignStart),
-                    numBranchesUnsolved,
-                    selectedBranch,
-                    numInputsNotTried,
-                    numInputsTried, selectedInput, timeSpent, result
-            ));
-            statsLogger.flush();
+    public static void main(String[] args) {
+        try {
+            ObjectInputStream ois = new ObjectInputStream(new BufferedInputStream(new FileInputStream(args[0])));
+            Z3Worker.Target target = (Target) ois.readObject();
+            ois.close();
+            Z3Worker worker = new Z3Worker();
+            Optional<Coordinator.Input> maybeInput = worker.exploreTarget(target);
+            ObjectOutputStream oos = new ObjectOutputStream(new BufferedOutputStream(new FileOutputStream(args[1])));
+            if(maybeInput.isPresent()){
+                oos.writeBoolean(true);
+                oos.writeObject(maybeInput.get());
+            }else {
+                oos.writeBoolean(false);
+            }
+            oos.close();
+            System.exit(0);
+        }catch(Throwable t){
+            t.printStackTrace();
+            System.exit(-1);
         }
     }
 
     private static final int EXTRA_ZEROES_FOR_Z3 = Integer.parseInt(System.getProperty("extraZeroesForZ3", "0"));
 
-    public Z3Worker(ZestWorker zest, KnarrWorker knarr, String[] filter) {
+    public Z3Worker() {
         data = new Data();
         data.green = new Green();
         Properties props = new Properties();
+        props.setProperty("green.log.level", "SEVERE");
         props.setProperty("green.services", "model");
         props.setProperty("green.service.model", "(slice (canonize z3))");
         props.setProperty("green.service.model.slice", "za.ac.sun.cs.green.service.slicer.SATSlicerService");

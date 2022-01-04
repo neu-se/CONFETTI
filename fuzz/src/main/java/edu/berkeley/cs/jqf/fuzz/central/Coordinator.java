@@ -38,7 +38,7 @@ public class Coordinator implements Runnable {
 
     private ConcurrentHashMap<Input, ConstraintRepresentation> constraints = new ConcurrentHashMap<>();
     private KnarrWorker knarr;
-    private Z3Worker z3;
+    private RemoteZ3WorkerFacade z3;
     ZestWorker zest;
 
     protected Boolean z3Started = false;
@@ -268,7 +268,7 @@ public class Coordinator implements Runnable {
                 // if for some reason z3 isn't started, start it here
                 if (config.usez3Hints && !z3Started) {
                     if (this.z3 == null)
-                        this.z3 = new Z3Worker(zest, knarr, config.filter);
+                        this.z3 = new RemoteZ3WorkerFacade();
                     startZ3Thread();
                 }
             }
@@ -421,7 +421,7 @@ public class Coordinator implements Runnable {
             this.zest = zest;
 
             if (config.usez3Hints) {
-                this.z3 = new Z3Worker(zest, knarr, config.filter);
+                this.z3 = new RemoteZ3WorkerFacade();
                 startZ3Thread();
             }
             this.inputs.notifyAll();
@@ -509,7 +509,7 @@ public class Coordinator implements Runnable {
                             .reduce(BinaryOperator.minBy(Comparator.comparingInt(o -> o.inputsTried.size())));
 
                     if (!maybeTop.isPresent()) {
-                        Z3Worker.appendToLogFile((int) num, "",0,0,0,0,"NO_BRANCHES");
+                        RemoteZ3WorkerFacade.appendToLogFile((int) num, "",0,0,0,0,"NO_BRANCHES");
                         continue out; //Start over, allowing for repeated selection of branches
                     } else
                         top = maybeTop.get();
@@ -526,7 +526,7 @@ public class Coordinator implements Runnable {
                     triedTops.add(top);
                     if (!maybeInputToTarget.isPresent()) {
                         //System.out.println("Z3 couldn't find an input to target for " + branchToTarget);
-                        Z3Worker.appendToLogFile((int) num, top.source,0,top.inputsTried.size(),0,0,"NO_INPUTS");
+                        RemoteZ3WorkerFacade.appendToLogFile((int) num, top.source,0,top.inputsTried.size(),0,0,"NO_INPUTS");
                         continue;
                     }
 
@@ -546,7 +546,7 @@ public class Coordinator implements Runnable {
                                     Z3Worker.Target target = new Z3Worker.Target(inputToTarget, top, i, inputToTarget.bytes, constraints.get(inputToTarget).getExpressions(), perByteStringEqualsHints.get(inputToTarget.id));
                                     Optional<Coordinator.Input> newInput = z3.exploreTarget(target);
 
-                                    Z3Worker.appendToLogFile((int) num, top.source + "_arm" + i, top.getInputsStillUseful().size(), top.inputsTried.size(), inputToTarget.id, (int) (System.currentTimeMillis() - start), newInput.isPresent() ? "SAT" : "UNSAT");
+                                    RemoteZ3WorkerFacade.appendToLogFile((int) num, top.source + "_arm" + i, top.getInputsStillUseful().size(), top.inputsTried.size(), inputToTarget.id, (int) (System.currentTimeMillis() - start), newInput.isPresent() ? "SAT" : "UNSAT");
 
                                     // Handle result
                                     if (newInput.isPresent()) {
@@ -558,7 +558,7 @@ public class Coordinator implements Runnable {
                         } else {
                             Z3Worker.Target target = new Z3Worker.Target(inputToTarget, top, inputToTarget.bytes, constraints.get(inputToTarget).getExpressions(), perByteStringEqualsHints.get(inputToTarget.id));
                             Optional<Coordinator.Input> newInput = z3.exploreTarget(target);
-                            Z3Worker.appendToLogFile((int) num, top.source,top.getInputsStillUseful().size(),top.inputsTried.size(),inputToTarget.id, (int) (System.currentTimeMillis() - start),newInput.isPresent() ? "SAT" : "UNSAT");
+                            RemoteZ3WorkerFacade.appendToLogFile((int) num, top.source,top.getInputsStillUseful().size(),top.inputsTried.size(),inputToTarget.id, (int) (System.currentTimeMillis() - start),newInput.isPresent() ? "SAT" : "UNSAT");
 
                             // Handle result
                             if (newInput.isPresent()) {
@@ -568,7 +568,7 @@ public class Coordinator implements Runnable {
                         }
 
                     } catch (TimeoutException ex) {
-                        Z3Worker.appendToLogFile((int) num, top.source,top.getInputsStillUseful().size(),top.inputsTried.size(),inputToTarget.id, (int) (System.currentTimeMillis() - start), "TIMEOUT");
+                        RemoteZ3WorkerFacade.appendToLogFile((int) num, top.source,top.getInputsStillUseful().size(),top.inputsTried.size(),inputToTarget.id, (int) (System.currentTimeMillis() - start), "TIMEOUT");
 
                         ex.printStackTrace();
                         if (top != null && top.trueExplored != null)

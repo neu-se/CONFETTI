@@ -126,7 +126,7 @@ CENTRAL_OPTS="-Xmx3G -Xss16m"
 CENTRAL_CMD="$JAVA_HOME/bin/java $CENTRAL_DEBUG $JVM_OPTS $CENTRAL_OPTS -Djava.library.path=$Z3_BIN $Z3_OUTPUT_DIR -DZ3_TIMEOUT=$Z3_TO $EXP_EXTRA_OPTS -cp "${FUZZ_CLASSPATH}:${CLASSPATH}" -DcentralPort=$PORT edu.berkeley.cs.jqf.fuzz.central.Central $3 $EXP_CENTRAL_PROPS"
 
 #KNARR_DEBUG="-Xdebug -Xrunjdwp:server=y,transport=dt_socket,address=5556,suspend=n"
-KNARR_OPTS="-Xss16m -Xmx3g -Xbootclasspath/p:$KNARR_JAR -javaagent:$KNARR_JAR"
+KNARR_OPTS="-Xss16m -Xmx4g -Xbootclasspath/p:$KNARR_JAR -javaagent:$KNARR_JAR"
 KNARR_CMD="$INST_JVM_DIR/bin/java $JAVA_OPTS $JVM_OPTS -DcentralPort=$PORT -Dsize=15 $KNARR_OPTS $KNARR_DEBUG $EXP_EXTRA_OPTS -cp "${FUZZ_CLASSPATH}:${CLASSPATH}" edu.berkeley.cs.jqf.fuzz.knarr.KnarrDriver $@"
 
 

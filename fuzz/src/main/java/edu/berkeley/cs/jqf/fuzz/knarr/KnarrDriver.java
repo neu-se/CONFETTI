@@ -31,7 +31,7 @@ public class KnarrDriver {
                     public void run() {
                         int waitTime = Integer.getInteger("ZEST_STATS_REFRESH_TIME_PERIOD", 300);
                         MemoryMXBean memoryMXBean = ManagementFactory.getMemoryMXBean();
-                        pw.println("unix_time,heapUsageBytes,nonHeapUsageBytes");
+                        pw.println("# unix_time,heapUsageBytes,nonHeapUsageBytes");
                         while (PROFILE_HEAP_USAGE) {
                             try {
                                 Thread.sleep(waitTime);
