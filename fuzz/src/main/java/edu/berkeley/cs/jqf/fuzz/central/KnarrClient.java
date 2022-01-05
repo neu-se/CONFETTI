@@ -94,10 +94,10 @@ public class KnarrClient extends Central {
                     } catch (OutOfMemoryError oom) {
                         constraintSerializer.clearBuffer();
                         oom.printStackTrace();
-                        oos.writeInt(4);
                         oos.writeInt(0);
-                        oos.writeInt(4);
                         oos.writeInt(0);
+                        //oos.writeInt(4);
+                        //oos.writeInt(0);
                     }
                     //long writtenConstriants = System.currentTimeMillis();
                     //System.out.println("Wrote constraints in " + (writtenConstriants - doneSerializing));

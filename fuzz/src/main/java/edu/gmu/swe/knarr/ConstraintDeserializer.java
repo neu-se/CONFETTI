@@ -48,16 +48,17 @@ public class ConstraintDeserializer {
             this.nextBackReference = -1;
         backReferencesRemaining.sortThis();
         int size = dis.readInt();
-
-        referenceTable = new IntObjectHashMap<>();
-        missingReferenceHolders = new HashMap<>();
-        countingInputStream.resetCount();
-        int nConstraints = dis.readInt();
-        for (int i = 0; i < nConstraints; i++) {
-            ret.add(readExpression(null, null, 0));
-        }
-        if(countingInputStream.getCount() != size){
-            throw new StreamCorruptedException("Expected size " + size + " but read " + countingInputStream.getCount());
+        if(size > 0) {
+            referenceTable = new IntObjectHashMap<>();
+            missingReferenceHolders = new HashMap<>();
+            countingInputStream.resetCount();
+            int nConstraints = dis.readInt();
+            for (int i = 0; i < nConstraints; i++) {
+                ret.add(readExpression(null, null, 0));
+            }
+            if (countingInputStream.getCount() != size) {
+                throw new StreamCorruptedException("Expected size " + size + " but read " + countingInputStream.getCount());
+            }
         }
         return ret;
     }
