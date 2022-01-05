@@ -46,6 +46,7 @@ public class KnarrClient extends Central {
         synchronized (constraintsToSend){
             constraintsToSend.add(new ConstraintPayload(inputID, constraints, generatedStrings));
             constraintsToSend.notifyAll();
+
         }
     }
 
@@ -85,11 +86,11 @@ public class KnarrClient extends Central {
 
                     //oos.writeInt(constraints.size());
                     long doneSerializing = 0;
-                    long t2 = System.currentTimeMillis();
                     try {
                         constraintSerializer.write(constraintPayload.constraints);
-                        doneSerializing = System.currentTimeMillis();
                         constraintSerializer.writeTo(oos);
+                        if(constraintSerializer.size() > 100000000)
+                            System.out.println("Size: "+ (constraintSerializer.size()/(1024*1024)) + "MB");
                     } catch (OutOfMemoryError oom) {
                         constraintSerializer.clearBuffer();
                         oom.printStackTrace();
