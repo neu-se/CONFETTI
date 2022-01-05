@@ -2,6 +2,7 @@ package edu.berkeley.cs.jqf.fuzz.util;
 
 
 import edu.columbia.cs.psl.phosphor.struct.IntSinglyLinkedList;
+import org.eclipse.collections.api.iterator.IntIterator;
 import org.eclipse.collections.api.list.primitive.IntList;
 import org.eclipse.collections.api.map.primitive.MutableIntIntMap;
 import org.eclipse.collections.api.tuple.primitive.IntIntPair;
@@ -67,13 +68,9 @@ public class ReliableCounter {
     public void copyFrom(ReliableCounter counter) {
         this.map = new IntIntHashMap(counter.map);
         this.nonZeroKeys = new IntSinglyLinkedList();
-        Iterator<IntIntPair> iter = map.keyValuesView().iterator();
-        while (iter.hasNext()) {
-            IntIntPair each = iter.next();
-            if (each.getTwo() != 0) {
-                this.nonZeroKeys.addFirst(each.getOne());
-            }
+        IntSinglyLinkedList.IntListIterator iter = counter.nonZeroKeys.iterator();
+        while(iter.hasNext()){
+            this.nonZeroKeys.addFirst(iter.next());
         }
-
     }
 }
