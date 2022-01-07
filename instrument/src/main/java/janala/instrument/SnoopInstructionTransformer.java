@@ -97,6 +97,10 @@ public class SnoopInstructionTransformer implements ClassFileTransformer {
       ProtectionDomain d, byte[] cbuf)
     throws IllegalClassFormatException {
 
+    if(cname == null) {
+      // Do not instrument lambdas
+      return null;
+    }
     boolean toInstrument = !shouldExclude(cname);
 
     if (toInstrument) {
