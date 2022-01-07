@@ -92,8 +92,6 @@ public class SnoopInstructionTransformer implements ClassFileTransformer {
     return false;
   }
 
-  static Map<String, byte[]> instrumentedBytes = new TreeMap<>();
-
   @Override
   synchronized public byte[] transform(ClassLoader loader, String cname, Class<?> classBeingRedefined,
       ProtectionDomain d, byte[] cbuf)
@@ -109,11 +107,6 @@ public class SnoopInstructionTransformer implements ClassFileTransformer {
       print("Instrumenting: " + cname + "... ");
       GlobalStateForInstrumentation.instance.setCid(cname.hashCode());
 
-      if (instrumentedBytes.containsKey(cname)) {
-        println(" Found in fast-cache!");
-        return instrumentedBytes.get(cname);
-      }
-
       if (instDir != null) {
         File cachedFile = new File(instDir + "/" + cname + ".instrumented.class");
         File referenceFile = new File(instDir + "/" + cname + ".original.class");
@@ -123,7 +116,6 @@ public class SnoopInstructionTransformer implements ClassFileTransformer {
             if (Arrays.equals(cbuf, origBytes)) {
               byte[] instBytes = Files.readAllBytes(cachedFile.toPath());
               println(" Found in disk-cache!");
-              instrumentedBytes.put(cname, instBytes);
               return instBytes;
             }
           } catch (IOException e) {
@@ -152,7 +144,6 @@ public class SnoopInstructionTransformer implements ClassFileTransformer {
       }
 
       println("Done!");
-      instrumentedBytes.put(cname, ret);
 
       if (instDir != null) {
         try {
