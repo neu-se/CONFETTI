@@ -11,3 +11,5 @@ jobs:
       runs_on: self-hosted
       report_on_branches: master, reduce-ram-consumption, reduce-ram-consumption-less-byte-arrays
       PROFILE_HEAP: true
+    secrets:
+      INFLUX_TOKEN: ${{ secrets.INFLUX_TOKEN }}
