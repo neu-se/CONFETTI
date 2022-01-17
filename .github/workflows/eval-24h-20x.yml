@@ -2,7 +2,7 @@ name: Gold evaluation - 24 hours, 20 trials
 on: [workflow_dispatch]
 jobs:
   evaluate:
-    uses: jon-bell/jqf/.github/workflows/evaluation-workflow.yml@reporting-ci
+    uses: neu-se/actions-workflow-jqf/.github/workflows/evaluation-workflow.yml@main
     with:
       duration: 24h
       trials: 20
