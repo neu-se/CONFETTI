@@ -846,7 +846,13 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 - countOfInputsCreatedByMutation[MutationType.APPLY_SINGLE_HINT.ordinal()]
                 - countOfInputsCreatedByMutation[MutationType.APPLY_SINGLE_CHAR_HINT.ordinal()];
 
-        String plotData = String.format("%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %.2f, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %.3f, %.3f, %.3f",
+        long heapUsage = 0;
+        long nonHeapUsage = 0;
+        if(PROFILE_HEAP_USAGE){
+            heapUsage = memoryMXBean.getHeapMemoryUsage().getUsed();
+            nonHeapUsage = memoryMXBean.getNonHeapMemoryUsage().getUsed();
+        }
+        String plotData = String.format("%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %.2f, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %.3f, %.3f, %.3f",
                 TimeUnit.MILLISECONDS.toSeconds(now.getTime()), cyclesCompleted, currentParentInputIdx,
                 savedInputs.size(), 0, 0, nonZeroCount, uniqueFailures.size(), 0, 0, intervalExecsPerSecDouble,
                 numTrials, mutatedBytes/numTrials, numValid, numTrials-numValid, nonZeroCount,
@@ -867,11 +873,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 countOfSavedInputsBySeedSource[SeedSource.RANDOM.ordinal()],
                 countOfSavedInputsWithExtendedDictionaryHints,
                 countOfCreatedInputsWithExtendedDictionaryHints,
-                ZestGuidance.extendedDictionarySize,
+                ZestGuidance.extendedDictionarySize, heapUsage, nonHeapUsage,
                 hillNumbers.h_0, hillNumbers.h_1, hillNumbers.h_2);
-        if(PROFILE_HEAP_USAGE){
-            plotData += ", " + memoryMXBean.getHeapMemoryUsage().getUsed() + ", " + memoryMXBean.getNonHeapMemoryUsage().getUsed();
-        }
         appendToStatsFile(plotData);
 
     }
