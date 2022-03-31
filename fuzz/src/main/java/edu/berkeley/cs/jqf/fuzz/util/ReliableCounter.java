@@ -50,11 +50,11 @@ public class ReliableCounter {
 
     public synchronized IntList getNonZeroValues() {
         IntArrayList values = new IntArrayList(map.size() / 2);
-        Iterator<IntIntPair> iter = map.keyValuesView().iterator();
+        IntIterator iter = map.values().intIterator();
         while (iter.hasNext()) {
-            IntIntPair each = iter.next();
-            if (each.getTwo() != 0) {
-                values.add(each.getTwo());
+            int val = iter.next();
+            if (val != 0) {
+                values.add(val);
             }
         }
         return values;

@@ -283,4 +283,10 @@ public class Coverage implements TraceEventVisitor, CoverageListener {
     public ReliableCounter getCounter() {
         return counter;
     }
+
+    /** Returns a hash code of the edge counts in the coverage map. */
+    @Override
+    public int hashCode() {
+        return counter.map.hashCode();
+    }
 }
