@@ -279,4 +279,8 @@ public class Coverage implements TraceEventVisitor, CoverageListener {
     public void logCoverage(int iid, int arm) {
         counter.increment(iid  + arm);
     }
+
+    public ReliableCounter getCounter() {
+        return counter;
+    }
 }

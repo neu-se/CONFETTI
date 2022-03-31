@@ -34,6 +34,7 @@ import edu.berkeley.cs.jqf.fuzz.ei.ExecutionIndex.Prefix;
 import edu.berkeley.cs.jqf.fuzz.ei.ExecutionIndex.Suffix;
 import edu.berkeley.cs.jqf.fuzz.guidance.*;
 import edu.berkeley.cs.jqf.fuzz.util.Coverage;
+import edu.berkeley.cs.jqf.fuzz.util.DiversityMetricsBuilder;
 import edu.berkeley.cs.jqf.fuzz.util.ProducerHashMap;
 import edu.berkeley.cs.jqf.instrument.tracing.SingleSnoop;
 import edu.berkeley.cs.jqf.instrument.tracing.events.CallEvent;
@@ -342,6 +343,12 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
 
     /** Cumulative coverage for valid inputs. */
     private Coverage validCoverage = new Coverage();
+
+    /** Cumulative coverage statistics, only incremented for unique traces. */
+    protected Coverage totalCoverageFromUniqueTraces = new Coverage();
+
+    /** Set of hashes of all paths generated so far. */
+    protected IntHashSet uniquePaths = new IntHashSet();
 
     /** The maximum number of keys covered by any single input found so far. */
     private int maxCoverage = 0;
@@ -668,7 +675,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 "inputsSavedWith_Z3Origin, " +
                 "inputsSavedWithoutHintsOrZ3,countOfSavedInputsWithExtendedDictionaryHints," +
                 "countOfCreatedInputsWithExtendedDictionaryHints," +
-                "extendedDictionarySize,heapUsageBytes,nonHeapUsageBytes");
+                "extendedDictionarySize,heapUsageBytes,nonHeapUsageBytes, b0, b1, b2");
     }
 
     static PrintWriter statsWriter;
@@ -744,6 +751,9 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         double nonZeroFraction = nonZeroCount * 100.0 / totalCoverage.size();
         int nonZeroValidCount = validCoverage.getNonZeroCount();
         double nonZeroValidFraction = nonZeroValidCount * 100.0 / validCoverage.size();
+
+        DiversityMetricsBuilder.HillNumbers hillNumbers = DiversityMetricsBuilder.hillNumbersFromCoverage(totalCoverageFromUniqueTraces);
+
         if(!QUIET_MODE && console != null){
             console.printf("\033[2J");
             console.printf("\033[H");
@@ -836,7 +846,7 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 - countOfInputsCreatedByMutation[MutationType.APPLY_SINGLE_HINT.ordinal()]
                 - countOfInputsCreatedByMutation[MutationType.APPLY_SINGLE_CHAR_HINT.ordinal()];
 
-        String plotData = String.format("%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %.2f, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",
+        String plotData = String.format("%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %.2f, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %.3f, %.3f, %.3f",
                 TimeUnit.MILLISECONDS.toSeconds(now.getTime()), cyclesCompleted, currentParentInputIdx,
                 savedInputs.size(), 0, 0, nonZeroCount, uniqueFailures.size(), 0, 0, intervalExecsPerSecDouble,
                 numTrials, mutatedBytes/numTrials, numValid, numTrials-numValid, nonZeroCount,
@@ -857,7 +867,8 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
                 countOfSavedInputsBySeedSource[SeedSource.RANDOM.ordinal()],
                 countOfSavedInputsWithExtendedDictionaryHints,
                 countOfCreatedInputsWithExtendedDictionaryHints,
-                ZestGuidance.extendedDictionarySize);
+                ZestGuidance.extendedDictionarySize,
+                hillNumbers.h_0, hillNumbers.h_1, hillNumbers.h_2);
         if(PROFILE_HEAP_USAGE){
             plotData += ", " + memoryMXBean.getHeapMemoryUsage().getUsed() + ", " + memoryMXBean.getNonHeapMemoryUsage().getUsed();
         }
@@ -1223,6 +1234,10 @@ public class ZestGuidance implements Guidance, TraceEventVisitor {
         assert(currentInput.size() > 0) : String.format("Empty input: %s", currentInput.desc);
 
         boolean valid = result == Result.SUCCESS;
+
+        if (uniquePaths.add(runCoverage.hashCode())){
+            totalCoverageFromUniqueTraces.updateBits(runCoverage);
+        }
 
         // send a
         if( !startedCentral &&  ((numTrials > 0 )&& (numTrials % heartbeatInterval ) == 0)) {
