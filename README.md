@@ -15,7 +15,7 @@ In an empirical comparison with two baseline approaches, a state-of-the-art grey
 
 CONFETTI is a research prototype, but nonetheless, we have had success applying it to fuzz the open-source projects Apache Ant, BCEL and Maven, Google's  Closure Compiler, and Mozilla's Rhino engine.
 
-You can read more about CONFETTI's design and evaluation in our [ICSE 2022 paper](https://jonbell.net/publications/CONFETTI).
+You can read more about CONFETTI's design and evaluation in our [ICSE 2022 paper](https://jonbell.net/publications/confetti).
 
 ## Architecture
 CONFETTI consists of three key components that run in coordination: 1) the parametric fuzzer, which is responsible for input generation and execution of the target program, 2) the whitebox analysis process, which is responsible for performing dynamic taint tracking and constraint collection on interesting inputs, and  3) the CONFETTI coordinator process, which transmits inputs between the fuzzer and the analyzer and interacts with a constraint solver.
